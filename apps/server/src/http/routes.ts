@@ -180,6 +180,14 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
     return s.settings.operation();
   });
   r('PUT', '/api/settings/operation', (req, a) => s.settings.updateOperation(a, req.body));
+  /** Parâmetros operacionais não sensíveis, para qualquer funcionário autenticado. */
+  r('GET', '/api/settings/operation/public', () => {
+    const o = s.settings.operation();
+    return {
+      defaultGramsPerRosh: o.defaultGramsPerRosh, serviceFeeBp: o.serviceFeeBp, pickupPlace: o.pickupPlace,
+      requireCustomerPhone: o.requireCustomerPhone, requireCustomerCpf: o.requireCustomerCpf,
+    };
+  });
 
   r('POST', '/api/attachments', async (req, a) => {
     const kind = z.enum(['receipt', 'loss_proof', 'invoice', 'product_photo']).parse(q(req).kind) as AttachmentKind;

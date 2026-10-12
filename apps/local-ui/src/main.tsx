@@ -1,0 +1,151 @@
+import { ShieldOff, WifiOff } from 'lucide-react';
+import { StrictMode, useEffect, useState, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import type { Permission } from '@rupbar/core';
+import { Button, Card, Empty, Loading, ToastProvider } from './components/ui';
+import { DesktopShell } from './layouts/DesktopShell';
+import { findServer, rememberServer } from './lib/discovery';
+import { SessionProvider, useSession } from './lib/session';
+import { CashPage } from './pages/Cash';
+import { ComandaDetailPage } from './pages/ComandaDetail';
+import { ComandasPage } from './pages/Comandas';
+import { DashboardPage } from './pages/Dashboard';
+import { HookahsPage } from './pages/Hookahs';
+import { KitchenPage } from './pages/Kitchen';
+import { ChangePasswordPage, LoginPage } from './pages/Login';
+import { LossesPage } from './pages/Losses';
+import { MobileComanda, MobileComandas, MobileOrders, MobileShell } from './pages/mobile/Mobile';
+import { ProductsPage } from './pages/Products';
+import { ReportsPage } from './pages/Reports';
+import { NotificationSettings, SyncSettings } from './pages/settings/Cloud';
+import { DevicesSettings, TvSettings } from './pages/settings/Connect';
+import { PrintersSettings } from './pages/settings/Printers';
+import { BackupSettings, IdentitySettings, OperationSettings, SettingsHome } from './pages/settings/Settings';
+import { SetupPage } from './pages/Setup';
+import { StaffPage } from './pages/Staff';
+import { StockPage } from './pages/Stock';
+import { TvPage } from './pages/Tv';
+import './styles.css';
+
+/** Garante que o servidor local responde; senão tenta reencontrá-lo na rede. */
+function ServerGate({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<'checking' | 'ok' | 'searching' | 'lost'>('checking');
+  const [msg, setMsg] = useState('');
+  const check = async () => {
+    try {
+      const r = await fetch('/api/discovery', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+      const j = (await r.json()) as { establishmentId: string | null; port: number };
+      rememberServer(j.establishmentId, j.port);
+      setState('ok');
+    } catch {
+      setState('searching');
+      const found = await findServer(setMsg);
+      if (found && found !== location.origin) location.href = found + location.pathname;
+      else if (found) setState('ok');
+      else setState('lost');
+    }
+  };
+  useEffect(() => void check(), []);
+  if (state === 'ok') return <>{children}</>;
+  if (state === 'checking') return <Loading label="Conectando ao PC do bar…" />;
+  return (
+    <div className="center-page">
+      <Card className="login-card">
+        <WifiOff size={40} style={{ margin: '0 auto', color: 'var(--orange)' }} />
+        <h2>{state === 'searching' ? 'Procurando o PC do bar…' : 'PC do bar não encontrado'}</h2>
+        <p className="muted">{state === 'searching' ? msg : 'Verifique se o celular está no Wi-Fi do bar e se o PC está ligado. Se o problema continuar, escaneie novamente o QR Code em Configurações → Conectar dispositivo.'}</p>
+        {state === 'lost' && <Button variant="primary" onClick={() => { setState('checking'); void check(); }}>Tentar novamente</Button>}
+      </Card>
+    </div>
+  );
+}
+
+function RequireAuth() {
+  const { user, loading, branding } = useSession();
+  const loc = useLocation();
+  if (loading || !branding) return <Loading />;
+  if (!branding.configured) return <Navigate to="/setup" replace />;
+  if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
+  if (user.mustChangePassword && loc.pathname !== '/minha-senha') return <Navigate to="/minha-senha" replace />;
+  return <Outlet />;
+}
+
+function Guard({ perm, children }: { perm: Permission; children: ReactNode }) {
+  const { can } = useSession();
+  if (!can(perm)) return <Card><Empty icon={<ShieldOff size={36} />} title="Sem permissão">Peça ao proprietário para liberar este acesso.</Empty></Card>;
+  return <>{children}</>;
+}
+
+function LoginRoute() {
+  const { user, branding, loading } = useSession();
+  if (loading || !branding) return <Loading />;
+  if (!branding.configured) return <Navigate to="/setup" replace />;
+  if (user && !user.mustChangePassword) return <Navigate to="/" replace />;
+  return <LoginPage />;
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/tv" element={<TvPage />} />
+      <Route path="/setup" element={<SetupPage />} />
+      <Route path="/login" element={<LoginRoute />} />
+      <Route element={<RequireAuth />}>
+        <Route path="/minha-senha" element={<ChangePasswordPage />} />
+        <Route path="/m" element={<MobileShell />}>
+          <Route index element={<Guard perm="comandas.view"><MobileComandas /></Guard>} />
+          <Route path="comanda/:id" element={<Guard perm="comandas.view"><MobileComanda /></Guard>} />
+          <Route path="pedidos" element={<Guard perm="orders.view"><MobileOrders /></Guard>} />
+        </Route>
+        <Route element={<DesktopShell />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="comandas" element={<Guard perm="comandas.view"><ComandasPage /></Guard>} />
+          <Route path="comandas/:id" element={<Guard perm="comandas.view"><ComandaDetailPage /></Guard>} />
+          <Route path="producao" element={<Guard perm="kitchen.view"><KitchenPage /></Guard>} />
+          <Route path="caixa" element={<Guard perm="cash.view"><CashPage /></Guard>} />
+          <Route path="produtos" element={<Guard perm="products.view"><ProductsPage /></Guard>} />
+          <Route path="estoque" element={<Guard perm="stock.view"><StockPage /></Guard>} />
+          <Route path="perdas" element={<Guard perm="losses.view"><LossesPage /></Guard>} />
+          <Route path="narguiles" element={<Guard perm="hookah.view"><HookahsPage /></Guard>} />
+          <Route path="relatorios" element={<Guard perm="reports.operational"><ReportsPage /></Guard>} />
+          <Route path="funcionarios" element={<Guard perm="users.manage"><StaffPage /></Guard>} />
+          <Route path="configuracoes" element={<SettingsHome />} />
+          <Route path="configuracoes/identidade" element={<Guard perm="settings.manage"><IdentitySettings /></Guard>} />
+          <Route path="configuracoes/operacao" element={<Guard perm="settings.manage"><OperationSettings /></Guard>} />
+          <Route path="configuracoes/dispositivos" element={<Guard perm="devices.manage"><DevicesSettings /></Guard>} />
+          <Route path="configuracoes/tv" element={<Guard perm="devices.manage"><TvSettings /></Guard>} />
+          <Route path="configuracoes/impressoras" element={<Guard perm="printers.manage"><PrintersSettings /></Guard>} />
+          <Route path="configuracoes/sincronizacao" element={<Guard perm="settings.manage"><SyncSettings /></Guard>} />
+          <Route path="configuracoes/notificacoes" element={<Guard perm="settings.manage"><NotificationSettings /></Guard>} />
+          <Route path="configuracoes/backup" element={<Guard perm="settings.manage"><BackupSettings /></Guard>} />
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+// Service worker: mantém a interface em cache para reabrir mesmo se o IP do PC mudar.
+if ('serviceWorker' in navigator && location.pathname !== '/tv' && import.meta.env.PROD) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => undefined));
+}
+
+const isTv = location.pathname.startsWith('/tv');
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <BrowserRouter>
+      <ToastProvider>
+        {isTv ? (
+          <App />
+        ) : (
+          <ServerGate>
+            <SessionProvider>
+              <App />
+            </SessionProvider>
+          </ServerGate>
+        )}
+      </ToastProvider>
+    </BrowserRouter>
+  </StrictMode>,
+);

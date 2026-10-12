@@ -193,8 +193,9 @@ export class KitchenService {
       const st = r.statuses.split(',').filter((s) => s !== 'canceled');
       if (st.length === 0 || st.every((s) => s === 'delivered')) continue;
       const name = firstName(r.customer_name);
-      if (st.some((s) => s === 'received' || s === 'preparing')) preparing.push({ number: r.number, name });
-      else if (st.some((s) => s === 'ready')) ready.push({ number: r.number, name, readyAt: r.last_ready, calledAt: r.last_call });
+      // Qualquer parte pronta (ou chamada) já aparece em "Prontos" para retirada.
+      if (st.some((s) => s === 'ready')) ready.push({ number: r.number, name, readyAt: r.last_ready, calledAt: r.last_call });
+      else if (st.some((s) => s === 'received' || s === 'preparing')) preparing.push({ number: r.number, name });
     }
     ready.sort((a, b) => String(b.calledAt ?? b.readyAt).localeCompare(String(a.calledAt ?? a.readyAt)));
     return { preparing, ready };
