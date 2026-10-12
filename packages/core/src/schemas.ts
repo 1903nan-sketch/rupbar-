@@ -313,7 +313,10 @@ export const paymentSchema = z.object({
 export const reversePaymentSchema = z.object({ reason: trimmed(200).min(3) });
 
 export const closeComandaSchema = versionSchema;
-export const cancelComandaSchema = versionSchema.extend({ reason: trimmed(200).min(3) });
+export const cancelComandaSchema = versionSchema.extend({
+  reason: trimmed(200).min(3),
+  returnToStock: z.boolean().default(true),
+});
 
 export const cashOpenSchema = z.object({
   openingBalanceCents: zCents.min(0),
@@ -424,7 +427,16 @@ export const cloudConnectSchema = z.object({
 export const whatsappSchema = z.object({
   provider: z.enum(['disabled', 'meta', 'twilio', 'webhook']),
   ownerPhone: zOptionalPhone,
-  meta: z.object({ phoneNumberId: trimmed(40), accessToken: z.string().max(400) }).partial().optional(),
+  meta: z
+    .object({
+      phoneNumberId: trimmed(40),
+      accessToken: z.string().max(400),
+      /** Mensagens iniciadas pela empresa exigem modelo aprovado na Meta. */
+      templateName: trimmed(80),
+      templateLanguage: trimmed(10),
+    })
+    .partial()
+    .optional(),
   twilio: z.object({ accountSid: trimmed(64), authToken: z.string().max(128), from: trimmed(32) }).partial().optional(),
   webhook: z.object({ url: z.string().trim().url(), token: z.string().max(400) }).partial().optional(),
 });
