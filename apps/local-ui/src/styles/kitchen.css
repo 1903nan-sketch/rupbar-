@@ -84,7 +84,7 @@
   background: var(--glass-strong);
   border: 1px solid var(--glass-edge);
   box-shadow: var(--glass-shadow);
-  animation: ticket-in 0.45s var(--ease-spring) both;
+  animation: ticket-in 0.45s var(--ease-spring) backwards;
   overflow: hidden;
 }
 .kds-ticket::before {
@@ -107,13 +107,13 @@
 }
 .kds-ticket.late {
   border-color: color-mix(in srgb, var(--red) 65%, transparent);
-  animation: ticket-in 0.45s var(--ease-spring) both, late-pulse 1.8s ease-in-out infinite;
+  animation: ticket-in 0.45s var(--ease-spring) backwards, late-pulse 1.8s ease-in-out infinite;
 }
 .kds-ticket.late::before {
   background: var(--red);
 }
 .kds-ticket.fresh {
-  animation: ticket-in 0.45s var(--ease-spring) both, fresh-flash 1s ease-in-out 6;
+  animation: ticket-in 0.45s var(--ease-spring) backwards, fresh-flash 1s ease-in-out 6;
 }
 @keyframes ticket-in {
   from {

@@ -108,7 +108,7 @@
   background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 50%, var(--violet)));
   border-radius: 8px 8px 3px 3px;
   transform-origin: bottom;
-  animation: bar-grow 0.8s var(--ease-out) both;
+  animation: bar-grow 0.8s var(--ease-out) backwards;
 }
 @keyframes bar-grow {
   from {

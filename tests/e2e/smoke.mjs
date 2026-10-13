@@ -96,17 +96,20 @@ try {
   await api('POST', '/api/products', { name: 'Batata frita', categoryId: cat('Porções'), measure: 'unit', stockTracked: false, presentations: [{ name: 'Porção', priceCents: 3890 }] });
   await api('POST', '/api/stock/purchases', { items: [{ productId: whisky.id, packages: 2, packageQty: 1_000_000, totalCostCents: 30_000 }] });
   await api('POST', '/api/cash/open', { openingBalanceCents: 10_000 });
+  await api('PUT', '/api/settings/pix', { enabled: true, keyType: 'random', key: '123e4567-e12b-12d1-a456-426655440000', merchantName: 'Adega Lua Cheia', merchantCity: 'Sao Paulo' });
 
   // 3. Comanda e pedido pela interface
   await page.goto(B + '/comandas');
   await page.getByRole('button', { name: 'Nova comanda' }).click();
-  await page.locator('.modal input').first().fill('Carlos Lima');
-  await page.locator('.modal input').nth(1).fill('7');
+  await page.locator('.modal input').nth(0).fill('12'); // número do cartão
+  await page.locator('.modal input').nth(1).fill('Carlos Lima');
+  await page.locator('.modal input').nth(2).fill('7');
   await page.getByRole('button', { name: 'Abrir comanda' }).click();
   await page.waitForURL(/\/comandas\/.+/);
+  await page.getByRole('heading', { name: 'Comanda 12' }).waitFor();
   await page.getByRole('button', { name: 'Lançar itens' }).click();
   const modal = page.locator('.modal');
-  await modal.locator('.menu-item').first().waitFor();
+  await modal.locator('.menu-tile').first().waitFor();
   await modal.getByRole('button', { name: /Adicionar Whisky/ }).first().click();
   await modal.getByRole('button', { name: /Adicionar Batata/ }).click();
   await modal.getByRole('button', { name: 'Enviar pedido' }).click();
@@ -117,7 +120,7 @@ try {
 
   // 4. Pagamento e encerramento pela interface
   await page.getByRole('button', { name: 'Receber pagamento' }).click();
-  await page.locator('.modal').getByRole('button', { name: 'Pix' }).click();
+  await page.locator('.modal').getByRole('button', { name: 'Pix', exact: true }).click();
   await page.locator('.modal').getByRole('button', { name: /Confirmar/ }).click();
   await page.getByRole('button', { name: 'Encerrar comanda' }).click();
   await page.locator('.modal').getByRole('button', { name: 'Encerrar' }).click();
@@ -133,15 +136,47 @@ try {
   await api('POST', '/api/tv/approve', { code, name: 'TV do balcão' });
   await tv.waitForSelector('.tv-cols');
   await page.goto(B + '/producao');
-  await page.locator('.ticket').first().waitFor();
-  await page.locator('.ticket', { hasText: 'Batata' }).getByRole('button', { name: 'Chamar cliente' }).click().catch(async () => {
-    await page.locator('.ticket', { hasText: 'Batata' }).getByRole('button', { name: 'Iniciar' }).click();
-    await page.locator('.ticket', { hasText: 'Batata' }).getByRole('button', { name: 'Chamar cliente' }).click();
-  });
+  const batata = page.locator('.kds-ticket', { hasText: 'Batata' });
+  await batata.waitFor();
+  assert((await batata.textContent()).includes('Comanda 12'), 'a produção deveria mostrar o número do cartão');
+  await batata.getByRole('button', { name: 'Começar' }).click();
+  await batata.getByRole('button', { name: 'Pronto' }).click();
+  await batata.getByRole('button', { name: 'Chamar na TV' }).click();
   await tv.waitForSelector('.tv-call', { timeout: 8000 });
   assert((await tv.locator('.tv-call').textContent()).includes('Carlos'), 'TV deveria anunciar o primeiro nome');
   await tv.screenshot({ path: join(out, '03-tv-chamada.png') });
   await page.screenshot({ path: join(out, '04-producao.png') });
+
+  // 5b. Venda rápida pela tela inicial: paga na hora e a TV chama pelo nome
+  await page.goto(B + '/');
+  await page.getByRole('button', { name: /Venda rápida.*Balcão/ }).click();
+  const quick = page.locator('.quick-sale');
+  await quick.locator('.menu-tile').first().waitFor();
+  await quick.getByRole('button', { name: /Adicionar Batata/ }).click();
+  await quick.getByPlaceholder('Ex.: Juliana').fill('Juliana Prado');
+  await quick.getByRole('radio', { name: 'Débito' }).click();
+  await quick.getByRole('button', { name: /Finalizar/ }).click();
+  await quick.locator('.quick-call-name', { hasText: 'Juliana' }).waitFor();
+  await page.screenshot({ path: join(out, '04b-venda-rapida.png') });
+  await quick.getByRole('button', { name: 'Fechar', exact: true }).last().click();
+  await page.goto(B + '/producao');
+  await page.locator('.kds-ticket', { hasText: 'Juliana' }).locator('.kds-tag', { hasText: 'Venda rápida' }).waitFor();
+
+  // 5c. Lançar na comanda pelo número do cartão (atalho F3). O cartão 12 já
+  // foi encerrado, então está livre: abre a comanda na hora e lança.
+  await page.keyboard.press('F3');
+  await page.getByLabel('Número da comanda').fill('12');
+  await page.keyboard.press('Enter');
+  await page.getByText('Nenhuma comanda aberta com o número 12').waitFor();
+  await page.getByPlaceholder('Nome do cliente (opcional)').fill('Bruno');
+  await page.getByRole('button', { name: 'Abrir comanda 12' }).click();
+  const launch = page.locator('.quick-sale');
+  await launch.locator('.launch-found', { hasText: 'Bruno' }).waitFor();
+  await launch.getByRole('button', { name: /Adicionar Batata/ }).click();
+  await launch.getByRole('button', { name: 'Enviar pedido' }).click();
+  await launch.locator('.launch-found', { hasText: '1 item' }).waitFor();
+  await page.screenshot({ path: join(out, '04c-lancar-na-comanda.png') });
+  await page.keyboard.press('Escape');
 
   // 6. Garçom no celular
   const roles = await api('GET', '/api/roles');
@@ -160,13 +195,14 @@ try {
   await pw.nth(2).fill('Garcom-Veloz-88');
   await m.getByRole('button', { name: 'Salvar senha' }).click();
   await m.waitForURL('**/m');
-  await m.getByRole('button', { name: 'Nova' }).click();
-  await m.locator('.modal input').first().fill('Ana');
-  await m.getByRole('button', { name: 'Abrir comanda' }).click();
+  // Cartão 30 livre: digitar o número abre a comanda na hora
+  for (const d of ['3', '0']) await m.locator('.waiter-keys button', { hasText: new RegExp(`^${d}$`) }).click();
+  await m.getByRole('button', { name: 'Abrir comanda', exact: true }).click();
+  await m.getByRole('button', { name: 'Abrir comanda 30' }).click();
   await m.waitForURL(/\/m\/comanda\/.+/);
   await m.getByRole('button', { name: /Adicionar Whisky/ }).first().click();
   await m.getByRole('button', { name: 'Enviar' }).click();
-  await m.locator('text=Pedido 2 enviado').waitFor();
+  await m.getByText(/Pedido \d+ enviado/).waitFor();
   await m.screenshot({ path: join(out, '05-celular.png') });
   assert((await api('GET', `/api/products/${whisky.id}`)).stockQty === 1_900_000, 'pedido do celular deveria baixar mais 50 ml');
 

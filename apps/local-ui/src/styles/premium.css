@@ -192,7 +192,7 @@ body::after {
   box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .content > * {
-  animation: enter 0.5s var(--ease-out) both;
+  animation: enter 0.5s var(--ease-out) backwards;
 }
 .content > *:nth-child(2) {
   animation-delay: 0.04s;
@@ -205,7 +205,7 @@ body::after {
 }
 .stack-l > *,
 .stagger > * {
-  animation: enter 0.5s var(--ease-out) both;
+  animation: enter 0.5s var(--ease-out) backwards;
 }
 .stack-l > *:nth-child(2),
 .stagger > *:nth-child(2) {
@@ -426,7 +426,7 @@ body::after {
   }
 }
 .pop-in {
-  animation: pop-in 0.45s var(--ease-spring) both;
+  animation: pop-in 0.45s var(--ease-spring) backwards;
 }
 @keyframes pop-in {
   from {

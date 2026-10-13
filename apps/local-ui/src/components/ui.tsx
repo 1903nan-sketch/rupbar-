@@ -3,6 +3,7 @@ import {
   cloneElement, isValidElement, createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes,
   type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { ApiError } from '../lib/api';
 import { fmtDecimal, formatBRL, parseBRL, parseDecimal } from '../lib/format';
 
@@ -239,7 +240,8 @@ export function Modal({ title, onClose, children, footer, wide }: { title: React
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  return (
+  // Portal no <body>: animações/vidro dos contêineres não podem prender o modal.
+  return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true">
         <div className="modal-head">
@@ -249,7 +251,8 @@ export function Modal({ title, onClose, children, footer, wide }: { title: React
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
