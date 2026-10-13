@@ -331,6 +331,18 @@ export class ComandasService {
     };
   }
 
+  /** Mais vendidos dos últimos 30 dias (atalhos no cardápio do PC e do garçom). */
+  popular(limit = 12): string[] {
+    const since = new Date(this.ctx.clock.now().getTime() - 30 * 86_400_000).toISOString();
+    return this.ctx.db
+      .all<{ presentation_id: string }>(
+        `SELECT presentation_id FROM comanda_items WHERE status = 'active' AND kind = 'product' AND presentation_id IS NOT NULL AND created_at >= ?
+         GROUP BY presentation_id ORDER BY SUM(quantity) DESC LIMIT ?`,
+        since, limit,
+      )
+      .map((r) => r.presentation_id);
+  }
+
   /** Pedidos recentes feitos pelo próprio usuário (acompanhamento no celular). */
   myOrders(actor: Actor, limit = 30) {
     requirePerm(actor, 'orders.view');

@@ -220,7 +220,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
     return saved;
   });
   r('DELETE', '/api/products/:id/photo', (req, a) => s.catalog.setPhoto(a, id(req), null));
-  r('GET', '/api/menu', (_req, a) => s.catalog.menu(a));
+  r('GET', '/api/menu', (_req, a) => ({ ...s.catalog.menu(a), popular: s.comandas.popular() }));
 
   // ------------------------------------------------------ estoque
 

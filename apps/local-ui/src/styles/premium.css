@@ -1,0 +1,497 @@
+/*
+ * RupBar — camada visual "premium glass" (0.2).
+ * Carregada depois de styles.css: redefine tokens e superfícies com vidro
+ * fosco, fundo aurora animado e microinterações. Tudo local (sem CDN).
+ * prefers-reduced-motion desliga as animações.
+ */
+
+:root {
+  --violet: #7c5cff;
+  --cyan: #22d3ee;
+  --bg: #eef1f8;
+  --bg-2: #e5e9f4;
+  --glass-panel: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.82);
+  --glass-edge: rgba(255, 255, 255, 0.9);
+  --glass-line: rgba(30, 40, 80, 0.08);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -12px rgba(28, 37, 75, 0.18), 0 2px 6px rgba(28, 37, 75, 0.05);
+  --glass-shadow-hover: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 18px 44px -14px rgba(28, 37, 75, 0.28), 0 3px 10px rgba(28, 37, 75, 0.07);
+  --glass-blur: blur(22px) saturate(170%);
+  --aurora-1: color-mix(in srgb, var(--accent) 30%, transparent);
+  --aurora-2: rgba(124, 92, 255, 0.22);
+  --aurora-3: rgba(34, 211, 238, 0.18);
+  --ring: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #07080d;
+    --bg-2: #0c0f18;
+    --surface: #141824;
+    --surface-2: #191e2c;
+    --surface-3: #202636;
+    --glass-panel: rgba(20, 24, 36, 0.58);
+    --glass-strong: rgba(24, 29, 43, 0.86);
+    --glass-edge: rgba(255, 255, 255, 0.09);
+    --glass-line: rgba(255, 255, 255, 0.06);
+    --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 16px 40px -18px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.25);
+    --glass-shadow-hover: 0 1px 0 rgba(255, 255, 255, 0.09) inset, 0 24px 60px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+    --aurora-1: color-mix(in srgb, var(--accent) 34%, transparent);
+    --aurora-2: rgba(124, 92, 255, 0.26);
+    --aurora-3: rgba(34, 211, 238, 0.14);
+    --text-2: #b3bbcc;
+    --text-3: #8790a3;
+    --separator: rgba(255, 255, 255, 0.07);
+    --separator-strong: rgba(255, 255, 255, 0.14);
+    --fill: rgba(255, 255, 255, 0.06);
+    --fill-2: rgba(255, 255, 255, 0.11);
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #07080d;
+  --bg-2: #0c0f18;
+  --surface: #141824;
+  --surface-2: #191e2c;
+  --surface-3: #202636;
+  --glass-panel: rgba(20, 24, 36, 0.58);
+  --glass-strong: rgba(24, 29, 43, 0.86);
+  --glass-edge: rgba(255, 255, 255, 0.09);
+  --glass-line: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 16px 40px -18px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --glass-shadow-hover: 0 1px 0 rgba(255, 255, 255, 0.09) inset, 0 24px 60px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+  --aurora-1: color-mix(in srgb, var(--accent) 34%, transparent);
+  --aurora-2: rgba(124, 92, 255, 0.26);
+  --aurora-3: rgba(34, 211, 238, 0.14);
+  --text-2: #b3bbcc;
+  --text-3: #8790a3;
+  --separator: rgba(255, 255, 255, 0.07);
+  --separator-strong: rgba(255, 255, 255, 0.14);
+  --fill: rgba(255, 255, 255, 0.06);
+  --fill-2: rgba(255, 255, 255, 0.11);
+}
+
+/* ---------- fundo aurora ---------- */
+body {
+  background: var(--bg);
+  background-image: none;
+}
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(80px);
+  will-change: transform;
+}
+body::before {
+  width: 62vmax;
+  height: 62vmax;
+  left: -18vmax;
+  top: -26vmax;
+  background: radial-gradient(circle at 40% 40%, var(--aurora-1), transparent 62%);
+  animation: aurora-a 38s ease-in-out infinite alternate;
+}
+body::after {
+  width: 58vmax;
+  height: 58vmax;
+  right: -20vmax;
+  bottom: -24vmax;
+  background: radial-gradient(circle at 60% 60%, var(--aurora-2), transparent 60%), radial-gradient(circle at 30% 30%, var(--aurora-3), transparent 55%);
+  animation: aurora-b 46s ease-in-out infinite alternate;
+}
+@keyframes aurora-a {
+  to {
+    transform: translate(14vmax, 10vmax) scale(1.12);
+  }
+}
+@keyframes aurora-b {
+  to {
+    transform: translate(-12vmax, -8vmax) scale(1.08) rotate(20deg);
+  }
+}
+
+/* ---------- superfícies de vidro ---------- */
+.card,
+.modal,
+.toast,
+.filter-bar,
+.kanban .column,
+.login-card {
+  background: var(--glass-panel);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+.card {
+  border-radius: 20px;
+  transition: box-shadow 0.3s var(--ease-out), transform 0.3s var(--ease-out), border-color 0.3s;
+}
+.card.interactive,
+.tile {
+  cursor: pointer;
+}
+.card.interactive:hover,
+.tile:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--glass-shadow-hover);
+}
+.card.interactive:active,
+.tile:active {
+  transform: translateY(-1px) scale(0.99);
+}
+.modal {
+  background: var(--glass-strong);
+  border-radius: 26px;
+}
+.modal .modal-head,
+.modal .modal-foot {
+  background: transparent;
+  backdrop-filter: none;
+}
+.overlay {
+  background: rgba(6, 8, 16, 0.42);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+.toast {
+  background: var(--glass-strong);
+}
+.glass {
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* ---------- estrutura ---------- */
+.sidebar {
+  background: color-mix(in srgb, var(--glass-panel) 80%, transparent);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-edge);
+}
+.topbar {
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-line);
+}
+.nav-link {
+  position: relative;
+  transition: background 0.2s, color 0.2s, transform 0.2s var(--ease-out);
+}
+.nav-link:hover {
+  transform: translateX(2px);
+}
+.nav-link.active {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--violet)));
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.content > * {
+  animation: enter 0.5s var(--ease-out) both;
+}
+.content > *:nth-child(2) {
+  animation-delay: 0.04s;
+}
+.content > *:nth-child(3) {
+  animation-delay: 0.08s;
+}
+.content > *:nth-child(4) {
+  animation-delay: 0.12s;
+}
+.stack-l > *,
+.stagger > * {
+  animation: enter 0.5s var(--ease-out) both;
+}
+.stack-l > *:nth-child(2),
+.stagger > *:nth-child(2) {
+  animation-delay: 0.05s;
+}
+.stack-l > *:nth-child(3),
+.stagger > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.stack-l > *:nth-child(4),
+.stagger > *:nth-child(4) {
+  animation-delay: 0.15s;
+}
+.stack-l > *:nth-child(n + 5),
+.stagger > *:nth-child(n + 5) {
+  animation-delay: 0.2s;
+}
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.page-header h1 {
+  letter-spacing: -0.035em;
+  background: linear-gradient(120deg, var(--text) 30%, color-mix(in srgb, var(--accent) 60%, var(--text)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------- botões ---------- */
+.btn {
+  position: relative;
+  overflow: hidden;
+  min-height: 36px;
+  border-radius: 12px;
+  background: var(--fill);
+  border: 1px solid var(--glass-line);
+  transition: transform 0.12s var(--ease-out), background 0.2s, box-shadow 0.25s, filter 0.2s;
+}
+.btn.plain {
+  border-color: transparent;
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.btn.primary {
+  border: 0;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 72%, var(--violet)));
+  box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--accent) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.btn.primary::after,
+.btn.success::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.7s var(--ease-out);
+}
+.btn.primary:hover::after,
+.btn.success:hover::after {
+  transform: translateX(120%);
+}
+.btn.primary:hover {
+  filter: brightness(1.08) saturate(1.05);
+  box-shadow: 0 14px 30px -10px color-mix(in srgb, var(--accent) 90%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.btn.success {
+  border: 0;
+  background: linear-gradient(135deg, var(--green), color-mix(in srgb, var(--green) 70%, var(--cyan)));
+  box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--green) 80%, transparent);
+}
+.btn.danger {
+  border-color: color-mix(in srgb, var(--red) 25%, transparent);
+}
+.btn.danger.solid {
+  background: linear-gradient(135deg, var(--red), color-mix(in srgb, var(--red) 75%, var(--violet)));
+}
+.btn.large {
+  min-height: 50px;
+  border-radius: 16px;
+}
+.btn.xl {
+  min-height: 64px;
+  font-size: 18px;
+  border-radius: 20px;
+  padding: 0 26px;
+}
+
+/* ---------- campos ---------- */
+.input,
+.select,
+.textarea {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid var(--separator-strong);
+  border-radius: 12px;
+  transition: border-color 0.2s, box-shadow 0.25s, background 0.2s;
+}
+.input:hover,
+.select:hover,
+.textarea:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--separator-strong));
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--ring);
+}
+.segmented {
+  background: var(--fill);
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
+}
+.segmented button {
+  transition: background 0.2s, box-shadow 0.2s, color 0.2s;
+}
+.segmented button.active {
+  background: var(--glass-strong);
+  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.35);
+}
+.chip {
+  transition: background 0.2s, transform 0.15s var(--ease-out), box-shadow 0.2s;
+}
+.chip:active {
+  transform: scale(0.96);
+}
+.chip.active {
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+
+/* ---------- listas, tabelas, badges ---------- */
+.table th {
+  background: color-mix(in srgb, var(--surface-3) 45%, transparent);
+  position: sticky;
+  top: 0;
+  backdrop-filter: blur(10px);
+}
+.table tbody tr {
+  transition: background 0.15s;
+}
+.table tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.list-item {
+  border-bottom-color: var(--glass-line);
+  transition: background 0.15s;
+}
+.list-item.clickable:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.badge {
+  border: 1px solid transparent;
+  backdrop-filter: blur(6px);
+}
+.badge.accent {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ---------- indicadores ---------- */
+.stat .value {
+  background: linear-gradient(120deg, var(--text), color-mix(in srgb, var(--accent) 55%, var(--text)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.card.stat {
+  position: relative;
+  overflow: hidden;
+}
+.card.stat::after {
+  content: '';
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.icon-chip {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  flex: none;
+}
+
+/* ---------- utilidades novas ---------- */
+.skeleton {
+  border-radius: 12px;
+  background: linear-gradient(100deg, var(--fill) 30%, var(--fill-2) 50%, var(--fill) 70%);
+  background-size: 300% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+.glow-pulse {
+  animation: glow-pulse 1.6s ease-in-out infinite;
+}
+@keyframes glow-pulse {
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent), var(--glass-shadow);
+  }
+}
+.pop-in {
+  animation: pop-in 0.45s var(--ease-spring) both;
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+.owner-zone {
+  border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent);
+  background: color-mix(in srgb, var(--violet) 7%, transparent);
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+.owner-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--violet);
+}
+.voided {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card,
+  .modal,
+  .toast,
+  .filter-bar,
+  .kanban .column,
+  .sidebar,
+  .topbar {
+    background: var(--surface);
+  }
+}
+
+@media (max-width: 700px) {
+  body::before,
+  body::after {
+    filter: blur(60px);
+  }
+  .card {
+    border-radius: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .topbar-action {
+    width: 32px;
+    padding: 0;
+    font-size: 0;
+    gap: 0;
+  }
+}

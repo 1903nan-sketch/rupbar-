@@ -1,16 +1,29 @@
 import type { Permission } from '@rupbar/core';
 import {
-  BarChart3, Boxes, ChefHat, ClipboardList, Cog, KeyRound, LayoutDashboard, LogOut, Menu, PackageMinus, Smartphone, Tv,
-  UserRound, Users, Wallet, Wind, Wine,
+  BarChart3, Boxes, ChefHat, ClipboardList, ClipboardPlus, Cog, KeyRound, LayoutDashboard, LogOut, Maximize2, Menu, Minimize2, PackageMinus,
+  Smartphone, Tv, UserRound, Users, Wallet, Wind, Wine, Zap,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { ConnectionBanner, Logo, RupbarSignature, SyncIndicator } from '../components/brand';
 import { Button } from '../components/ui';
 import { api } from '../lib/api';
+import { useFullscreen } from '../lib/fullscreen';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
+
+const QuickSale = lazy(() => import('../components/QuickSale').then((m) => ({ default: m.QuickSale })));
+const LaunchComanda = lazy(() => import('../components/LaunchComanda').then((m) => ({ default: m.LaunchComanda })));
+
+/** Atalhos disponíveis em qualquer tela do PC (tela inicial, comandas…). */
+export interface ShellActions {
+  openQuickSale: () => void;
+  openLaunch: (number?: number) => void;
+  fullscreen: boolean;
+  toggleFullscreen: () => void;
+}
+export const useShellActions = () => useOutletContext<ShellActions>();
 
 interface NavItem {
   to: string;
@@ -26,6 +39,35 @@ export function DesktopShell() {
   const loc = useLocation();
   const { data: dash, reload } = useLoad(() => api.get('/api/dashboard'), []);
   useRealtime(['stock', 'kitchen', 'comandas'], () => void reload());
+  const [quick, setQuick] = useState(false);
+  const [launch, setLaunch] = useState<{ number?: number } | null>(null);
+  const [fullscreen, toggleFullscreen] = useFullscreen();
+  const canQuick = can('orders.create') && can('cash.payment');
+  const canLaunch = can('orders.create');
+  const actions: ShellActions = {
+    openQuickSale: () => canQuick && setQuick(true),
+    openLaunch: (number) => canLaunch && setLaunch({ number }),
+    fullscreen,
+    toggleFullscreen,
+  };
+
+  // F2 venda rápida · F3 lançar na comanda · F11 tela cheia
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F2' && canQuick) {
+        e.preventDefault();
+        setQuick(true);
+      } else if (e.key === 'F3' && canLaunch) {
+        e.preventDefault();
+        setLaunch({});
+      } else if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canQuick, canLaunch, toggleFullscreen]);
 
   const groups: { label: string; items: NavItem[] }[] = [
     {
@@ -94,6 +136,9 @@ export function DesktopShell() {
         <header className="topbar glass">
           <Button variant="plain" className="show-mobile" icon={<Menu size={20} />} aria-label="Menu" onClick={() => setOpen(true)} />
           <div className="grow small muted ellipsis">{titleFor(loc.pathname)}</div>
+          {canQuick && <Button size="small" variant="primary" className="topbar-action" icon={<Zap size={15} />} title="Venda rápida (F2)" onClick={() => setQuick(true)}>Venda rápida</Button>}
+          {canLaunch && <Button size="small" className="topbar-action" icon={<ClipboardPlus size={15} />} title="Lançar na comanda (F3)" onClick={() => setLaunch({})}>Lançar na comanda</Button>}
+          <Button size="small" variant="plain" icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} title={fullscreen ? 'Sair da tela cheia (F11)' : 'Tela cheia (F11)'} aria-label="Tela cheia" onClick={toggleFullscreen} />
           <SyncIndicator />
           <div className="row" style={{ gap: 4 }}>
             <UserRound size={16} className="muted" />
@@ -104,9 +149,13 @@ export function DesktopShell() {
           <Button variant="plain" size="small" icon={<LogOut size={16} />} title="Sair" onClick={() => void logout()} />
         </header>
         <main className="content">
-          <Outlet />
+          <Outlet context={actions} />
         </main>
       </div>
+      <Suspense fallback={null}>
+        {quick && <QuickSale onClose={() => setQuick(false)} />}
+        {launch && <LaunchComanda initialNumber={launch.number} onClose={() => setLaunch(null)} />}
+      </Suspense>
     </div>
   );
 }

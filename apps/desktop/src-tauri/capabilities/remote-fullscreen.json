@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-fullscreen",
+  "description": "A interface servida pelo próprio PC (servidor local do RupBar) pode apenas alternar a tela cheia da janela.",
+  "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:7420/*", "http://localhost:7420/*"] },
+  "permissions": ["core:window:allow-set-fullscreen", "core:window:allow-is-fullscreen"]
+}

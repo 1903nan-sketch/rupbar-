@@ -14,6 +14,7 @@ import { KitchenPage } from './pages/Kitchen';
 import { ChangePasswordPage, LoginPage } from './pages/Login';
 import { MobileComanda, MobileComandas, MobileOrders, MobileShell } from './pages/mobile/Mobile';
 import './styles.css';
+import './styles/premium.css';
 
 // Páginas carregadas sob demanda: o celular do garçom baixa só o necessário.
 const CashPage = lazy(() => import('./pages/Cash').then((m) => ({ default: m.CashPage })));

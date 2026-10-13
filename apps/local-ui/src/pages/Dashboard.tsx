@@ -1,6 +1,9 @@
-import { AlertTriangle, ChefHat, ClipboardList, PackageMinus, Printer, Wallet, Wind } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { AlertTriangle, ChefHat, ClipboardList, ClipboardPlus, Maximize2, Minimize2, PackageMinus, Printer, Wallet, Wind, Zap } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card, ErrorBox, Loading, PageHeader, Stat } from '../components/ui';
+import { useShellActions } from '../layouts/DesktopShell';
+import '../styles/dashboard.css';
 import { api } from '../lib/api';
 import { fmtLongDate, formatBRL } from '../lib/format';
 import { useInterval, useLoad } from '../lib/hooks';
@@ -35,6 +38,8 @@ export function DashboardPage() {
   useRealtime(['comandas', 'kitchen', 'stock', 'cash'], () => void reload());
   useInterval(() => void reload(), 60_000);
 
+  const shell = useShellActions();
+  const navigate = useNavigate();
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
   const f = data.financial;
@@ -44,6 +49,25 @@ export function DashboardPage() {
   return (
     <div className="stack-l">
       <PageHeader title={`${hello}, ${user?.name.split(' ')[0]}`} subtitle={fmtLongDate(new Date())} />
+
+      <div className="action-tiles">
+        {can('orders.create') && can('cash.payment') && (
+          <ActionTile primary icon={<Zap size={26} />} title="Venda rápida" hint="Balcão: paga na hora e chama pelo nome na TV" kbd="F2" onClick={shell.openQuickSale} />
+        )}
+        {can('orders.create') && (
+          <ActionTile icon={<ClipboardPlus size={26} />} title="Lançar na comanda" hint="Digite o número do cartão e escolha os itens" kbd="F3" onClick={() => shell.openLaunch()} />
+        )}
+        {can('comandas.view') && (
+          <ActionTile icon={<ClipboardList size={26} />} title="Comandas" hint={`${data.openComandas} abertas agora`} onClick={() => navigate('/comandas')} />
+        )}
+        <ActionTile
+          icon={shell.fullscreen ? <Minimize2 size={26} /> : <Maximize2 size={26} />}
+          title={shell.fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+          hint="Esconde a barra do Windows"
+          kbd="F11"
+          onClick={shell.toggleFullscreen}
+        />
+      </div>
 
       {(!data.cashOpen && can('cash.open')) || data.stockAlerts > 0 || data.lossConflicts > 0 || data.failedPrints > 0 ? (
         <div className="stack">
@@ -92,5 +116,18 @@ export function DashboardPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function ActionTile({ icon, title, hint, kbd, primary, onClick }: { icon: ReactNode; title: string; hint: string; kbd?: string; primary?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className={`action-tile ${primary ? 'primary' : ''}`} onClick={onClick}>
+      <span className="action-tile-icon">{icon}</span>
+      <span className="action-tile-text">
+        <span className="action-tile-title">{title}</span>
+        <span className="action-tile-hint">{hint}</span>
+      </span>
+      {kbd && <span className="kbd">{kbd}</span>}
+    </button>
   );
 }
