@@ -1,8 +1,10 @@
-import { initials } from '@rupbar/core';
-import { identitySchema, operationSettingsSchema, type IdentityInput, type OperationSettings } from '@rupbar/core/schemas';
+import { buildPixPayload, comandaPixTxid, initials, PIX_CITY_MAX, PIX_KEY_TYPES, PIX_NAME_MAX, sanitizePixText, sanitizeTxid, type PixKeyType } from '@rupbar/core';
+import {
+  identitySchema, operationSettingsSchema, pixPayloadQuerySchema, pixSettingsSchema, type IdentityInput, type OperationSettings, type PixSettings,
+} from '@rupbar/core/schemas';
 import { json, type Row } from '../db/db';
-import { notFound } from '../lib/errors';
-import { requirePerm, type Actor, type Ctx } from './context';
+import { conflict, forbidden, notFound } from '../lib/errors';
+import { hasPerm, requirePerm, type Actor, type Ctx } from './context';
 
 export interface Branding {
   configured: boolean;
@@ -18,6 +20,20 @@ export interface Branding {
   facebook: string | null;
   whatsapp: string | null;
   website: string | null;
+}
+
+/** Cobrança Pix pronta para exibir (tela) ou imprimir (conta). */
+export interface PixCharge {
+  /** Pix copia e cola (BR Code) — o mesmo texto do QR Code. */
+  payload: string;
+  amountCents: number;
+  txid: string;
+  /** Nome e cidade como saem no BR Code (sem acentos, truncados). */
+  merchantName: string;
+  merchantCity: string;
+  keyType: PixKeyType;
+  keyLabel: string;
+  key: string;
 }
 
 export function attachmentUrl(id: string | null | undefined): string | null {
@@ -140,6 +156,66 @@ export class SettingsService {
       JSON.stringify(s),
       this.ctx.nowIso(),
     );
+  }
+
+  // ------------------------------------------------------------- Pix
+
+  /** Configuração do Pix copia e cola (padrão: desativado). */
+  pix(): PixSettings {
+    const parsed = pixSettingsSchema.safeParse(this.getJson<unknown>('pix', {}));
+    return parsed.success ? parsed.data : pixSettingsSchema.parse({});
+  }
+
+  /** Tela de configurações e quem recebe pagamentos (o QR mostra a chave de qualquer forma). */
+  pixConfig(actor: Actor): PixSettings {
+    if (!hasPerm(actor, 'settings.manage') && !hasPerm(actor, 'cash.payment')) throw forbidden();
+    return this.pix();
+  }
+
+  updatePix(actor: Actor, raw: unknown): PixSettings {
+    requirePerm(actor, 'settings.manage');
+    const input = pixSettingsSchema.parse(raw);
+    this.ctx.tx(() => {
+      this.setJson('pix', input);
+      this.ctx.audit(actor, 'settings.pix_updated', 'settings', 'pix', { enabled: input.enabled, keyType: input.keyType });
+      this.ctx.emit({ channel: 'system', type: 'pix.updated' });
+    });
+    return input;
+  }
+
+  /**
+   * Cobrança Pix estática do valor informado (0 = o cliente digita o valor).
+   * Retorna null quando o Pix não está ativo.
+   */
+  pixCharge(amountCents: number, txid?: string | null): PixCharge | null {
+    const c = this.pix();
+    if (!c.enabled || !c.key) return null;
+    const ref = sanitizeTxid(txid);
+    return {
+      payload: buildPixPayload({ key: c.key, merchantName: c.merchantName, merchantCity: c.merchantCity, amountCents, txid: ref }),
+      amountCents,
+      txid: ref,
+      merchantName: sanitizePixText(c.merchantName, PIX_NAME_MAX),
+      merchantCity: sanitizePixText(c.merchantCity, PIX_CITY_MAX),
+      keyType: c.keyType,
+      keyLabel: PIX_KEY_TYPES[c.keyType],
+      key: c.key,
+    };
+  }
+
+  /** GET /api/pix/payload: valor e comanda vêm da tela de pagamento. */
+  pixPayload(actor: Actor, query: unknown): PixCharge {
+    if (!hasPerm(actor, 'cash.payment') && !hasPerm(actor, 'comandas.view')) throw forbidden();
+    const q = pixPayloadQuerySchema.parse(query);
+    let txid: string | null = null;
+    if (q.comandaId) {
+      const n = this.ctx.db.value<number>('SELECT number FROM comandas WHERE id = ?', q.comandaId);
+      if (n === undefined || n === null) throw notFound('Comanda');
+      txid = comandaPixTxid(Number(n));
+    }
+    const charge = this.pixCharge(q.amountCents, txid);
+    if (!charge) throw conflict('O Pix copia e cola ainda não foi configurado. Configure em Configurações → Pix.', 'PIX_NOT_CONFIGURED');
+    return charge;
   }
 
   /** Configurações genéricas guardadas como JSON (impressão, WhatsApp, rede...). */

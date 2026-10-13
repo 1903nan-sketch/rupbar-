@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { LOSS_REASONS, PAYMENT_METHODS, STATIONS, TICKET_STATUS, HOOKAH_STATUS, CASH_MOVEMENT_TYPES } from './domain';
 import { isValidCnpj, isValidCpf, isHexColor, normalizePhoneBR, onlyDigits } from './validators';
+import { normalizePixKey, PIX_CITY_MAX, PIX_KEY_TYPES, PIX_NAME_MAX, sanitizePixText } from './pix';
 
 const keys = <T extends Record<string, unknown>>(o: T) => Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
 
@@ -117,6 +118,49 @@ export const operationSettingsSchema = z.object({
   lowStockAlertsEnabled: z.boolean().default(true),
 });
 export type OperationSettings = z.infer<typeof operationSettingsSchema>;
+
+export const zPixKeyType = z.enum(keys(PIX_KEY_TYPES));
+
+/**
+ * Pix copia e cola estático. A chave é guardada normalizada (formato do DICT);
+ * nome e cidade como digitados — o BR Code remove acentos e trunca na geração.
+ * Com o Pix ativo, chave, nome e cidade são obrigatórios.
+ */
+export const pixSettingsSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    keyType: zPixKeyType.default('cnpj'),
+    key: z.string().trim().max(100).default(''),
+    merchantName: trimmed(60).default(''),
+    merchantCity: trimmed(60).default(''),
+  })
+  .transform((v, ctx) => {
+    let key = v.key;
+    if (key) {
+      const r = normalizePixKey(v.keyType, key);
+      if (r.ok) key = r.key;
+      else ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['key'], message: r.error });
+    } else if (v.enabled) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['key'], message: 'Informe a chave Pix.' });
+    }
+    if (v.enabled && !sanitizePixText(v.merchantName, PIX_NAME_MAX)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['merchantName'], message: 'Informe o nome do recebedor.' });
+    }
+    if (v.enabled && !sanitizePixText(v.merchantCity, PIX_CITY_MAX)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['merchantCity'], message: 'Informe a cidade do recebedor.' });
+    }
+    return { ...v, key };
+  });
+export type PixSettings = z.infer<typeof pixSettingsSchema>;
+
+/** Consulta do Pix copia e cola: valor em centavos (0 = cliente digita) e comanda opcional (txid). */
+export const pixPayloadQuerySchema = z.object({
+  amountCents: z.preprocess(
+    (v) => (v === undefined || v === null || v === '' ? 0 : Number(v)),
+    z.number({ invalid_type_error: 'Valor inválido' }).int('Valor inválido').min(0, 'Valor inválido').max(9_999_999_999, 'Valor muito alto'),
+  ),
+  comandaId: z.preprocess((v) => (v === '' || v === null ? undefined : v), zUuid.optional()),
+});
 
 export const setupSchema = z.object({
   identity: identitySchema,
@@ -430,6 +474,8 @@ export const printerSchema = z.object({
   printReceipts: z.boolean().default(false),
   autoPrint: z.boolean().default(true),
   beep: z.boolean().default(false),
+  /** Imprime o QR Code do Pix na conta (desative em impressoras sem suporte a QR). */
+  printQr: z.boolean().default(true),
   active: z.boolean().default(true),
 });
 export type PrinterInput = z.infer<typeof printerSchema>;

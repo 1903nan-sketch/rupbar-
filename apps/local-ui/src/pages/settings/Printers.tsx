@@ -21,6 +21,7 @@ interface PrinterCfg {
   printReceipts: boolean;
   autoPrint: boolean;
   beep: boolean;
+  printQr: boolean;
   active: boolean;
   lastStatus: string | null;
   lastError: string | null;
@@ -99,7 +100,7 @@ function PrinterModal({ printer, onClose, onDone }: { printer: PrinterCfg | null
   const [f, setF] = useState({
     name: printer?.name ?? '', transport: printer?.transport ?? ('network' as PrinterCfg['transport']), host: printer?.host ?? '', port: printer?.port ?? 9100,
     windowsName: printer?.windowsName ?? '', filePath: printer?.filePath ?? '', paper: printer?.paper ?? 80, codepage: printer?.codepage ?? 'cp850',
-    stations: printer?.stations ?? ['kitchen'], printReceipts: printer?.printReceipts ?? false, autoPrint: printer?.autoPrint ?? true, beep: printer?.beep ?? false, active: printer?.active ?? true,
+    stations: printer?.stations ?? ['kitchen'], printReceipts: printer?.printReceipts ?? false, autoPrint: printer?.autoPrint ?? true, beep: printer?.beep ?? false, printQr: printer?.printQr ?? true, active: printer?.active ?? true,
   });
   const toggleStation = (s: string) => setF({ ...f, stations: f.stations.includes(s) ? f.stations.filter((x) => x !== s) : [...f.stations, s] });
   return (
@@ -148,6 +149,7 @@ function PrinterModal({ printer, onClose, onDone }: { printer: PrinterCfg | null
         <label className="check"><input type="checkbox" checked={f.printReceipts} onChange={(e) => setF({ ...f, printReceipts: e.target.checked })} /> Conferência de conta e fechamento de caixa</label>
         <Switch checked={f.autoPrint} onChange={(v) => setF({ ...f, autoPrint: v })} label="Impressão automática de pedidos" />
         <Switch checked={f.beep} onChange={(v) => setF({ ...f, beep: v })} label="Bipe ao imprimir" description="Para impressoras de cozinha com buzzer." />
+        {f.printReceipts && <Switch checked={f.printQr} onChange={(v) => setF({ ...f, printQr: v })} label="QR Code do Pix na conta" description="Desative se a impressora não imprimir QR Code (sai a chave Pix em texto)." />}
       </div>
     </Modal>
   );
