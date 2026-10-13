@@ -1,0 +1,300 @@
+/* Produção (cozinha e bar): leitura de longe, alerta visual e ações grandes. */
+
+.kds-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.kds-unlock {
+  cursor: pointer;
+  animation: glow-pulse 1.6s ease-in-out infinite;
+}
+.kds-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.kds-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 60vh;
+  padding: 12px;
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--glass-panel) 70%, transparent);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+.kds-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px 2px;
+  font-weight: 700;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kds-count {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 99px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  background: var(--fill-2);
+}
+.kds-col.blue .kds-count {
+  background: color-mix(in srgb, var(--blue) 22%, transparent);
+  color: var(--blue);
+}
+.kds-col.orange .kds-count {
+  background: color-mix(in srgb, var(--orange) 22%, transparent);
+  color: var(--orange);
+}
+.kds-col.green .kds-count {
+  background: color-mix(in srgb, var(--green) 22%, transparent);
+  color: var(--green);
+}
+.kds-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kds-empty {
+  padding: 28px 10px;
+  text-align: center;
+  color: var(--text-3);
+  border: 1px dashed var(--separator-strong);
+  border-radius: 18px;
+}
+
+.kds-ticket {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-radius: 20px;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  animation: ticket-in 0.45s var(--ease-spring) both;
+  overflow: hidden;
+}
+.kds-ticket::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--blue);
+}
+.kds-ticket.preparing::before {
+  background: var(--orange);
+}
+.kds-ticket.ready::before {
+  background: var(--green);
+}
+.kds-ticket.warn {
+  border-color: color-mix(in srgb, var(--orange) 55%, transparent);
+}
+.kds-ticket.late {
+  border-color: color-mix(in srgb, var(--red) 65%, transparent);
+  animation: ticket-in 0.45s var(--ease-spring) both, late-pulse 1.8s ease-in-out infinite;
+}
+.kds-ticket.late::before {
+  background: var(--red);
+}
+.kds-ticket.fresh {
+  animation: ticket-in 0.45s var(--ease-spring) both, fresh-flash 1s ease-in-out 6;
+}
+@keyframes ticket-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
+}
+@keyframes fresh-flash {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 55%, transparent), 0 0 40px color-mix(in srgb, var(--blue) 50%, transparent);
+  }
+}
+@keyframes late-pulse {
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 40%, transparent), var(--glass-shadow);
+  }
+}
+.kds-ticket-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+.kds-who {
+  min-width: 0;
+}
+.kds-name {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  word-break: break-word;
+}
+.kds-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.kds-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--accent-contrast);
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--violet, #7c5cff)));
+}
+.kds-tag.quick {
+  background: linear-gradient(135deg, var(--purple), color-mix(in srgb, var(--purple) 70%, var(--cyan, #22d3ee)));
+  color: #fff;
+}
+.kds-tag.subtle {
+  background: var(--fill-2);
+  color: var(--text-2);
+}
+.kds-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: none;
+  font-weight: 800;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.kds-timer.warn {
+  color: var(--orange);
+}
+.kds-timer.late {
+  color: var(--red);
+}
+.kds-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kds-items li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.kds-items li.canceled {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.kds-qty {
+  flex: none;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-weight: 850;
+  font-size: 18px;
+  background: var(--fill-2);
+}
+.kds-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--orange);
+}
+.kds-note.block {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+}
+.kds-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kds-actions .btn.block {
+  min-height: 46px;
+  font-size: 16px;
+  border-radius: 14px;
+}
+
+.kds-done {
+  border-radius: 20px;
+  background: var(--glass-panel);
+  border: 1px solid var(--glass-edge);
+}
+.kds-done-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 650;
+  cursor: pointer;
+}
+.kds-done-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.kds-done-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+
+/* letras grandes para monitor longe da bancada */
+.kds.big .kds-name {
+  font-size: 34px;
+}
+.kds.big .kds-items li {
+  font-size: 21px;
+}
+.kds.big .kds-qty {
+  min-width: 42px;
+  height: 42px;
+  font-size: 22px;
+}
+
+@media (max-width: 1100px) {
+  .kds-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .kds-col {
+    min-height: 0;
+  }
+}

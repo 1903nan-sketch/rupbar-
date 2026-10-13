@@ -1,12 +1,14 @@
-import { Bell, Check, ChefHat, Maximize2, Play, Printer, Truck, Volume2, X } from 'lucide-react';
+import { Bell, Check, ChefHat, ChevronDown, ChevronUp, Maximize2, Minimize2, Play, Printer, Truck, Undo2, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Badge, Button, Confirm, Empty, ErrorBox, Loading, Segmented, useToast } from '../components/ui';
+import { Badge, Button, Confirm, ErrorBox, Loading, Segmented, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { elapsed, fmtTime, minutesSince } from '../lib/format';
+import { useFullscreen } from '../lib/fullscreen';
 import { useLoad, useNow } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
-import { chime } from './Tv';
+import { playAlert, soundUnlocked, unlockSound } from '../lib/sound';
+import '../styles/kitchen.css';
 
 interface Ticket {
   id: string;
@@ -15,7 +17,10 @@ interface Ticket {
   status: 'received' | 'preparing' | 'ready' | 'delivered' | 'canceled';
   table: string | null;
   comandaNumber: number;
+  comandaKind: 'regular' | 'quick';
+  comandaDisplayNumber: number | null;
   customerFirstName: string;
+  customerDisplayName: string;
   waiterName: string | null;
   notes: string | null;
   createdAt: string;
@@ -26,48 +31,61 @@ interface Ticket {
   items: { id: string; name: string; quantity: number; notes: string | null; canceled: boolean }[];
 }
 
-const COLUMNS: { status: Ticket['status']; label: string; color: string }[] = [
-  { status: 'received', label: 'Recebidos', color: 'var(--blue)' },
-  { status: 'preparing', label: 'Em preparo', color: 'var(--orange)' },
-  { status: 'ready', label: 'Prontos', color: 'var(--green)' },
-  { status: 'delivered', label: 'Entregues', color: 'var(--text-3)' },
-  { status: 'canceled', label: 'Cancelados', color: 'var(--red)' },
+const ACTIVE: { status: Ticket['status']; label: string; tone: string }[] = [
+  { status: 'received', label: 'Novos', tone: 'blue' },
+  { status: 'preparing', label: 'Em preparo', tone: 'orange' },
+  { status: 'ready', label: 'Prontos', tone: 'green' },
 ];
 
-const STATION_KEY = 'rupbar.kds.station';
+const PREFS_KEY = 'rupbar.kds.prefs';
+type Prefs = { station: 'kitchen' | 'bar' | 'all'; sound: boolean; repeat: number; big: boolean };
+function loadPrefs(): Prefs {
+  const base: Prefs = { station: 'all', sound: true, repeat: 2, big: false };
+  try {
+    return { ...base, ...(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<Prefs>) };
+  } catch {
+    return base;
+  }
+}
 
 export function KitchenPage() {
   const toast = useToast();
   const { can } = useSession();
-  const now = useNow(20_000);
-  const [station, setStation] = useState<'kitchen' | 'bar' | 'all'>(() => {
-    try {
-      return (localStorage.getItem(STATION_KEY) as 'kitchen' | 'bar' | 'all') ?? 'all';
-    } catch {
-      return 'all';
-    }
-  });
-  const [sound, setSound] = useState(true);
+  const now = useNow(15_000);
+  const [prefs, setPrefs] = useState(loadPrefs);
+  const [unlocked, setUnlocked] = useState(soundUnlocked);
+  const [showDone, setShowDone] = useState(false);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [cancel, setCancel] = useState<Ticket | null>(null);
+  const [fullscreen, toggleFullscreen] = useFullscreen();
   const known = useRef<Set<string> | null>(null);
-  const { data, error, reload } = useLoad(() => api.get<Ticket[]>(`/api/kitchen/board?station=${station}`), [station]);
+  const { data, error, reload } = useLoad(() => api.get<Ticket[]>(`/api/kitchen/board?station=${prefs.station}`), [prefs.station]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STATION_KEY, station);
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     } catch {
       /* armazenamento indisponível */
     }
+  }, [prefs]);
+  useEffect(() => {
     known.current = null;
-  }, [station]);
+  }, [prefs.station]);
 
-  // Alerta sonoro para pedidos novos
+  // Pedido novo: alerta alto + destaque piscando por alguns segundos.
   useEffect(() => {
     if (!data) return;
     const ids = new Set(data.map((t) => t.id));
-    if (known.current && sound && data.some((t) => !known.current!.has(t.id) && t.status === 'received')) chime(2);
+    if (known.current) {
+      const novos = data.filter((t) => !known.current!.has(t.id) && t.status === 'received').map((t) => t.id);
+      if (novos.length) {
+        if (prefs.sound) setUnlocked(playAlert('order', { times: prefs.repeat }));
+        setFresh((f) => new Set([...f, ...novos]));
+        setTimeout(() => setFresh((f) => new Set([...f].filter((id) => !novos.includes(id)))), 12_000);
+      }
+    }
     known.current = ids;
-  }, [data, sound]);
+  }, [data, prefs.sound, prefs.repeat]);
 
   useRealtime(['kitchen'], () => void reload());
 
@@ -75,7 +93,7 @@ export function KitchenPage() {
     try {
       if (action === 'accept' || action === 'call' || action === 'reprint') {
         const r = await api.post(`/api/kitchen/tickets/${t.id}/${action}`);
-        if (action === 'call') toast.success(`Chamando: ${r.text}`);
+        if (action === 'call') toast.success(`Chamando na TV: ${r.text}`);
         if (action === 'reprint') toast.success('Reimpressão enviada');
       } else {
         await api.post(`/api/kitchen/tickets/${t.id}/status`, { status: action });
@@ -86,87 +104,143 @@ export function KitchenPage() {
     }
   };
 
-  const fullscreen = () => document.documentElement.requestFullscreen?.().catch(() => undefined);
+  const done = (data ?? []).filter((t) => t.status === 'delivered' || t.status === 'canceled').reverse();
 
   return (
-    <div className="stack">
-      <div className="row between wrap">
+    <div className={`kds stack ${prefs.big ? 'big' : ''}`} onPointerDown={() => { if (!unlocked) void unlockSound().then(setUnlocked); }}>
+      <div className="kds-head">
         <div className="row">
-          <ChefHat size={26} />
-          <h1>Produção</h1>
+          <span className="icon-chip"><ChefHat size={22} /></span>
+          <div>
+            <h1>Produção</h1>
+            <div className="small muted">{data ? `${data.filter((t) => t.status === 'received' || t.status === 'preparing').length} em andamento · ${data.filter((t) => t.status === 'ready').length} prontos` : ' '}</div>
+          </div>
         </div>
         <div className="row wrap">
-          <Segmented value={station} onChange={setStation} options={[{ value: 'all', label: 'Todos' }, { value: 'kitchen', label: 'Cozinha' }, { value: 'bar', label: 'Bebidas' }]} />
-          <Button variant={sound ? 'default' : 'plain'} icon={<Volume2 size={16} />} onClick={() => setSound(!sound)}>{sound ? 'Som ligado' : 'Som desligado'}</Button>
-          <Button icon={<Maximize2 size={16} />} onClick={fullscreen} aria-label="Tela cheia" />
+          <Segmented value={prefs.station} onChange={(station) => setPrefs({ ...prefs, station })} options={[{ value: 'all', label: 'Todos' }, { value: 'kitchen', label: 'Cozinha' }, { value: 'bar', label: 'Bebidas' }]} />
+          <Segmented value={String(prefs.repeat)} onChange={(v) => setPrefs({ ...prefs, repeat: Number(v) })} options={[{ value: '1', label: '1×' }, { value: '2', label: '2×' }, { value: '3', label: '3×' }]} />
+          <Button variant={prefs.sound ? 'default' : 'plain'} icon={prefs.sound ? <Volume2 size={16} /> : <VolumeX size={16} />} onClick={() => { setPrefs({ ...prefs, sound: !prefs.sound }); void unlockSound().then(setUnlocked); }}>
+            {prefs.sound ? 'Som alto' : 'Sem som'}
+          </Button>
+          <Button variant="plain" onClick={() => { void unlockSound().then(setUnlocked); playAlert('order', { times: 1 }); }}>Testar som</Button>
+          <Button variant="plain" onClick={() => setPrefs({ ...prefs, big: !prefs.big })}>{prefs.big ? 'Letras normais' : 'Letras grandes'}</Button>
+          <Button icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onClick={toggleFullscreen} aria-label="Tela cheia" />
         </div>
       </div>
+
+      {prefs.sound && !unlocked && <div className="banner warning kds-unlock">Toque em qualquer lugar desta tela para liberar o alerta sonoro.</div>}
       {error && <ErrorBox error={error} onRetry={reload} />}
       {!data ? (
         <Loading />
       ) : (
-        <div className="kanban">
-          {COLUMNS.map((col) => {
+        <div className="kds-board">
+          {ACTIVE.map((col) => {
             const tickets = data.filter((t) => t.status === col.status);
-            const ordered = col.status === 'delivered' || col.status === 'canceled' ? [...tickets].reverse() : tickets;
             return (
-              <div key={col.status} className="column">
-                <div className="column-head">
-                  <span className="row"><span className="dot" style={{ background: col.color }} />{col.label}</span>
-                  <Badge>{tickets.length}</Badge>
+              <section key={col.status} className={`kds-col ${col.tone}`}>
+                <header className="kds-col-head">
+                  <span className="row"><span className={`dot ${col.tone}`} />{col.label}</span>
+                  <span className="kds-count">{tickets.length}</span>
+                </header>
+                <div className="kds-col-body">
+                  {tickets.length === 0 && <div className="kds-empty">Nenhum pedido</div>}
+                  {tickets.map((t) => (
+                    <TicketCard key={t.id} t={t} now={now} fresh={fresh.has(t.id)} showStation={prefs.station === 'all'} can={can} act={act} onCancel={() => setCancel(t)} />
+                  ))}
                 </div>
-                {ordered.length === 0 && <Empty title="" />}
-                {ordered.map((t) => {
-                  const wait = minutesSince(t.createdAt, now);
-                  const active = t.status === 'received' || t.status === 'preparing';
-                  const cls = active && wait >= 25 ? 'late' : active && wait >= 15 ? 'warn' : '';
-                  return (
-                    <article key={t.id} className={`ticket ${cls}`} style={{ borderLeftColor: !cls ? col.color : undefined }}>
-                      <div className="row between">
-                        <span className="number">#{t.number}</span>
-                        <span className={`small strong ${cls === 'late' ? 'danger-text' : cls === 'warn' ? 'warning-text' : 'muted'}`}>{active ? elapsed(t.createdAt, now) : fmtTime(t.readyAt ?? t.createdAt)}</span>
-                      </div>
-                      <div className="small muted">
-                        {t.customerFirstName}{t.table ? ` · Mesa ${t.table}` : ` · Comanda ${t.comandaNumber}`} · {fmtTime(t.createdAt)}
-                        {station === 'all' && <> · {t.station === 'kitchen' ? 'Cozinha' : 'Bebidas'}</>}
-                      </div>
-                      <ul>
-                        {t.items.map((i) => (
-                          <li key={i.id} className={i.canceled ? 'canceled' : ''}>
-                            <span className="qty">{i.quantity}×</span>{i.name}
-                            {i.notes && <div className="note">↳ {i.notes}</div>}
-                          </li>
-                        ))}
-                      </ul>
-                      {t.notes && <div className="note">Obs.: {t.notes}</div>}
-                      {t.waiterName && <div className="tiny subtle">Atendente: {t.waiterName}{t.callCount > 0 && ` · chamado ${t.callCount}×`}</div>}
-                      {can('kitchen.update') && (
-                        <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>
-                          {t.status === 'received' && !t.acceptedAt && <Button size="small" icon={<Check size={14} />} onClick={() => act(t, 'accept')}>Aceitar</Button>}
-                          {t.status === 'received' && <Button size="small" variant="primary" icon={<Play size={14} />} onClick={() => act(t, 'preparing')}>Iniciar</Button>}
-                          {t.status === 'preparing' && <Button size="small" variant="success" icon={<Check size={14} />} onClick={() => act(t, 'ready')}>Pronto</Button>}
-                          {(t.status === 'ready' || t.status === 'preparing') && can('kitchen.call') && (
-                            <Button size="small" variant="primary" icon={<Bell size={14} />} onClick={() => act(t, 'call')}>{t.callCount ? 'Chamar de novo' : 'Chamar cliente'}</Button>
-                          )}
-                          {t.status === 'ready' && <Button size="small" icon={<Truck size={14} />} onClick={() => act(t, 'delivered')}>Entregue</Button>}
-                          {t.status === 'delivered' && <Button size="small" onClick={() => act(t, 'ready')}>Desfazer</Button>}
-                          <Button size="small" variant="plain" icon={<Printer size={14} />} aria-label="Reimprimir" onClick={() => act(t, 'reprint')} />
-                          {active && <Button size="small" variant="plain" icon={<X size={14} />} aria-label="Cancelar" onClick={() => setCancel(t)} />}
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
+              </section>
             );
           })}
         </div>
       )}
+
+      {done.length > 0 && (
+        <div className="kds-done">
+          <button type="button" className="kds-done-toggle" onClick={() => setShowDone(!showDone)}>
+            {showDone ? <ChevronUp size={16} /> : <ChevronDown size={16} />} Entregues e cancelados recentes ({done.length})
+          </button>
+          {showDone && (
+            <div className="kds-done-list">
+              {done.map((t) => (
+                <div key={t.id} className={`kds-done-item ${t.status}`}>
+                  <strong>{t.customerDisplayName || `Pedido ${t.number}`}</strong>
+                  <span className="small muted">{t.comandaDisplayNumber !== null ? `Comanda ${t.comandaDisplayNumber}` : 'Venda rápida'} · {fmtTime(t.readyAt ?? t.createdAt)}</span>
+                  <Badge color={t.status === 'canceled' ? 'red' : undefined}>{t.status === 'canceled' ? 'Cancelado' : 'Entregue'}</Badge>
+                  {t.status === 'delivered' && can('kitchen.update') && <Button size="small" variant="plain" icon={<Undo2 size={14} />} onClick={() => act(t, 'ready')}>Desfazer</Button>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {cancel && (
-        <Confirm title={`Cancelar pedido #${cancel.number}?`} danger confirmLabel="Cancelar pedido" onClose={() => setCancel(null)}
+        <Confirm title={`Cancelar pedido de ${cancel.customerDisplayName || cancel.number}?`} danger confirmLabel="Cancelar pedido" onClose={() => setCancel(null)}
           message="Para cancelar itens com devolução ao estoque e justificativa, use a comanda. Aqui o pedido apenas sai da fila de produção."
           onConfirm={async () => { await api.post(`/api/kitchen/tickets/${cancel.id}/status`, { status: 'canceled' }); await reload(); }} />
       )}
     </div>
+  );
+}
+
+function TicketCard({ t, now, fresh, showStation, can, act, onCancel }: {
+  t: Ticket;
+  now: number;
+  fresh: boolean;
+  showStation: boolean;
+  can: (p: 'kitchen.update' | 'kitchen.call') => boolean;
+  act: (t: Ticket, a: 'accept' | 'preparing' | 'ready' | 'delivered' | 'call' | 'reprint') => void;
+  onCancel: () => void;
+}) {
+  const wait = minutesSince(t.createdAt, now);
+  const active = t.status === 'received' || t.status === 'preparing';
+  const level = active && wait >= 25 ? 'late' : active && wait >= 15 ? 'warn' : '';
+  const quick = t.comandaKind === 'quick';
+  return (
+    <article className={`kds-ticket ${t.status} ${level} ${fresh ? 'fresh' : ''}`}>
+      <header className="kds-ticket-head">
+        <div className="kds-who">
+          <div className="kds-name">{t.customerDisplayName || `Pedido ${t.number}`}</div>
+          <div className="kds-meta">
+            {quick ? <span className="kds-tag quick"><Zap size={12} /> Venda rápida</span> : <span className="kds-tag">Comanda {t.comandaDisplayNumber}</span>}
+            {t.table && <span className="kds-tag">Mesa {t.table}</span>}
+            {showStation && <span className="kds-tag subtle">{t.station === 'kitchen' ? 'Cozinha' : 'Bebidas'}</span>}
+          </div>
+        </div>
+        <div className={`kds-timer ${level}`}>
+          <span>{active ? elapsed(t.createdAt, now) : fmtTime(t.readyAt ?? t.createdAt)}</span>
+          <span className="tiny">pedido {t.number}</span>
+        </div>
+      </header>
+      <ul className="kds-items">
+        {t.items.map((i) => (
+          <li key={i.id} className={i.canceled ? 'canceled' : ''}>
+            <span className="kds-qty">{i.quantity}</span>
+            <span className="grow">
+              {i.name}
+              {i.notes && <span className="kds-note">↳ {i.notes}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {t.notes && <div className="kds-note block">Obs.: {t.notes}</div>}
+      {can('kitchen.update') && (
+        <footer className="kds-actions">
+          {t.status === 'received' && <Button variant="primary" block icon={<Play size={16} />} onClick={() => act(t, 'preparing')}>Começar</Button>}
+          {t.status === 'preparing' && <Button variant="success" block icon={<Check size={16} />} onClick={() => act(t, 'ready')}>Pronto</Button>}
+          {t.status === 'ready' && can('kitchen.call') && (
+            <Button variant="primary" block icon={<Bell size={16} />} onClick={() => act(t, 'call')}>{t.callCount ? `Chamar de novo (${t.callCount}×)` : 'Chamar na TV'}</Button>
+          )}
+          <div className="row" style={{ gap: 4 }}>
+            {t.status === 'received' && !t.acceptedAt && <Button size="small" icon={<Check size={14} />} onClick={() => act(t, 'accept')}>Visto</Button>}
+            {t.status === 'preparing' && can('kitchen.call') && <Button size="small" icon={<Bell size={14} />} onClick={() => act(t, 'call')}>Chamar</Button>}
+            {t.status === 'ready' && <Button size="small" icon={<Truck size={14} />} onClick={() => act(t, 'delivered')}>Entregue</Button>}
+            <Button size="small" variant="plain" icon={<Printer size={14} />} aria-label="Reimprimir" onClick={() => act(t, 'reprint')} />
+            {active && <Button size="small" variant="plain" icon={<X size={14} />} aria-label="Cancelar" onClick={onCancel} />}
+          </div>
+        </footer>
+      )}
+      {t.waiterName && <div className="tiny subtle">Atendente: {t.waiterName}</div>}
+    </article>
   );
 }

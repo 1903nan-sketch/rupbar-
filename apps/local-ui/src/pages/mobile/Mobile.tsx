@@ -1,14 +1,15 @@
-import { ArrowLeft, ClipboardList, ListChecks, LogOut, Plus, Search, UserRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ClipboardList, Delete, ListChecks, LogOut, Plus, Search, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { ConnectionBanner, Logo } from '../../components/brand';
 import { OrderComposer } from '../../components/OrderComposer';
-import { Badge, Button, Empty, ErrorBox, Input, Loading } from '../../components/ui';
-import { api } from '../../lib/api';
+import { Badge, Button, Empty, ErrorBox, Input, Loading, useToast } from '../../components/ui';
+import { api, requestId } from '../../lib/api';
 import { elapsed, fmtTime, formatBRL } from '../../lib/format';
 import { useLoad, useNow } from '../../lib/hooks';
 import { useRealtime } from '../../lib/realtime';
 import { useSession } from '../../lib/session';
+import '../../styles/mobile.css';
 import { OpenComandaModal, type ComandaSummary } from '../Comandas';
 import type { ComandaDetail } from '../ComandaDetail';
 
@@ -35,31 +36,93 @@ export function MobileShell() {
   );
 }
 
+/**
+ * Tela inicial do garçom: digita o número do cartão e vai direto para o
+ * cardápio da comanda. Cartão livre abre a comanda na hora.
+ */
 export function MobileComandas() {
   const nav = useNavigate();
+  const toast = useToast();
   const now = useNow(30_000);
   const { can } = useSession();
+  const [digits, setDigits] = useState('');
   const [q, setQ] = useState('');
+  const [searching, setSearching] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [free, setFree] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [openKey] = useState(requestId);
   const { data, error, reload } = useLoad(() => api.get<ComandaSummary[]>(`/api/comandas?status=open${q ? `&q=${encodeURIComponent(q)}` : ''}`), [q]);
   useRealtime('comandas', () => void reload());
+
+  const press = (k: string) => {
+    setFree(null);
+    setDigits((d) => (k === 'del' ? d.slice(0, -1) : (d + k).replace(/^0+/, '').slice(0, 5)));
+  };
+  const go = async () => {
+    const n = Number(digits);
+    if (!n) return;
+    setBusy(true);
+    try {
+      const c = await api.get<ComandaSummary | null>(`/api/comandas/by-number/${n}`);
+      if (c) nav(`/m/comanda/${c.id}`);
+      else setFree(n);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const openCard = async () => {
+    if (free === null) return;
+    setBusy(true);
+    try {
+      const c = await api.post<ComandaSummary>('/api/comandas', { cardNumber: free, customerName: '', clientRequestId: openKey });
+      nav(`/m/comanda/${c.id}`);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="mobile-body">
-      <div className="row">
-        <div className="input-group grow"><Search size={16} className="prefix" /><Input placeholder="Mesa, nome ou número" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        {can('comandas.open') && <Button variant="primary" icon={<Plus size={18} />} onClick={() => setOpening(true)}>Nova</Button>}
+      <section className="waiter-pad card">
+        <div className="waiter-display" aria-live="polite">
+          <span className="small muted">Nº da comanda</span>
+          <span className="waiter-digits">{digits || '—'}</span>
+        </div>
+        <div className="waiter-keys">
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => <button key={k} type="button" onClick={() => press(k)}>{k}</button>)}
+          <button type="button" aria-label="Apagar" onClick={() => press('del')}><Delete size={22} /></button>
+          <button type="button" onClick={() => press('0')}>0</button>
+          <button type="button" className="go" aria-label="Abrir comanda" disabled={!digits || busy} onClick={() => void go()}><ArrowRight size={26} /></button>
+        </div>
+        {free !== null && (
+          <div className="waiter-free pop-in">
+            <span>Cartão <strong>{free}</strong> está livre.</span>
+            {can('comandas.open') ? <Button variant="primary" loading={busy} onClick={openCard}>Abrir comanda {free}</Button> : <span className="small muted">Peça ao caixa para abrir.</span>}
+          </div>
+        )}
+      </section>
+
+      <div className="row between">
+        <div className="section-label" style={{ margin: 0 }}>Abertas ({data?.length ?? 0})</div>
+        <div className="row" style={{ gap: 4 }}>
+          <Button size="small" variant="plain" icon={searching ? <X size={18} /> : <Search size={18} />} aria-label="Buscar" onClick={() => { setSearching(!searching); setQ(''); }} />
+          {can('comandas.open') && <Button size="small" icon={<Plus size={16} />} onClick={() => setOpening(true)}>Nova</Button>}
+        </div>
       </div>
+      {searching && <Input autoFocus placeholder="Nome ou mesa" value={q} onChange={(e) => setQ(e.target.value)} />}
       {error && <ErrorBox error={error} onRetry={reload} />}
       {!data ? <Loading /> : data.length === 0 ? <Empty icon={<ClipboardList size={36} />} title="Nenhuma comanda aberta" /> : (
-        <div className="col" style={{ gap: 10 }}>
+        <div className="waiter-grid stagger">
           {data.map((c) => (
-            <button key={c.id} type="button" className="menu-item" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => nav(`/m/comanda/${c.id}`)}>
-              <div className="logo" style={{ width: 48, height: 48, fontSize: 16, borderRadius: 14 }}>{c.table ?? `#${c.number}`}</div>
-              <div className="grow">
-                <div className="strong">{c.customerName}</div>
-                <div className="small muted">#{c.number} · {elapsed(c.openedAt, now)} · {c.itemCount} itens</div>
-              </div>
-              <span className="num strong">{formatBRL(c.total)}</span>
+            <button key={c.id} type="button" className="waiter-tile" onClick={() => nav(`/m/comanda/${c.id}`)}>
+              <span className="waiter-tile-no">{c.displayNumber ?? c.number}</span>
+              <span className="waiter-tile-name ellipsis">{c.customerName || (c.table ? `Mesa ${c.table}` : 'Sem nome')}</span>
+              <span className="waiter-tile-meta">{elapsed(c.openedAt, now)} · {formatBRL(c.total)}</span>
             </button>
           ))}
         </div>
@@ -77,18 +140,20 @@ export function MobileComanda() {
   useRealtime(['comanda.changed', 'order.status'], () => void reload());
   if (error) return <div className="mobile-body"><ErrorBox error={error} onRetry={reload} /></div>;
   if (!c) return <Loading />;
+  const active = c.items.filter((i) => i.status === 'active');
   return (
-    <div className="mobile-body" style={{ paddingBottom: 90 }}>
-      <div className="row">
-        <Button variant="plain" icon={<ArrowLeft size={20} />} aria-label="Voltar" onClick={() => nav('/m')} />
-        <div className="grow">
-          <div className="strong">{c.customerName}</div>
-          <div className="small muted">#{c.number}{c.table && ` · Mesa ${c.table}`} · {formatBRL(c.total)}</div>
+    <div className="mobile-body" style={{ paddingBottom: 110 }}>
+      <div className="waiter-head">
+        <Button variant="plain" icon={<ArrowLeft size={22} />} aria-label="Voltar" onClick={() => nav('/m')} />
+        <span className="waiter-tile-no small">{c.displayNumber ?? c.number}</span>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="strong ellipsis" style={{ fontSize: 17 }}>{c.customerName || 'Sem nome'}</div>
+          <div className="small muted">{c.table ? `Mesa ${c.table} · ` : ''}{formatBRL(c.total)}</div>
         </div>
       </div>
       <div className="segmented" style={{ alignSelf: 'stretch', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
         <button type="button" className={view === 'menu' ? 'active' : ''} onClick={() => setView('menu')}>Cardápio</button>
-        <button type="button" className={view === 'conta' ? 'active' : ''} onClick={() => setView('conta')}>Itens da comanda</button>
+        <button type="button" className={view === 'conta' ? 'active' : ''} onClick={() => setView('conta')}>Itens ({active.reduce((a, i) => a + i.quantity, 0)})</button>
       </div>
       {c.status !== 'open' ? (
         <div className="banner warning">Esta comanda foi encerrada.</div>
@@ -96,10 +161,10 @@ export function MobileComanda() {
         <OrderComposer comandaId={c.id} compact onSent={() => { void reload(); }} />
       ) : (
         <div className="col" style={{ gap: 8 }}>
-          {c.items.filter((i) => i.status === 'active').length === 0 && <Empty title="Nenhum item ainda" />}
-          {c.items.filter((i) => i.status === 'active').map((i) => (
+          {active.length === 0 && <Empty title="Nenhum item ainda" />}
+          {active.map((i) => (
             <div key={i.id} className="menu-item">
-              <span className="strong num">{i.quantity}×</span>
+              <span className="kds-qty-sm">{i.quantity}</span>
               <div className="grow">
                 <div>{i.name}{i.presentationName !== 'Unidade' && <span className="muted"> · {i.presentationName}</span>}</div>
                 <div className="tiny muted">Pedido {i.orderNumber ?? '—'} · {fmtTime(i.createdAt)}{i.notes && ` · ${i.notes}`}</div>
@@ -122,28 +187,46 @@ function TicketBadge({ status }: { status: string }) {
   return <Badge color={color}>{label}</Badge>;
 }
 
+interface MyOrder {
+  id: string;
+  number: number;
+  comandaNumber: number;
+  comandaDisplayNumber: number | null;
+  table: string | null;
+  customerFirstName: string;
+  customerDisplayName: string;
+  createdAt: string;
+  tickets: { station: string; status: string }[];
+  items: { id: string; product_name: string; presentation_name: string; quantity: number; status: string }[];
+}
+
 export function MobileOrders() {
   const now = useNow(20_000);
-  const { data, reload } = useLoad(() => api.get<{ id: string; number: number; comandaNumber: number; table: string | null; customerFirstName: string; createdAt: string; tickets: { station: string; status: string }[]; items: { id: string; product_name: string; presentation_name: string; quantity: number; status: string }[] }[]>('/api/orders/mine'));
-  useRealtime(['order.status', 'order.created', 'comandas'], () => void reload());
+  const { data, reload } = useLoad(() => api.get<MyOrder[]>('/api/orders/mine'));
+  useRealtime(['order.status', 'order.created', 'comandas', 'kitchen'], () => void reload());
   if (!data) return <Loading />;
+  const rank = (o: MyOrder) => (o.tickets.some((t) => t.status === 'ready') ? 0 : o.tickets.some((t) => t.status === 'received' || t.status === 'preparing') ? 1 : 2);
+  const sorted = [...data].sort((a, b) => rank(a) - rank(b));
   return (
     <div className="mobile-body">
       <h2>Meus pedidos</h2>
       {data.length === 0 && <Empty icon={<ListChecks size={36} />} title="Você ainda não enviou pedidos" />}
-      {data.map((o) => (
-        <div key={o.id} className="card tight">
-          <div className="row between">
-            <strong style={{ fontSize: 18 }}>Pedido {o.number}</strong>
-            <span className="small muted">{elapsed(o.createdAt, now)}</span>
+      {sorted.map((o) => {
+        const ready = rank(o) === 0;
+        return (
+          <div key={o.id} className={`card tight waiter-order ${ready ? 'ready' : ''}`}>
+            <div className="row between">
+              <strong style={{ fontSize: 19 }}>{o.customerDisplayName || `Pedido ${o.number}`}</strong>
+              {ready ? <Badge color="green">Pronto para levar</Badge> : <span className="small muted">{elapsed(o.createdAt, now)}</span>}
+            </div>
+            <div className="small muted">{o.comandaDisplayNumber !== null ? `Comanda ${o.comandaDisplayNumber}` : 'Venda rápida'}{o.table && ` · mesa ${o.table}`} · pedido {o.number}</div>
+            <div className="row wrap" style={{ margin: '8px 0', gap: 6 }}>
+              {o.tickets.map((t) => <span key={t.station} className="row small">{t.station === 'kitchen' ? 'Cozinha' : 'Bebidas'}: <TicketBadge status={t.status} /></span>)}
+            </div>
+            <div className="small">{o.items.filter((i) => i.status === 'active').map((i) => `${i.quantity}× ${i.product_name}${i.presentation_name !== 'Unidade' ? ` (${i.presentation_name})` : ''}`).join(' · ')}</div>
           </div>
-          <div className="small muted">{o.customerFirstName} · comanda #{o.comandaNumber}{o.table && ` · mesa ${o.table}`}</div>
-          <div className="row wrap" style={{ margin: '8px 0', gap: 6 }}>
-            {o.tickets.map((t) => <span key={t.station} className="row small">{t.station === 'kitchen' ? 'Cozinha' : 'Bebidas'}: <TicketBadge status={t.status} /></span>)}
-          </div>
-          <div className="small">{o.items.filter((i) => i.status === 'active').map((i) => `${i.quantity}× ${i.product_name}${i.presentation_name !== 'Unidade' ? ` (${i.presentation_name})` : ''}`).join(' · ')}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
