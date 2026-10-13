@@ -1,4 +1,4 @@
-import { Bell, Building2, Cloud, Database, Printer, QrCode, SlidersHorizontal, Smartphone, Trash2, Tv, Upload } from 'lucide-react';
+import { Bell, Building2, Cloud, Database, Printer, QrCode, SlidersHorizontal, Smartphone, Trash2, Tv, Upload, ShieldCheck } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../../components/brand';
@@ -19,13 +19,14 @@ export function SettingsHome() {
     { to: '/configuracoes/sincronizacao', icon: <Cloud size={22} />, title: 'Sincronização', text: 'Conexão com o painel online do proprietário.', show: can('settings.manage') },
     { to: '/configuracoes/notificacoes', icon: <Bell size={22} />, title: 'Notificações', text: 'Alertas no WhatsApp: estoque baixo e fechamento de caixa.', show: can('settings.manage') },
     { to: '/configuracoes/backup', icon: <Database size={22} />, title: 'Backup', text: 'Cópias de segurança do banco de dados local.', show: can('settings.manage') },
+    { to: '/configuracoes/correcoes', icon: <ShieldCheck size={22} />, title: 'Histórico de correções', text: 'Tudo o que a conta mestre editou ou excluiu, com motivo.', show: can('admin.override') },
   ];
   return (
     <div className="stack-l">
       <PageHeader title="Configurações" />
       <div className="grid-auto">
         {items.filter((i) => i.show).map((i) => (
-          <Link key={i.to} to={i.to} className="card" style={{ color: 'inherit' }}>
+          <Link key={i.to} to={i.to} className="card interactive" style={{ color: 'inherit' }}>
             <div style={{ color: 'var(--accent)' }}>{i.icon}</div>
             <h3 style={{ marginTop: 10 }}>{i.title}</h3>
             <p className="small muted" style={{ marginTop: 4 }}>{i.text}</p>

@@ -35,6 +35,7 @@ const PixSettings = lazy(() => import('./pages/settings/Pix').then((m) => ({ def
 const BackupSettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.BackupSettings })));
 const IdentitySettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.IdentitySettings })));
 const OperationSettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.OperationSettings })));
+const CorrectionsHistory = lazy(() => import('./pages/settings/Corrections').then((m) => ({ default: m.CorrectionsHistory })));
 const SettingsHome = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.SettingsHome })));
 
 /** Garante que o servidor local responde; senão tenta reencontrá-lo na rede. */
@@ -130,6 +131,7 @@ function App() {
           <Route path="configuracoes/sincronizacao" element={<Guard perm="settings.manage"><SyncSettings /></Guard>} />
           <Route path="configuracoes/notificacoes" element={<Guard perm="settings.manage"><NotificationSettings /></Guard>} />
           <Route path="configuracoes/backup" element={<Guard perm="settings.manage"><BackupSettings /></Guard>} />
+          <Route path="configuracoes/correcoes" element={<Guard perm="admin.override"><CorrectionsHistory /></Guard>} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

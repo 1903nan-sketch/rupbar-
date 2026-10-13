@@ -49,13 +49,29 @@ pnpm dev:ui            # interface em http://localhost:5173 (proxy para a API)
 pnpm dev:panel         # painel online em http://localhost:3000 (requer .env.local do Supabase)
 
 pnpm typecheck
-pnpm test              # domínio, servidor (integração), nuvem (PGlite), interface — 76 testes
+pnpm test              # domínio, servidor (integração), nuvem (PGlite), interface
 pnpm test:e2e          # navegador real: operação completa + cadastro e reposição de estoque
 ```
 
 Abra `http://localhost:5173` no próprio PC para o assistente de configuração inicial (por segurança, só é permitido a partir do computador local).
 
 ## Gerar o instalador do Windows
+
+### Novidades da versão 0.2.0
+
+- **Visual novo** em vidro fosco com fundo animado, no PC, no celular do garçom, na produção, na TV e no painel online.
+- **Tela inicial com atalhos**: Venda rápida (F2), Lançar na comanda (F3) e Tela cheia (F11).
+- **Venda rápida (balcão)**: o cliente paga na hora (troco, Pix com QR, divisão) e é chamado pelo nome na TV.
+- **Cartões numerados**: abra a comanda pelo número do cartão. O número aparece na produção, na TV, nos cupons e no painel online.
+- **Narguilé**: tabela única com aluguel (essência e carvão inclusos), troca de rosh e narguilé próprio do cliente (essência e carvão lançados na comanda). Troca cortesia e "Alterar valores" em um clique.
+- **Pix copia e cola**: configure a chave, o nome e a cidade. O QR aparece no pagamento, na venda rápida e na conta impressa.
+- **Produção**: nome do cliente em destaque, número da comanda, cronômetro de atraso e alerta sonoro forte.
+- **TV**: nome grande, toque alto antes da voz e anúncios (fotos e vídeos) em carrossel ou contínuos. Os anúncios são interrompidos quando há chamada e o som dos vídeos pode ser ligado ou desligado.
+- **App do garçom**: teclado numérico para abrir a comanda pelo cartão e cardápio em blocos.
+- **Estoque autoexplicativo**: "como você compra / como você vende", fardo × lata com conta pronta, aviso de engano e código automático de produto.
+- **WhatsApp pela Evolution API**: assistente passo a passo com QR Code.
+- **Conta mestre**: o proprietário edita e exclui pagamentos, itens, comandas encerradas, sangrias, caixa, entradas de estoque, perdas e locações. Toda correção pede motivo e fica no Histórico de correções.
+- **Nuvem**: o PC conecta só com o e-mail e a senha do painel.
 
 ### Novidades da versão 0.1.1
 

@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { backoffMs, comandaPixTxid, firstName, PAYMENT_METHODS, STATIONS, type PaymentMethod, type Station } from '@rupbar/core';
+import { backoffMs, comandaPixTxid, firstName, PAYMENT_METHODS, STATIONS, type PaymentMethod, type Station, comandaDisplayNumber } from '@rupbar/core';
 import {
   renderBillReceipt, renderCashClose, renderOrderTicket, renderTestPage, type CodePage, type PaperWidth, type PrintOptions,
 } from '@rupbar/core/escpos';
@@ -235,7 +235,7 @@ export class PrintingService {
   /** Gera os cupons de produção de um pedido, um por setor, para as impressoras do setor. */
   enqueueOrderTickets(orderId: string, opts: { reprint?: boolean; ticketId?: string; manual?: boolean; createdBy?: string | null } = {}): string[] {
     const tickets = this.ctx.db.all(
-      `SELECT t.*, o.number, o.notes AS order_notes, o.created_at AS order_created, c.table_label, c.number AS comanda_number, c.customer_name,
+      `SELECT t.*, o.number, o.notes AS order_notes, o.created_at AS order_created, c.table_label, c.number AS comanda_number, c.card_number, c.kind AS comanda_kind, c.customer_name,
               u.name AS waiter_name
        FROM order_tickets t JOIN orders o ON o.id = t.order_id JOIN comandas c ON c.id = o.comanda_id LEFT JOIN users u ON u.id = o.created_by
        WHERE t.order_id = ? ${opts.ticketId ? 'AND t.id = ?' : ''}`,
@@ -260,7 +260,8 @@ export class PrintingService {
             orderNumber: Number(t.number),
             stationLabel: STATIONS[t.station as Station],
             table: (t.table_label as string) ?? null,
-            comandaNumber: Number(t.comanda_number),
+            // Número do cartão (o que o cliente conhece); venda rápida não tem comanda.
+            comandaNumber: comandaDisplayNumber({ number: Number(t.comanda_number), cardNumber: t.card_number as number | null, kind: String(t.comanda_kind) }),
             customerFirstName: firstName(t.customer_name as string) || null,
             waiterName: (t.waiter_name as string) ?? null,
             createdAt: new Date(String(t.order_created)),
@@ -306,7 +307,7 @@ export class PrintingService {
             {
               barName: b.tradeName,
               headerLines: [b.phone ? `Tel: ${b.phone}` : '', b.instagram ? `@${b.instagram.replace(/^@/, '')}` : ''].filter(Boolean),
-              comandaNumber: Number(d.number), table: (d.table as string) ?? null, customerFirstName: firstName(String(d.customerName)) || null,
+              comandaNumber: Number(d.displayNumber ?? d.number), table: (d.table as string) ?? null, customerFirstName: firstName(String(d.customerName)) || null,
               openedAt: new Date(String(d.openedAt)), printedAt: this.ctx.clock.now(),
               items: d.items.filter((i) => i.status === 'active').map((i) => ({
                 quantity: Number(i.quantity),

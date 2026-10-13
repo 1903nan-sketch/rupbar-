@@ -1,7 +1,7 @@
 {
   "name": "rupbar",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "RupBar — sistema de gestão para bares, adegas e tabacarias. by Ruptix",
   "packageManager": "pnpm@10.28.0",
   "engines": {

@@ -4,7 +4,7 @@ import {
 } from '@rupbar/core';
 import {
   AlertTriangle, Boxes, CircleCheck, CircleSlash, ClipboardCheck, History, PackagePlus, Plus, Search, SlidersHorizontal, Trash2, TriangleAlert, Truck,
-  type LucideIcon,
+  Undo2, type LucideIcon,
 } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -15,6 +15,7 @@ import { fmtDate, fmtDateTime, formatBRL } from '../lib/format';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
+import { ReasonModal } from '../components/OwnerActions';
 import { defaultCostMode, emptyQty, entryPayload, qtyOf, type CostDraft, type QtyDraft } from '../lib/stock-units';
 import '../styles/stock.css';
 import { packagingOf, type Product } from './Products';
@@ -256,7 +257,8 @@ interface PurchaseItemRow extends PackagingRow { product_name: string; qty: numb
 function Purchases() {
   const { can } = useSession();
   const [open, setOpen] = useState(false);
-  const { data, error, reload } = useLoad(() => api.get<{ id: string; purchased_at: string; supplier_name: string | null; invoice_number: string | null; total_cents: number; created_by_name: string; items: PurchaseItemRow[] }[]>('/api/stock/purchases'));
+  const { data, error, reload } = useLoad(() => api.get<{ id: string; purchased_at: string; supplier_name: string | null; invoice_number: string | null; total_cents: number; created_by_name: string; status?: string; cancel_reason?: string | null; items: PurchaseItemRow[] }[]>('/api/stock/purchases'));
+  const [cancel, setCancel] = useState<{ id: string; label: string } | null>(null);
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   return (
     <div className="stack">
@@ -265,19 +267,28 @@ function Purchases() {
         <Card flush>
           <div className="list">
             {data.map((p, i) => (
-              <div key={p.id} className="list-item stock-row" style={{ alignItems: 'flex-start', ...rowDelay(i) }}>
+              <div key={p.id} className={`list-item stock-row ${p.status === 'canceled' ? 'voided' : ''}`} style={{ alignItems: 'flex-start', ...rowDelay(i) }}>
                 <div className="grow">
                   <div className="strong">{p.supplier_name ?? 'Sem fornecedor'}{p.invoice_number && <span className="muted"> · NF {p.invoice_number}</span>}</div>
+                  {p.status === 'canceled' && <div className="tiny danger-text">Entrada excluída: {p.cancel_reason}</div>}
                   <div className="small muted">{fmtDateTime(p.purchased_at)} · {p.created_by_name}</div>
                   <div className="small" style={{ marginTop: 4 }}>{p.items.map((it) => `${it.product_name}: ${stockText(it.qty, rowPackaging(it))}`).join(' · ')}</div>
                 </div>
                 <span className="num strong">{formatBRL(p.total_cents)}</span>
+                {can('admin.override') && p.status !== 'canceled' && (
+                  <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label="Excluir entrada" title="Excluir entrada (conta mestre)"
+                    onClick={() => setCancel({ id: p.id, label: `${p.supplier_name ?? 'Entrada'}${p.invoice_number ? ` · NF ${p.invoice_number}` : ''}` })} />
+                )}
               </div>
             ))}
           </div>
         </Card>
       )}
       {open && <PurchaseModal onClose={() => setOpen(false)} onDone={reload} />}
+      {cancel && (
+        <ReasonModal title="Excluir entrada de mercadorias" danger confirmLabel="Excluir entrada" description={<>{cancel.label}. Tudo o que esta entrada somou sai do estoque.</>}
+          onClose={() => setCancel(null)} onConfirm={async (reason) => { await api.post(`/api/admin/purchases/${cancel.id}/cancel`, { reason }); void reload(); }} />
+      )}
     </div>
   );
 }
@@ -418,6 +429,9 @@ function Movements() {
   const products = useTracked();
   const [productId, setProductId] = useState('');
   const { data, error, reload } = useLoad(() => api.get<MovementRow[]>(`/api/stock/movements${qs({ type, productId, limit: 300 })}`), [type, productId]);
+  const { can } = useSession();
+  const master = can('admin.override');
+  const [undo, setUndo] = useState<MovementRow | null>(null);
   return (
     <div className="stack">
       <div className="filter-bar stock-filters">
@@ -429,7 +443,7 @@ function Movements() {
         <Card flush>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th className="right">Quantidade</th><th className="right">Saldo</th><th>Responsável / motivo</th></tr></thead>
+              <thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th className="right">Quantidade</th><th className="right">Saldo</th><th>Responsável / motivo</th>{master && <th />}</tr></thead>
               <tbody>
                 {data.map((m, i) => {
                   const pk = rowPackaging(m);
@@ -444,6 +458,11 @@ function Movements() {
                       </td>
                       <td className="right num muted small">{stockText(m.balance_after, pk)}</td>
                       <td className="small muted">{m.user_name ?? 'Sistema'}{m.reason && ` · ${m.reason}`}</td>
+                      {master && (
+                        <td className="right">
+                          {['adjustment', 'inventory', 'hookah'].includes(m.type) && <Button size="small" variant="plain" icon={<Undo2 size={15} />} aria-label="Desfazer" title="Desfazer (conta mestre)" onClick={() => setUndo(m)} />}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -451,6 +470,10 @@ function Movements() {
             </table>
           </div>
         </Card>
+      )}
+      {undo && (
+        <ReasonModal title="Desfazer movimentação" confirmLabel="Desfazer" description={<>{STOCK_MOVEMENT_TYPES[undo.type]} de {undo.product_name}. Lança a movimentação inversa (fica no histórico).</>}
+          onClose={() => setUndo(null)} onConfirm={async (reason) => { await api.post(`/api/admin/stock-movements/${undo.id}/reverse`, { reason }); void reload(); }} />
       )}
     </div>
   );
