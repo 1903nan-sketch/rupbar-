@@ -58,7 +58,7 @@ export function DashboardPage() {
           <ActionTile icon={<ClipboardPlus size={26} />} title="Lançar na comanda" hint="Digite o número do cartão e escolha os itens" kbd="F3" onClick={() => shell.openLaunch()} />
         )}
         {can('comandas.view') && (
-          <ActionTile icon={<ClipboardList size={26} />} title="Comandas" hint={`${data.openComandas} abertas agora`} onClick={() => navigate('/comandas')} />
+          <ActionTile icon={<ClipboardList size={26} />} title="Comandas" hint={plural(data.openComandas, 'aberta agora', 'abertas agora')} onClick={() => navigate('/comandas')} />
         )}
         <ActionTile
           icon={shell.fullscreen ? <Minimize2 size={26} /> : <Maximize2 size={26} />}
@@ -88,16 +88,16 @@ export function DashboardPage() {
 
       {f && (
         <div className="grid-4">
-          <Stat label="Vendas do dia" value={formatBRL(f.salesCents)} hint={`${f.itemsSold} itens`} />
-          <Stat label="Recebido" value={formatBRL(f.receivedCents)} hint={`${f.closedComandas} comandas encerradas`} />
+          <Stat label="Vendas do dia" value={formatBRL(f.salesCents)} hint={plural(f.itemsSold, 'item', 'itens')} />
+          <Stat label="Recebido" value={formatBRL(f.receivedCents)} hint={plural(f.closedComandas, 'comanda encerrada', 'comandas encerradas')} />
           <Stat label="Ticket médio" value={formatBRL(f.averageTicketCents)} />
-          <Stat label="Em aberto" value={formatBRL(f.openComandasValueCents)} hint={`${data.openComandas} comandas abertas`} />
+          <Stat label="Em aberto" value={formatBRL(f.openComandasValueCents)} hint={plural(data.openComandas, 'comanda aberta', 'comandas abertas')} />
         </div>
       )}
 
       <div className="grid-4">
         <Link to="/comandas"><Stat label={<span className="row"><ClipboardList size={15} /> Comandas abertas</span>} value={data.openComandas} /></Link>
-        <Link to="/producao"><Stat label={<span className="row"><ChefHat size={15} /> Em produção</span>} value={data.inProduction} hint={`${data.readyForPickup} prontos para retirada`} /></Link>
+        <Link to="/producao"><Stat label={<span className="row"><ChefHat size={15} /> Em produção</span>} value={data.inProduction} hint={plural(data.readyForPickup, 'pronto para retirada', 'prontos para retirada')} /></Link>
         <Stat label="Pedidos hoje" value={data.ordersToday} />
         <Link to="/narguiles"><Stat label={<span className="row"><Wind size={15} /> Narguilés em uso</span>} value={data.hookahsInUse} /></Link>
       </div>
@@ -131,3 +131,5 @@ function ActionTile({ icon, title, hint, kbd, primary, onClick }: { icon: ReactN
     </button>
   );
 }
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

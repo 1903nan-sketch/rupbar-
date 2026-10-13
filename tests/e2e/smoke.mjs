@@ -156,6 +156,9 @@ try {
 
   // 5b. Venda rápida pela tela inicial: paga na hora e a TV chama pelo nome
   await page.goto(B + '/');
+  await page.locator('.action-tile').first().waitFor();
+  await page.waitForTimeout(700); // fim das animações de entrada
+  await page.screenshot({ path: join(out, '00-inicio.png') });
   await page.getByRole('button', { name: /Venda rápida.*Balcão/ }).click();
   const quick = page.locator('.quick-sale');
   await quick.locator('.menu-tile').first().waitFor();
@@ -164,6 +167,7 @@ try {
   await quick.getByRole('radio', { name: 'Débito' }).click();
   await quick.getByRole('button', { name: /Finalizar/ }).click();
   await quick.locator('.quick-call-name', { hasText: 'Juliana' }).waitFor();
+  await page.waitForTimeout(600);
   await page.screenshot({ path: join(out, '04b-venda-rapida.png') });
   await quick.getByRole('button', { name: 'Fechar', exact: true }).last().click();
   await page.goto(B + '/producao');
