@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Atalho "Trocar PC": duas setas sobre o fundo escuro da marca. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="@color/brand_card"
+        android:pathData="M24,2 A22,22 0 1 1 24,46 A22,22 0 1 1 24,2 Z" />
+    <path
+        android:pathData="M15,19 H33 M29,15 L33,19 L29,23 M33,29 H15 M19,25 L15,29 L19,33"
+        android:strokeColor="@color/brand_orange"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

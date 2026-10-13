@@ -1,9 +1,11 @@
+import { createReadStream } from 'node:fs';
 import { PERMISSION_GROUPS, PERMISSIONS, OWNER_ONLY, SENSITIVE } from '@rupbar/core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppError, badRequest, forbidden, unauthorized } from '../lib/errors';
 import type { AttachmentKind } from '../services/attachments';
 import { requirePerm, type Actor } from '../services/context';
+import { ANDROID_APK, apkMissingPage, findDownload } from '../services/downloads';
 import type { Services } from '../services';
 import { listWindowsPrinters } from '../services/printing';
 import { actorOf, isLoopback, RateLimiter, SESSION_COOKIE, setSessionCookie, TV_COOKIE, tokenFrom } from './app';
@@ -46,6 +48,22 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
     reply.header('Access-Control-Allow-Origin', '*');
     const b = s.settings.branding();
     return { app: 'rupbar', establishmentId: b.establishmentId, name: b.tradeName, port: s.ctx.config.port };
+  });
+
+  /**
+   * App Android do garçom (APK empacotado no instalador do Windows). Público:
+   * o celular baixa pelo QR Code em Configurações → Conectar dispositivo.
+   */
+  app.get(`/download/${ANDROID_APK}`, async (_req, reply) => {
+    const file = findDownload(s.ctx.config, ANDROID_APK);
+    if (!file) {
+      return reply.status(404).header('Cache-Control', 'no-store').type('text/html; charset=utf-8').send(apkMissingPage());
+    }
+    reply.header('Content-Type', 'application/vnd.android.package-archive');
+    reply.header('Content-Length', String(file.size));
+    reply.header('Content-Disposition', `attachment; filename="${ANDROID_APK}"`);
+    reply.header('Cache-Control', 'no-cache');
+    return reply.send(createReadStream(file.path));
   });
 
   app.get('/api/files/:id', async (req, reply) => {
@@ -161,7 +179,12 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('GET', '/api/dashboard', (_req, a) => s.reports.dashboard(a));
   r('GET', '/api/network', (_req, a) => {
     requirePerm(a, 'devices.manage');
-    return { ...s.network.info(), connectedClients: hub.count() };
+    const apk = findDownload(s.ctx.config, ANDROID_APK);
+    return {
+      ...s.network.info(),
+      connectedClients: hub.count(),
+      androidApp: { path: `/download/${ANDROID_APK}`, available: !!apk, size: apk?.size ?? null, updatedAt: apk?.updatedAt ?? null },
+    };
   });
   r('GET', '/api/permissions', () => ({ permissions: PERMISSIONS, groups: PERMISSION_GROUPS, ownerOnly: OWNER_ONLY, sensitive: SENSITIVE }));
 

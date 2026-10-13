@@ -24,10 +24,24 @@ function defaultDataDir(): string {
   return join(process.env.HOME ?? '.', '.rupbar');
 }
 
+/** Pasta do server.cjs (instalado) ou de src/ (desenvolvimento). */
+function serverDir(): string {
+  return typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
+}
+
 function defaultUiDir(): string | null {
-  const here = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
+  const here = serverDir();
   for (const candidate of [join(here, 'public'), join(here, '..', 'public'), resolve(here, '../../local-ui/dist')]) {
     if (existsSync(join(candidate, 'index.html'))) return candidate;
+  }
+  return null;
+}
+
+/** Downloads oferecidos aos celulares (instalado: <app>/server/downloads; dev: apps/android/dist). */
+function defaultDownloadsDir(): string | null {
+  const here = serverDir();
+  for (const candidate of [join(here, 'downloads'), join(here, '..', 'downloads'), resolve(here, '../../android/dist')]) {
+    if (existsSync(candidate)) return candidate;
   }
   return null;
 }
@@ -52,6 +66,7 @@ async function main() {
       backupsDir: join(dataDir, 'backups'),
       port,
       uiDir: arg('ui-dir') ?? process.env.RUPBAR_UI_DIR ?? defaultUiDir(),
+      downloadsDir: arg('downloads-dir') ?? process.env.RUPBAR_DOWNLOADS_DIR ?? defaultDownloadsDir(),
       version: VERSION,
     },
     log,

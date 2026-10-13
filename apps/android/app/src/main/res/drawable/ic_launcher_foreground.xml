@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Monograma "RB" desenhado com traços (área segura do ícone adaptável: círculo de 66dp). -->
+    <path
+        android:pathData="M32,69.5 V38.5 H39.5 A8.25,8.25 0 0 1 39.5,55 H32 M38.5,55 L47.5,69.5 M59.75,69.5 V38.5 H67.25 A7.75,7.75 0 0 1 67.25,54 H59.75 M59.75,54 H68.25 A7.75,7.75 0 0 1 68.25,69.5 H59.75"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="35"
+                android:endX="54"
+                android:endY="73"
+                android:startColor="@color/brand_orange_light"
+                android:endColor="@color/brand_orange" />
+        </aapt:attr>
+    </path>
+</vector>

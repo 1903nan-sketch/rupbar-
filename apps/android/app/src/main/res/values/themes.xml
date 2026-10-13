@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Tema claro/escuro conforme o sistema: o WebView informa prefers-color-scheme
+      à interface a partir deste tema (targetSdk 33+), igual ao navegador.
+    -->
+    <style name="Base.Theme.RupBar" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.RupBar" parent="Base.Theme.RupBar">
+        <item name="android:windowBackground">@color/web_bg</item>
+        <item name="android:colorPrimary">@color/brand_bg</item>
+        <item name="android:colorPrimaryDark">@color/web_bg</item>
+        <item name="android:colorAccent">@color/brand_orange</item>
+        <item name="android:statusBarColor">@color/web_bg</item>
+        <item name="android:windowLightStatusBar">@bool/light_system_bars</item>
+    </style>
+
+    <!-- Tela de conexão: sempre escura, com a marca. -->
+    <style name="Theme.RupBar.Connect" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/brand_bg</item>
+        <item name="android:colorPrimary">@color/brand_bg</item>
+        <item name="android:colorPrimaryDark">@color/brand_bg</item>
+        <item name="android:colorAccent">@color/brand_orange</item>
+        <item name="android:statusBarColor">@color/brand_bg</item>
+        <item name="android:navigationBarColor">@color/brand_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Widget.RupBar.Button" parent="android:Widget.Material.Button.Borderless">
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">18dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:background">@drawable/button_secondary</item>
+        <item name="android:textColor">@color/brand_text</item>
+    </style>
+
+    <style name="Widget.RupBar.Button.Primary">
+        <item name="android:background">@drawable/button_primary</item>
+        <item name="android:textColor">#FF000000</item>
+    </style>
+
+    <style name="Widget.RupBar.Input" parent="android:Widget.Material.EditText">
+        <item name="android:background">@drawable/input_bg</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textColor">@color/brand_text</item>
+        <item name="android:textColorHint">@color/brand_text_muted</item>
+        <item name="android:singleLine">true</item>
+    </style>
+</resources>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Toque longo no ícone do app → "Trocar PC". -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_switch"
+        android:shortcutId="trocar_pc"
+        android:shortcutLongLabel="@string/shortcut_switch_long"
+        android:shortcutShortLabel="@string/shortcut_switch_short">
+        <intent
+            android:action="com.ruptix.rupbar.garcom.TROCAR_PC"
+            android:targetClass="com.ruptix.rupbar.garcom.ConnectActivity"
+            android:targetPackage="com.ruptix.rupbar.garcom" />
+    </shortcut>
+</shortcuts>

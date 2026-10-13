@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Por que o HTTP sem criptografia é liberado para todo o app:
+  o PC do bar é acessado pelo IP da rede local (ex.: http://192.168.0.10:7420),
+  descoberto em tempo de execução e que muda quando o roteador reinicia. O Network
+  Security Config só aceita nomes de domínio exatos (sem curingas de IP nem faixas
+  como 192.168.0.0/16), então não há como liberar apenas "a rede local".
+  Mitigações no código: o WebView só navega na origem do RupBar encontrada e
+  confirmada pela assinatura de /api/discovery; links de outras origens abrem no
+  navegador do sistema; a ponte JavaScript só responde a essa origem.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

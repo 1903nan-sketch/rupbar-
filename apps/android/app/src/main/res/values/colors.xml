@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Marca RupBar (mesmas cores do ícone da interface web). -->
+    <color name="brand_bg">#FF0B0B0D</color>
+    <color name="brand_card">#FF1C1C1E</color>
+    <color name="brand_input">#FF2C2C2E</color>
+    <color name="brand_orange">#FFFF9F0A</color>
+    <color name="brand_orange_light">#FFFFB340</color>
+    <color name="brand_text">#FFF5F5F7</color>
+    <color name="brand_text_muted">#FFA1A1A6</color>
+    <color name="brand_danger">#FFFF6961</color>
+    <color name="icon_bg_start">#FF2C2C2E</color>
+    <color name="icon_bg_end">#FF000000</color>
+
+    <!-- Fundo da interface web (variável CSS bg do tema claro); muda no tema escuro. -->
+    <color name="web_bg">#FFF5F5F7</color>
+</resources>
