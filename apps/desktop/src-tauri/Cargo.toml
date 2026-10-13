@@ -1,6 +1,6 @@
 [package]
 name = "rupbar-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "RupBar — gestão para bares (by Ruptix)"
 authors = ["Ruptix"]
 edition = "2021"

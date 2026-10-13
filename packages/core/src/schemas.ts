@@ -208,6 +208,12 @@ export const productSchema = z.object({
   station: zStation.nullable().optional().transform((v) => v ?? null),
   active: z.boolean().default(true),
   presentations: z.array(presentationSchema).default([]),
+  /** Entrada opcional no cadastro inicial, registrada na mesma transação. */
+  initialStock: z.object({
+    packages: z.number().positive().max(100_000),
+    totalCostCents: zCents.min(0),
+    expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).optional(),
 });
 export type ProductInput = z.infer<typeof productSchema>;
 

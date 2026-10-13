@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Servidor local do RupBar: API, tempo real, impressão, TV e sincronização (offline-first).",

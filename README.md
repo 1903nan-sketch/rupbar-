@@ -49,13 +49,22 @@ pnpm dev:ui            # interface em http://localhost:5173 (proxy para a API)
 pnpm dev:panel         # painel online em http://localhost:3000 (requer .env.local do Supabase)
 
 pnpm typecheck
-pnpm test              # domínio, servidor (integração), nuvem (PGlite), interface — 73 testes
-pnpm test:e2e          # navegador real: configuração → comanda → cozinha → TV → celular
+pnpm test              # domínio, servidor (integração), nuvem (PGlite), interface — 76 testes
+pnpm test:e2e          # navegador real: operação completa + cadastro e reposição de estoque
 ```
 
 Abra `http://localhost:5173` no próprio PC para o assistente de configuração inicial (por segurança, só é permitido a partir do computador local).
 
 ## Gerar o instalador do Windows
+
+### Novidades da versão 0.1.1
+
+- Visual Glassmorphism com cartões translúcidos, desfoque, fundos suaves e temas claro/escuro.
+- Em **Estoque → Novo produto**, cadastre nome, preço e saldo inicial na mesma tela. Escolha unidades, garrafas/doses ou ingredientes; o saldo inicial gera uma entrada rastreável.
+- Use **Entrada** na linha do produto para repor mercadoria com o produto e tamanho da embalagem preenchidos. O custo de compra fica separado do preço de venda.
+- Busca por produto, categoria ou código e filtros por situação do estoque.
+
+### Instalador
 
 O GitHub Actions gera o instalador a cada push (`RupBar-instalador-windows`) e o publica em releases nas tags `v*`. Localmente, no Windows:
 

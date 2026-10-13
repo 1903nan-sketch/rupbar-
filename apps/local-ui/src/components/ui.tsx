@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 import {
-  createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes,
+  cloneElement, isValidElement, createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes,
   type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react';
 import { ApiError } from '../lib/api';
@@ -14,7 +14,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'small' | 'large'; block?: boolean; icon?: ReactNode; loading?: boolean }) {
   const cls = ['btn', variant !== 'default' ? variant : '', size ?? '', block ? 'block' : '', !children && icon ? 'icon' : '', className].filter(Boolean).join(' ');
   return (
-    <button type="button" className={cls} disabled={rest.disabled || loading} {...rest}>
+    <button type="button" className={cls} {...rest} disabled={rest.disabled || loading}>
       {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : icon}
       {children}
     </button>
@@ -24,10 +24,14 @@ export function Button({
 // ---------------------------------------------------------------- formulários
 
 export function Field({ label, hint, error, children, className }: { label?: ReactNode; hint?: ReactNode; error?: string | null; children: ReactNode; className?: string }) {
+  const generatedId = useId();
+  const control = isValidElement<{ id?: string }>(children) &&
+    [Input, Select, Textarea, MoneyInput, DecimalInput, 'input', 'select', 'textarea'].includes(children.type as typeof Input);
+  const id = control ? children.props.id ?? generatedId : undefined;
   return (
     <div className={`field ${className ?? ''}`}>
-      {label && <label>{label}</label>}
-      {children}
+      {label && <label htmlFor={id}>{label}</label>}
+      {control ? cloneElement(children, { id }) : children}
       {error ? <span className="error">{error}</span> : hint ? <span className="hint">{hint}</span> : null}
     </div>
   );
@@ -98,7 +102,7 @@ export function MoneyInput({ value, onChange, placeholder = '0,00', autoFocus, l
 }
 
 /** Quantidade decimal (ex.: "1,5" L). Devolve número na unidade exibida. */
-export function DecimalInput({ value, onChange, suffix, placeholder, autoFocus }: { value: number | null; onChange: (v: number | null) => void; suffix?: string; placeholder?: string; autoFocus?: boolean }) {
+export function DecimalInput({ value, onChange, suffix, placeholder, autoFocus, id }: { value: number | null; onChange: (v: number | null) => void; suffix?: string; placeholder?: string; autoFocus?: boolean; id?: string }) {
   const [text, setText] = useState(value === null ? '' : fmtDecimal(value));
   const last = useRef(value);
   useEffect(() => {
@@ -111,6 +115,7 @@ export function DecimalInput({ value, onChange, suffix, placeholder, autoFocus }
     <div className="input-group">
       <input
         className="input num"
+        id={id}
         inputMode="decimal"
         placeholder={placeholder}
         value={text}

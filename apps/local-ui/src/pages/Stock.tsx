@@ -1,14 +1,15 @@
 import { BASE_UNIT, formatQty, STOCK_MOVEMENT_TYPES, type Measure, type StockMovementType } from '@rupbar/core';
-import { AlertTriangle, ClipboardCheck, PackagePlus, Plus, SlidersHorizontal, Trash2, Truck } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, PackagePlus, Plus, Search, SlidersHorizontal, Trash2, Truck } from 'lucide-react';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Badge, Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Tabs, Textarea, useToast } from '../components/ui';
+import { Badge, Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Stat, Tabs, Textarea, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { fmtDate, fmtDateTime, formatBRL } from '../lib/format';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
 import { LEVEL_BADGE, type Product } from './Products';
+import { QuickProductModal } from './QuickProduct';
 
 type Tab = 'saldos' | 'entradas' | 'movimentacoes' | 'inventario' | 'validades' | 'alertas' | 'fornecedores';
 
@@ -16,9 +17,16 @@ export function StockPage() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('aba') as Tab) ?? 'saldos';
   const { can } = useSession();
+  const [create, setCreate] = useState(false);
+  const [entry, setEntry] = useState<Product | 'new' | null>(null);
+  const [revision, setRevision] = useState(0);
+  const refresh = () => setRevision((n) => n + 1);
   return (
     <div className="stack">
-      <PageHeader title="Estoque" subtitle="Saldos em unidades, mililitros e gramas. Toda movimentação é rastreável." />
+      <PageHeader title="Estoque" subtitle="Cadastre, reponha e acompanhe seus produtos em um só lugar." actions={<>
+        {can('products.manage') && <Button icon={<Plus size={16} />} onClick={() => setCreate(true)}>Novo produto</Button>}
+        {can('stock.entry') && <Button variant="primary" icon={<PackagePlus size={16} />} onClick={() => setEntry('new')}>Nova entrada</Button>}
+      </>} />
       <Tabs value={tab} onChange={(v) => setParams({ aba: v })} options={[
         { value: 'saldos', label: 'Saldos' },
         { value: 'alertas', label: 'Alertas' },
@@ -28,13 +36,15 @@ export function StockPage() {
         { value: 'validades', label: 'Validades' },
         { value: 'fornecedores', label: 'Fornecedores' },
       ]} />
-      {tab === 'saldos' && <Balances />}
+      {tab === 'saldos' && <Balances key={revision} onEntry={setEntry} onCreate={() => setCreate(true)} />}
       {tab === 'alertas' && <Alerts />}
-      {tab === 'entradas' && <Purchases />}
+      {tab === 'entradas' && <Purchases key={revision} />}
       {tab === 'movimentacoes' && <Movements />}
       {tab === 'inventario' && <Inventory />}
       {tab === 'validades' && <Lots />}
       {tab === 'fornecedores' && <Suppliers />}
+      {create && <QuickProductModal onClose={() => setCreate(false)} onSaved={refresh} />}
+      {entry && <PurchaseModal initialProduct={entry === 'new' ? undefined : entry} onClose={() => setEntry(null)} onDone={refresh} />}
     </div>
   );
 }
@@ -45,15 +55,23 @@ function useTracked() {
   return r;
 }
 
-function Balances() {
+function Balances({ onEntry, onCreate }: { onEntry: (product: Product) => void; onCreate: () => void }) {
   const { can } = useSession();
   const { data, error, reload } = useTracked();
   const [adjust, setAdjust] = useState<Product | null>(null);
+  const [search, setSearch] = useState('');
+  const [level, setLevel] = useState('');
   const byCat = useLoad(() => api.get<{ category: string; products: number; below_min: number; value_cents: number | null }[]>('/api/reports/stock-by-category'));
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
+  const filtered = data.filter((p) => `${p.name} ${p.categoryName} ${p.barcode ?? ''} ${p.internalCode ?? ''}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')) && (!level || (level === 'alert' ? p.level !== 'ok' : p.level === level)));
   return (
     <div className="stack">
+      <div className="grid-3 stock-overview">
+        <Stat label="Produtos cadastrados" value={data.length} hint="Com controle de saldo ativo" />
+        <Stat label="Precisam de reposição" value={data.filter((p) => p.level !== 'ok').length} hint="Abaixo do mínimo ou sem saldo" />
+        <Stat label="Com saldo disponível" value={data.filter((p) => p.stockQty > 0).length} hint="Prontos para a operação" />
+      </div>
       {byCat.data && (
         <div className="scroll-x">
           {byCat.data.map((c) => (
@@ -65,24 +83,26 @@ function Balances() {
           ))}
         </div>
       )}
+      <div className="filter-bar"><div className="input-group grow"><Search size={16} className="prefix" /><Input aria-label="Buscar no estoque" placeholder="Buscar produto, categoria ou código…" value={search} onChange={(e) => setSearch(e.target.value)} /></div><Select aria-label="Situação do estoque" value={level} onChange={(e) => setLevel(e.target.value)}><option value="">Todas as situações</option><option value="alert">Precisam de reposição</option><option value="ok">Saldo OK</option><option value="out">Sem saldo</option><option value="low">Estoque baixo</option><option value="negative">Saldo negativo</option></Select></div>
       <Card flush>
+        {filtered.length === 0 ? <Empty icon={<PackagePlus size={32} />} title={data.length ? 'Nenhum produto neste filtro' : 'Vamos cadastrar seu estoque?'}>{data.length ? 'Tente outro nome ou situação.' : <div className="stack"><span>Cadastre o produto e informe o saldo inicial na mesma tela.</span>{can('products.manage') && <Button variant="primary" onClick={onCreate}>Cadastrar primeiro produto</Button>}</div>}</Empty> :
         <div className="table-wrap">
           <table className="table">
             <thead><tr><th>Produto</th><th className="right">Saldo</th><th className="right">Embalagens</th><th className="right">Mínimo</th><th>Situação</th><th /></tr></thead>
             <tbody>
-              {data.map((p) => (
+              {filtered.map((p) => (
                 <tr key={p.id}>
                   <td><div className="strong">{p.name}</div><div className="tiny muted">{p.categoryName}</div></td>
                   <td className="right num strong">{formatQty(p.stockQty, p.measure)}</td>
                   <td className="right small muted">{p.packages && p.packageQty > 1000 ? `${p.packages.closed} fechada(s)${p.packages.hasOpen ? ` + ${formatQty(p.packages.openRemaining, p.measure)}` : ''}` : '—'}</td>
                   <td className="right num muted">{p.minStock ? formatQty(p.minStock, p.measure) : '—'}</td>
                   <td>{LEVEL_BADGE[p.level]}</td>
-                  <td className="right">{can('stock.adjust') && <Button size="small" variant="plain" icon={<SlidersHorizontal size={14} />} onClick={() => setAdjust(p)}>Ajustar</Button>}</td>
+                  <td><div className="row end">{can('stock.entry') && <Button size="small" icon={<PackagePlus size={14} />} onClick={() => onEntry(p)}>Entrada</Button>}{can('stock.adjust') && <Button size="small" variant="plain" icon={<SlidersHorizontal size={14} />} onClick={() => setAdjust(p)}>Ajustar</Button>}</div></td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </div>}
       </Card>
       {adjust && <AdjustModal product={adjust} onClose={() => setAdjust(null)} onDone={reload} />}
     </div>
@@ -170,20 +190,27 @@ function Purchases() {
   );
 }
 
-function PurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function PurchaseModal({ initialProduct, onClose, onDone }: { initialProduct?: Product; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const products = useTracked();
   const suppliers = useLoad(() => api.get<{ id: string; name: string }[]>('/api/suppliers'));
   const [supplierId, setSupplierId] = useState('');
   const [invoice, setInvoice] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [lines, setLines] = useState<PurchaseLine[]>([{ productId: '', packages: 1, packageQty: null, totalCostCents: null, expiresOn: '' }]);
+  const [lines, setLines] = useState<PurchaseLine[]>([{ productId: initialProduct?.id ?? '', packages: 1, packageQty: initialProduct ? initialProduct.packageQty / 1000 : null, totalCostCents: null, expiresOn: '' }]);
+  const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
-  const byId = (id: string) => products.data?.find((p) => p.id === id);
+  const availableProducts = products.data ?? (initialProduct ? [initialProduct] : []);
+  const byId = (id: string) => availableProducts.find((p) => p.id === id);
   const total = lines.reduce((a, l) => a + (l.totalCostCents ?? 0), 0);
 
   const submit = async () => {
-    for (const l of lines) if (!l.productId || !l.packages || !l.packageQty || l.totalCostCents === null) return toast.error('Preencha todos os itens.');
+    if (busy) return;
+    for (const [i, l] of lines.entries()) {
+      if (!l.productId) return toast.error(`Selecione o produto do item ${i + 1}.`);
+      if (!l.packages || l.packages <= 0 || l.packages > 100_000 || !l.packageQty || l.packageQty <= 0 || Math.round(l.packages * l.packageQty * 1000) <= 0) return toast.error(`Confira a quantidade e o tamanho da embalagem do item ${i + 1}.`);
+      if (l.totalCostCents === null || l.totalCostCents < 0) return toast.error(`Informe o custo total de compra do item ${i + 1}.`);
+    }
     setBusy(true);
     try {
       let attachmentId: string | null = null;
@@ -205,32 +232,36 @@ function PurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const setLine = (i: number, patch: Partial<PurchaseLine>) => setLines(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   return (
-    <Modal title="Entrada de mercadorias" wide onClose={onClose} footer={<><span className="grow strong num">Total {formatBRL(total)}</span><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} onClick={submit}>Registrar entrada</Button></>}>
+    <Modal title="Entrada de mercadorias" wide onClose={onClose} footer={<><span className="grow strong num">Total {formatBRL(total)}</span><Button disabled={busy} onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!products.data?.length} onClick={submit}>Registrar entrada</Button></>}>
       <div className="stack">
-        <div className="grid-3">
+        {products.error && <ErrorBox error={products.error} onRetry={products.reload} />}
+        {products.data?.length === 0 && <div className="banner warning">Cadastre um produto pelo botão “Novo produto” no estoque antes de registrar uma entrada.</div>}
+        <p className="small muted">Selecione os produtos, informe quantas embalagens chegaram e o custo total da compra. O tamanho da embalagem já vem do cadastro.</p>
+        <div className="input-group"><Search size={16} className="prefix" /><Input aria-label="Buscar produto para entrada" placeholder="Filtrar produtos por nome ou código…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        <details className="optional-fields"><summary>Fornecedor, nota fiscal e comprovante (opcional)</summary><div className="grid-3">
           <Field label="Fornecedor"><Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}><option value="">—</option>{suppliers.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
           <Field label="Nota fiscal"><Input value={invoice} onChange={(e) => setInvoice(e.target.value)} /></Field>
           <Field label="Arquivo da nota (opcional)"><input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></Field>
-        </div>
+        </div></details>
         {lines.map((l, i) => {
           const p = byId(l.productId);
           const unit = p ? BASE_UNIT[p.measure] : '';
           return (
             <Card key={i} tight>
-              <div className="grid" style={{ gridTemplateColumns: '2fr 0.8fr 1fr 1fr 1fr auto', alignItems: 'end' }}>
+              <div className="row between"><strong className="small">Item {i + 1}</strong><Button variant="plain" icon={<Trash2 size={15} />} disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, j) => j !== i))} aria-label={`Remover item ${i + 1}`} /></div>
+              <div className="purchase-line-grid">
                 <Field label="Produto">
                   <Select value={l.productId} onChange={(e) => { const np = byId(e.target.value); setLine(i, { productId: e.target.value, packageQty: np ? np.packageQty / 1000 : null }); }}>
                     <option value="">Selecione…</option>
-                    {products.data?.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    {availableProducts.filter((x) => x.id === l.productId || `${x.name} ${x.barcode ?? ''} ${x.internalCode ?? ''}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
                   </Select>
                 </Field>
-                <Field label="Embalagens"><DecimalInput value={l.packages} onChange={(v) => setLine(i, { packages: v })} /></Field>
-                <Field label={`Tamanho (${unit || 'un'})`} hint="Ex.: 50 g ou 100 g"><DecimalInput value={l.packageQty} onChange={(v) => setLine(i, { packageQty: v })} suffix={unit} /></Field>
-                <Field label="Valor total"><MoneyInput value={l.totalCostCents} onChange={(v) => setLine(i, { totalCostCents: v })} /></Field>
-                <Field label="Validade"><Input type="date" value={l.expiresOn} onChange={(e) => setLine(i, { expiresOn: e.target.value })} /></Field>
-                <Button variant="plain" icon={<Trash2 size={15} />} disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, j) => j !== i))} aria-label="Remover" />
+                <Field label={p?.measure === 'unit' && p.packageQty === 1000 ? 'Quantidade de unidades' : 'Quantidade de embalagens'}><DecimalInput value={l.packages} onChange={(v) => setLine(i, { packages: v })} /></Field>
+                <Field label={`Conteúdo por embalagem (${unit || 'un'})`} hint="Preenchido pelo cadastro; altere se a embalagem da compra for diferente."><DecimalInput value={l.packageQty} onChange={(v) => setLine(i, { packageQty: v })} suffix={unit} /></Field>
+                <Field label="Custo total de compra" hint="Valor pago por todas as embalagens deste item."><MoneyInput value={l.totalCostCents} onChange={(v) => setLine(i, { totalCostCents: v })} /></Field>
+                <Field label="Validade (opcional)"><Input type="date" value={l.expiresOn} onChange={(e) => setLine(i, { expiresOn: e.target.value })} /></Field>
               </div>
-              {p && l.packages && l.packageQty ? <div className="tiny muted" style={{ marginTop: 6 }}>Entrada: {formatQty(Math.round(l.packages * l.packageQty * 1000), p.measure)}{l.totalCostCents ? ` · ${formatBRL(Math.round(l.totalCostCents / l.packages))} por embalagem` : ''}</div> : null}
+              {p && l.packages && l.packageQty ? <div className="stock-entry-summary compact">Entrará no estoque: <strong>{formatQty(Math.round(l.packages * l.packageQty * 1000), p.measure)}</strong>{l.totalCostCents !== null ? ` · ${formatBRL(Math.round(l.totalCostCents / l.packages))} por embalagem` : ''}</div> : null}
             </Card>
           );
         })}
