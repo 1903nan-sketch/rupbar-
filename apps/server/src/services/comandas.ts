@@ -97,8 +97,6 @@ export class ComandasService {
       where.push('(c.customer_name LIKE ? OR c.table_label = ? OR CAST(c.number AS TEXT) = ? OR CAST(c.card_number AS TEXT) = ?)');
       params.push(`%${filter.q}%`, filter.q, filter.q, filter.q);
     }
-    // Vendas rápidas já nascem pagas: só aparecem quando pedidas (histórico).
-    if (status === 'open') where.push("c.kind = 'regular'");
     if (filter.from) where.push('c.opened_at >= ?'), params.push(filter.from);
     if (filter.to) where.push('c.opened_at < ?'), params.push(filter.to);
     params.push(Math.min(filter.limit ?? 300, 1000));

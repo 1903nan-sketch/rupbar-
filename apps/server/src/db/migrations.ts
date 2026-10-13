@@ -685,6 +685,21 @@ ALTER TABLE comanda_items ADD COLUMN hookah_session_id TEXT;
 CREATE INDEX comanda_items_hookah ON comanda_items(hookah_session_id);
 `;
 
+/**
+ * 0.2: correções da conta mestre (proprietário). Movimentações continuam
+ * imutáveis: "excluir" anula com motivo e "editar" anula e lança de novo.
+ */
+const M004 = /* sql */ `
+ALTER TABLE cash_movements ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE cash_movements ADD COLUMN voided_by TEXT;
+ALTER TABLE cash_movements ADD COLUMN voided_at TEXT;
+ALTER TABLE cash_movements ADD COLUMN void_reason TEXT;
+ALTER TABLE purchases ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE purchases ADD COLUMN canceled_by TEXT;
+ALTER TABLE purchases ADD COLUMN canceled_at TEXT;
+ALTER TABLE purchases ADD COLUMN cancel_reason TEXT;
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -695,6 +710,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 1, name: 'schema inicial', sql: M001 },
   { id: 2, name: 'gatilhos de sincronização', sql: syncTriggersSql() },
   { id: 3, name: 'cartões, venda rápida e narguilé por item', sql: M003 },
+  { id: 4, name: 'correções da conta mestre', sql: M004 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

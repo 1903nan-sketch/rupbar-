@@ -257,6 +257,23 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/comanda-items/:id/cancel', (req, a) => s.comandas.cancelItem(a, id(req), req.body));
   r('POST', '/api/orders', (req, a) => s.comandas.createOrder(a, req.body, q(req).source === 'mobile' ? 'mobile' : 'desktop'));
   r('POST', '/api/quick-sales', (req, a) => s.sales.quickSale(a, req.body));
+
+  // ------------------------------------------- correções da conta mestre
+  r('GET', '/api/admin/history', (req, a) => s.admin.history(a, Number(q(req).limit) || undefined));
+  r('POST', '/api/admin/comandas/:id/reopen', (req, a) => s.admin.reopenComanda(a, id(req), req.body));
+  r('POST', '/api/admin/comandas/:id/delete', (req, a) => s.admin.deleteComanda(a, id(req), req.body));
+  r('PUT', '/api/admin/comanda-items/:id', (req, a) => s.admin.editItem(a, id(req), req.body));
+  r('POST', '/api/admin/comanda-items/:id/delete', (req, a) => s.admin.deleteItem(a, id(req), req.body));
+  r('PUT', '/api/admin/payments/:id', (req, a) => s.admin.editPayment(a, id(req), req.body));
+  r('POST', '/api/admin/payments/:id/delete', (req, a) => s.admin.deletePayment(a, id(req), req.body));
+  r('PUT', '/api/admin/cash-movements/:id', (req, a) => s.admin.editCashMovement(a, id(req), req.body));
+  r('POST', '/api/admin/cash-movements/:id/delete', (req, a) => s.admin.deleteCashMovement(a, id(req), req.body));
+  r('PUT', '/api/admin/cash-sessions/:id', (req, a) => s.admin.editCashSession(a, id(req), req.body));
+  r('POST', '/api/admin/cash-sessions/:id/reopen', (req, a) => s.admin.reopenCashSession(a, id(req), req.body));
+  r('POST', '/api/admin/purchases/:id/cancel', (req, a) => s.admin.cancelPurchase(a, id(req), req.body));
+  r('POST', '/api/admin/stock-movements/:id/reverse', (req, a) => s.admin.reverseStockMovement(a, id(req), req.body));
+  r('POST', '/api/admin/losses/:id/delete', (req, a) => s.admin.deleteLoss(a, id(req), req.body));
+  r('POST', '/api/admin/hookah-sessions/:id/delete', (req, a) => s.admin.deleteHookahSession(a, id(req), req.body));
   r('GET', '/api/orders/mine', (_req, a) => s.comandas.myOrders(a));
   r('GET', '/api/orders/:id', (req, a) => {
     requirePerm(a, 'orders.view');

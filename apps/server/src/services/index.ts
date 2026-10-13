@@ -7,6 +7,7 @@ import { SecretBox } from '../lib/crypto';
 import { EventBus } from '../lib/events';
 import { silentLogger, type Logger } from '../lib/log';
 import { systemClock, type Clock } from '../lib/time';
+import { AdminService } from './admin';
 import { AttachmentsService } from './attachments';
 import { AuthService } from './auth';
 import { CashService } from './cash';
@@ -75,6 +76,7 @@ export function createServices(opts: CreateOptions) {
   const comandas = new ComandasService(ctx, settings, stock);
   const cash = new CashService(ctx, settings, comandas);
   const sales = new SalesService(ctx, comandas, cash);
+  const admin = new AdminService(ctx, comandas, cash, stock);
   const kitchen = new KitchenService(ctx, settings);
   const losses = new LossesService(ctx, stock);
   const hookah = new HookahService(ctx, settings, stock, comandas);
@@ -107,7 +109,7 @@ export function createServices(opts: CreateOptions) {
   };
 
   return {
-    ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, kitchen, losses, hookah, printing, tv, notifications, sync,
+    ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, admin, kitchen, losses, hookah, printing, tv, notifications, sync,
     network, reports, attachments, setup,
     startWorkers() {
       printing.start();

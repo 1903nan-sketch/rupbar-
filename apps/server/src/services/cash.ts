@@ -31,7 +31,10 @@ export class CashService {
       "SELECT method, amount_cents AS amount FROM payments WHERE cash_session_id = ? AND status = 'active'",
       sessionId,
     );
-    const moves = this.ctx.db.all<{ type: string; amount_cents: number }>('SELECT type, amount_cents FROM cash_movements WHERE session_id = ?', sessionId);
+    const moves = this.ctx.db.all<{ type: string; amount_cents: number }>(
+      "SELECT type, amount_cents FROM cash_movements WHERE session_id = ? AND status = 'active'",
+      sessionId,
+    );
     return cashClosing({
       openingBalance: Number(s.opening_balance_cents),
       payments,
@@ -67,7 +70,7 @@ export class CashService {
 
   movements(sessionId: string) {
     return this.ctx.db.all(
-      `SELECT m.id, m.type, m.amount_cents, m.reason, m.attachment_id, m.created_at, u.name AS created_by_name
+      `SELECT m.id, m.type, m.amount_cents, m.reason, m.attachment_id, m.created_at, m.status, m.void_reason, m.voided_at, u.name AS created_by_name
        FROM cash_movements m LEFT JOIN users u ON u.id = m.created_by WHERE m.session_id = ? ORDER BY m.created_at`,
       sessionId,
     );

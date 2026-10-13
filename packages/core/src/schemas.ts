@@ -334,6 +334,24 @@ export const paymentSchema = z.object({
 
 export const reversePaymentSchema = z.object({ reason: trimmed(200).min(3) });
 
+// ------------------------------------------------- correções da conta mestre
+
+const zOverrideReason = trimmed(200).min(3, 'Informe o motivo da correção');
+export const overrideReasonSchema = z.object({ reason: zOverrideReason });
+export const overrideDeleteSchema = z.object({ reason: zOverrideReason, returnToStock: z.boolean().default(true) });
+export const overrideItemSchema = z.object({
+  quantity: z.number().int().min(1).max(999),
+  unitPriceCents: zCents.min(0),
+  reason: zOverrideReason,
+});
+export const overridePaymentSchema = z.object({ method: zPaymentMethod, amountCents: zPositiveCents, reason: zOverrideReason });
+export const overrideCashMovementSchema = z.object({ amountCents: zPositiveCents, description: trimmed(200).min(3), reason: zOverrideReason });
+export const overrideCashSessionSchema = z.object({
+  openingBalanceCents: zCents.min(0).optional(),
+  countedCashCents: zCents.min(0).nullable().optional(),
+  reason: zOverrideReason,
+});
+
 /** Venda rápida (balcão): itens + pagamento na hora; o cliente é chamado pelo nome na TV. */
 export const quickSaleSchema = z.object({
   clientRequestId: zUuid,

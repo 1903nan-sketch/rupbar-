@@ -89,6 +89,9 @@ export const STOCK_MOVEMENT_TYPES = {
   hookah: 'Consumo de narguilé',
   hookah_reversal: 'Estorno de narguilé',
   initial: 'Saldo inicial',
+  purchase_cancel: 'Entrada excluída',
+  loss_reversal: 'Perda excluída',
+  correction: 'Correção do proprietário',
 } as const;
 export type StockMovementType = keyof typeof STOCK_MOVEMENT_TYPES;
 
