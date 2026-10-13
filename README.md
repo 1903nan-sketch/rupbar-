@@ -93,7 +93,7 @@ Detalhes de instalação, rede, impressoras, TV, nuvem e backups em [docs/IMPLAN
 
 ### Limitações conhecidas
 
-- **Instalador e serviço do Windows** foram compilados e verificados para o alvo Windows (`cargo check`) e o supervisor foi testado em Linux; a geração do `.exe` e o teste de instalação real acontecem no runner Windows da CI e precisam ser validados em uma máquina do bar.
+- **Instalador do Windows**: gerado com sucesso na CI (runner Windows, ~25 MB com o Node.js embutido) e o supervisor do serviço foi testado (queda → reinício, parada graciosa) em Linux. A **instalação real** (serviço, firewall, WebView2) ainda precisa ser validada em um PC Windows do bar.
 - **Impressão** testada com transporte simulado e geração de bytes ESC/POS; acentuação depende do modelo da impressora (CP850/CP860/sem acentos configurável).
 - **HTTPS na rede local** não é usado (certificados em rede local geram alertas nos celulares). Ver [Segurança](docs/SEGURANCA-LGPD.md) para as mitigações.
 - **Comprovantes (fotos/PDF)** ficam no PC; a nuvem recebe apenas a indicação de que existem.
