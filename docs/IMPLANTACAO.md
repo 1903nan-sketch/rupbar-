@@ -46,9 +46,16 @@ Escolha o papel (58 mm = 32 colunas, 80 mm = 48 colunas), o setor (cozinha, bebi
 
 1. No navegador da TV (ou TV box), abra `http://<IP-do-PC>:7420/tv`.
 2. A TV mostra um código de 6 dígitos. No PC: Configurações → Conectar TV → digite o código.
-3. Pressione OK no controle uma vez para liberar o som.
+3. Na tela "Toque para iniciar", toque na tela ou pressione OK no controle (de preferência "Iniciar em tela cheia"). Os navegadores só liberam o som depois de um toque, **a cada vez que a TV é ligada**. Sem toque, o painel abre sozinho em 30 s, mas sem som (aparece o aviso "Som bloqueado").
 
-Voz: o PC sintetiza o anúncio com a voz pt-BR do Windows (offline). Se indisponível, a TV usa a voz do próprio navegador; sem voz, toca o alerta sonoro.
+Chamada: um toque alto de atenção e depois a voz ("Carlos, comanda vinte e três. Seu pedido está pronto…"). A voz vem do Windows (pt-BR, offline); sem ela, a TV usa a voz do navegador. O volume, o número de toques e as repetições ficam em Configurações → Conectar TV → **Som da chamada**, que tem o botão "Testar som na TV".
+
+Anúncios (Configurações → Conectar TV → **Anúncios na TV** e **Fotos e vídeos**):
+- Envie fotos (JPG, PNG ou WEBP, até 20 MB) e vídeos (MP4 ou WEBM, até 300 MB). Arraste para ordenar e defina o tempo de cada foto.
+- **Carrossel**: alterna entre os pedidos e os anúncios. **Anúncios sempre**: os pedidos só aparecem quando alguém é chamado.
+- Toda chamada interrompe o anúncio na hora; depois, o vídeo continua de onde parou.
+- O som dos vídeos vem desligado e pode ser ligado na mesma tela.
+- Os arquivos ficam só no PC (`<dados>/tv-media`). Eles não vão para a nuvem e não entram no backup do banco: guarde uma cópia.
 
 ## 5. Nuvem e painel do proprietário
 
@@ -91,7 +98,18 @@ Consequências de compartilhar o projeto:
 
 ### Conectar o PC
 
-No RupBar do bar: Configurações → Sincronização → informe URL e chave pública do Supabase, e o e-mail/senha do proprietário no painel. A senha não é guardada; o PC recebe credencial própria.
+No RupBar do bar: Configurações → Sincronização → informe o **e-mail e a senha do painel online** (o mesmo login do painel). A nuvem do RupBar já vem configurada; URL e chave só são necessárias em "Avançado", para usar outro projeto Supabase. A senha não é guardada; o PC recebe credencial própria.
+
+Se der erro, a mensagem diz a causa (senha errada, sem internet, certificado bloqueado por antivírus, firewall). O serviço usa os certificados do Windows, então antivírus que inspecionam HTTPS não impedem mais a conexão.
+
+## 5.1 Operação do dia a dia (0.2)
+
+- **Cartões numerados**: imprima cartões com números (1, 2, 3…). Para abrir uma comanda, digite o número do cartão. O número só pode estar em uma comanda aberta por vez e fica livre quando ela é encerrada.
+- **Venda rápida (F2)**: para quem pede no balcão e paga na hora. Informe o nome para a TV chamar. O pedido vai para a produção e o pagamento entra no caixa.
+- **Lançar na comanda (F3)**: digite o número do cartão e escolha os itens. Se o cartão estiver livre, a comanda é aberta na hora.
+- **Narguilé**: em Narguilés → "Alterar valores" ficam o aluguel (essência e carvão inclusos), a troca de rosh e o rosh do narguilé próprio. Tudo é lançado na comanda no momento.
+- **Pix**: em Configurações → Pix, informe a chave, o nome e a cidade. É um Pix estático: confira o crédito no app do banco antes de confirmar o pagamento.
+- **Conta mestre**: só o proprietário vê os botões de editar e excluir em comandas, pagamentos, caixa, estoque, perdas e narguilés. Cada correção pede um motivo e aparece em Configurações → Histórico de correções.
 
 ## 6. WhatsApp (opcional)
 
