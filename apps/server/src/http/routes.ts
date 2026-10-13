@@ -336,6 +336,13 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('GET', '/api/notifications/whatsapp', (_req, a) => s.notifications.config(a));
   r('PUT', '/api/notifications/whatsapp', (req, a) => s.notifications.saveConfig(a, req.body));
   r('POST', '/api/notifications/whatsapp/test', (_req, a) => s.notifications.test(a));
+  // Evolution API (assistente de conexão): somente quem pode alterar configurações.
+  r('POST', '/api/notifications/whatsapp/evolution/test', (req, a) => s.notifications.evolutionTest(a, req.body));
+  r('POST', '/api/notifications/whatsapp/evolution/instance', (req, a) => s.notifications.evolutionCreate(a, req.body));
+  r('GET', '/api/notifications/whatsapp/evolution/state', (_req, a) => s.notifications.evolutionState(a));
+  r('GET', '/api/notifications/whatsapp/evolution/qr', (_req, a) => s.notifications.evolutionQr(a));
+  r('POST', '/api/notifications/whatsapp/evolution/logout', (_req, a) => s.notifications.evolutionLogout(a));
+  r('POST', '/api/notifications/whatsapp/evolution/send-test', (req, a) => s.notifications.evolutionSendTest(a, req.body));
   r('GET', '/api/notifications', (_req, a) => s.notifications.list(a));
 
   // ------------------------------------------------------ sincronização

@@ -88,7 +88,7 @@ Detalhes de instalação, rede, impressoras, TV, nuvem e backups em [docs/IMPLAN
 | 7 | Cadastro único de produtos e estoque rastreável | Implementado (fornecedores, entradas, inventário, lotes/validade, alertas) |
 | 8 | Estoque de bebidas por mililitro, doses e garrafas abertas/fechadas | Implementado e testado |
 | 9 | Fichas técnicas com baixa automática, sem duplicidade | Implementado e testado |
-| 10 | Alertas de estoque e WhatsApp configurável | Implementado (Meta, Twilio, webhook) |
+| 10 | Alertas de estoque e WhatsApp configurável | Implementado (Evolution API com assistente e QR Code, Meta, Twilio, webhook) |
 | 11 | Caixa, dois responsáveis, sangrias com comprovante, imutabilidade | Implementado e testado |
 | 12 | Perdas locais e remotas, conflitos, relatório | Implementado e testado |
 | 13 | Pedidos pelo celular sem duplicidade | Implementado e testado (E2E) |

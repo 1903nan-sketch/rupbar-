@@ -25,7 +25,7 @@ const SetupPage = lazy(() => import('./pages/Setup').then((m) => ({ default: m.S
 const StaffPage = lazy(() => import('./pages/Staff').then((m) => ({ default: m.StaffPage })));
 const StockPage = lazy(() => import('./pages/Stock').then((m) => ({ default: m.StockPage })));
 const TvPage = lazy(() => import('./pages/Tv').then((m) => ({ default: m.TvPage })));
-const NotificationSettings = lazy(() => import('./pages/settings/Cloud').then((m) => ({ default: m.NotificationSettings })));
+const NotificationSettings = lazy(() => import('./pages/settings/Notifications').then((m) => ({ default: m.NotificationSettings })));
 const SyncSettings = lazy(() => import('./pages/settings/Cloud').then((m) => ({ default: m.SyncSettings })));
 const DevicesSettings = lazy(() => import('./pages/settings/Connect').then((m) => ({ default: m.DevicesSettings })));
 const TvSettings = lazy(() => import('./pages/settings/Connect').then((m) => ({ default: m.TvSettings })));

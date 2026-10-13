@@ -94,7 +94,10 @@ export function createServices(opts: CreateOptions) {
     const orderId = db.value<string>('SELECT order_id FROM order_tickets WHERE id = ?', ticketId);
     if (orderId) printing.enqueueOrderTickets(orderId, { reprint: true, ticketId, manual: true, createdBy: actor.userId });
   };
-  cash.onSessionClosed = (sessionId) => printing.printCashClose(sessionId, null);
+  cash.onSessionClosed = (sessionId) => {
+    printing.printCashClose(sessionId, null);
+    notifications.enqueueCashClosed(sessionId);
+  };
 
   return {
     ctx, db, settings, auth, users, catalog, stock, comandas, cash, kitchen, losses, hookah, printing, tv, notifications, sync,

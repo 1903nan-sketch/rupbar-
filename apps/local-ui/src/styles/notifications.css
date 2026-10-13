@@ -1,0 +1,557 @@
+/*
+ * Notificações / assistente do WhatsApp (Evolution API).
+ * Usa apenas os tokens do tema (vidro, destaque, cores de estado).
+ */
+
+/* ---------- resumo no topo ---------- */
+.wa-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.wa-hero-icon {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(140deg, #25d366, #128c7e);
+  box-shadow: 0 10px 26px rgba(18, 140, 126, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.wa-hero-icon.off {
+  background: linear-gradient(140deg, var(--fill-2), var(--fill));
+  color: var(--text-2);
+  box-shadow: none;
+}
+.wa-hero h2 {
+  font-size: 19px;
+}
+
+/* ---------- etapas ---------- */
+.wa-steps {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--glass-panel) 80%, transparent);
+  border: 1px solid var(--glass-edge);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.wa-steps::-webkit-scrollbar {
+  display: none;
+}
+.wa-step {
+  flex: 1 1 0;
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 560;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.wa-step:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.wa-step .n {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--fill);
+  transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
+}
+.wa-step.active {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow-s), 0 4px 16px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.wa-step.active .n {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  transform: scale(1.06);
+}
+.wa-step.done .n {
+  background: var(--green);
+  color: #fff;
+}
+.wa-step:not(:disabled):not(.active):hover {
+  background: var(--fill);
+}
+
+/* ---------- painel de cada etapa (transição suave) ---------- */
+.wa-panel {
+  animation: wa-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes wa-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.wa-step-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.wa-step-title svg {
+  color: var(--accent);
+}
+.wa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.wa-actions .spacer {
+  flex: 1;
+}
+
+/* ---------- escolha do provedor ---------- */
+.wa-option {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--separator-strong);
+  background: var(--glass-panel);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease, background 0.2s ease;
+}
+.wa-option:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--separator-strong));
+  transform: translateY(-1px);
+}
+.wa-option:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.wa-option.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.wa-option .wa-option-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--fill);
+  color: var(--text-2);
+}
+.wa-option.recommended {
+  padding: 20px;
+  border-color: color-mix(in srgb, #25d366 45%, var(--separator-strong));
+  background: linear-gradient(135deg, color-mix(in srgb, #25d366 9%, var(--glass-panel)), var(--glass-panel));
+}
+.wa-option.recommended .wa-option-icon {
+  color: #fff;
+  background: linear-gradient(140deg, #25d366, #128c7e);
+}
+.wa-option.recommended.active {
+  border-color: #25d366;
+  box-shadow: inset 0 0 0 1px #25d366, 0 10px 30px rgba(37, 211, 102, 0.14);
+}
+.wa-option-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.wa-option-list .wa-option {
+  padding: 14px;
+  gap: 10px;
+  flex-direction: column;
+}
+.wa-option-list .wa-option .wa-option-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+}
+.wa-perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.wa-perks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.wa-perks svg {
+  color: var(--green);
+}
+
+/* ---------- ajuda em linguagem simples ---------- */
+.wa-help {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--blue) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 16%, transparent);
+}
+.wa-help > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--blue);
+}
+.wa-help strong {
+  color: var(--text);
+}
+
+/* ---------- status da conexão ---------- */
+.wa-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--fill);
+  color: var(--text-2);
+  border: 1px solid transparent;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+.wa-pill .dot {
+  width: 9px;
+  height: 9px;
+}
+.wa-pill.connected {
+  background: color-mix(in srgb, var(--green) 15%, transparent);
+  border-color: color-mix(in srgb, var(--green) 30%, transparent);
+  color: color-mix(in srgb, var(--green) 78%, var(--text));
+}
+.wa-pill.connected .dot {
+  background: var(--green);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 22%, transparent);
+}
+.wa-pill.waiting_qr {
+  background: color-mix(in srgb, var(--orange) 16%, transparent);
+  border-color: color-mix(in srgb, var(--orange) 30%, transparent);
+  color: color-mix(in srgb, var(--orange) 72%, var(--text));
+}
+.wa-pill.waiting_qr .dot {
+  background: var(--orange);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.wa-pill.disconnected {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border-color: color-mix(in srgb, var(--red) 24%, transparent);
+  color: var(--red);
+}
+.wa-pill.disconnected .dot {
+  background: var(--red);
+}
+.wa-pill.not_found {
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 24%, transparent);
+  color: var(--blue);
+}
+.wa-pill.not_found .dot {
+  background: var(--blue);
+}
+
+/* ---------- campo de chave com "mostrar" ---------- */
+.wa-secret {
+  position: relative;
+}
+.wa-secret .input {
+  padding-right: 44px;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+}
+.wa-secret .btn {
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  bottom: 2px;
+  height: auto;
+  min-height: 0;
+}
+
+/* ---------- QR Code ---------- */
+.wa-connect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: center;
+}
+.wa-howto {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: wa;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wa-howto li {
+  counter-increment: wa;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.wa-howto li::before {
+  content: counter(wa);
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.wa-qr-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.wa-qr {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  padding: 16px;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(28, 37, 75, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.wa-qr img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  animation: wa-qr-in 0.35s ease;
+}
+@keyframes wa-qr-in {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+.wa-qr .spinner {
+  border-color: rgba(0, 0, 0, 0.12);
+  border-top-color: #128c7e;
+}
+.wa-qr.stale img {
+  filter: blur(3px);
+  opacity: 0.5;
+}
+.wa-qr-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.wa-ring {
+  width: 22px;
+  height: 22px;
+  transform: rotate(-90deg);
+}
+.wa-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+.wa-ring .track {
+  stroke: var(--fill-2);
+}
+.wa-ring .bar {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+.wa-pairing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: var(--fill);
+  text-align: center;
+}
+.wa-pairing .code {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--text);
+}
+
+/* ---------- sucesso ---------- */
+.wa-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 28px 16px 8px;
+  animation: wa-in 0.4s ease;
+}
+.wa-check {
+  position: relative;
+  width: 104px;
+  height: 104px;
+}
+.wa-check::before,
+.wa-check::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--green) 55%, transparent);
+  animation: wa-ripple 1.6s ease-out 0.35s 2 both;
+}
+.wa-check::after {
+  animation-delay: 0.75s;
+}
+.wa-check svg {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--green) 70%, #fff), var(--green));
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--green) 38%, transparent);
+  animation: wa-pop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.wa-check path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 64;
+  stroke-dashoffset: 64;
+  animation: wa-draw 0.45s ease-out 0.3s forwards;
+}
+@keyframes wa-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+@keyframes wa-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes wa-ripple {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* ---------- avisos (interruptores) ---------- */
+.wa-alerts {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid var(--separator);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  padding: 4px 16px;
+}
+.wa-alerts > * + * {
+  border-top: 1px solid var(--separator);
+}
+.wa-alert-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+.wa-alert-row > svg {
+  flex: none;
+  color: var(--accent);
+}
+
+@media (max-width: 860px) {
+  .wa-connect {
+    grid-template-columns: 1fr;
+  }
+  .wa-qr-wrap {
+    order: -1;
+  }
+}
+@media (max-width: 700px) {
+  .wa-option-list {
+    grid-template-columns: 1fr;
+  }
+  .wa-option-list .wa-option {
+    flex-direction: row;
+  }
+  .wa-qr {
+    width: min(300px, 78vw);
+    height: min(300px, 78vw);
+  }
+  .wa-step .label {
+    display: none;
+  }
+  .wa-step.active .label {
+    display: inline;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wa-panel,
+  .wa-success,
+  .wa-qr img,
+  .wa-check svg,
+  .wa-check::before,
+  .wa-check::after {
+    animation: none;
+  }
+  .wa-check path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .wa-option,
+  .wa-step,
+  .wa-ring .bar {
+    transition: none;
+  }
+}
