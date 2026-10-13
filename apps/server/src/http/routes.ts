@@ -209,6 +209,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/suppliers', (req, a) => s.catalog.upsertSupplier(a, null, req.body));
   r('PUT', '/api/suppliers/:id', (req, a) => s.catalog.upsertSupplier(a, id(req), req.body));
   r('GET', '/api/products', (req, a) => s.catalog.products(a, { q: q(req).q, categoryId: q(req).categoryId, includeInactive: q(req).all === '1' }));
+  r('GET', '/api/products/next-code', (_req, a) => s.catalog.nextProductCode(a));
   r('GET', '/api/products/:id', (req, a) => s.catalog.product(a, id(req)));
   r('POST', '/api/products', (req, a) => s.catalog.saveProduct(a, null, req.body));
   r('PUT', '/api/products/:id', (req, a) => s.catalog.saveProduct(a, id(req), req.body));

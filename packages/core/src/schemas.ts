@@ -188,6 +188,10 @@ export const presentationSchema = z.object({
   sortOrder: z.number().int().default(0),
 });
 
+/** Entradas aceitam a quantidade em embalagens ou em unidades soltas, nunca as duas. */
+const oneQuantity = (v: { packages?: number; qty?: number }) => (v.packages === undefined) !== (v.qty === undefined);
+const ONE_QUANTITY = { message: 'Informe a quantidade em embalagens ou em unidades soltas (apenas uma das formas).', path: ['packages'] };
+
 export const productSchema = z.object({
   name: trimmed(80).min(2),
   categoryId: zUuid,
@@ -199,6 +203,8 @@ export const productSchema = z.object({
   /** Conteúdo de uma embalagem em milli (ex.: garrafa 1 L = 1_000_000). */
   packageQty: zMilli.positive().default(1000),
   packageLabel: optionalText(30),
+  /** Nome da unidade avulsa quando a embalagem tem várias ("lata" num fardo de 12). */
+  unitLabel: optionalText(30),
   stockTracked: z.boolean().default(true),
   minStock: zMilli.min(0).default(0),
   /** Custo por unidade-base × 10⁴ (opcional; normalmente vem das entradas). */
@@ -208,12 +214,16 @@ export const productSchema = z.object({
   station: zStation.nullable().optional().transform((v) => v ?? null),
   active: z.boolean().default(true),
   presentations: z.array(presentationSchema).default([]),
-  /** Entrada opcional no cadastro inicial, registrada na mesma transação. */
+  /**
+   * Entrada opcional no cadastro inicial, registrada na mesma transação.
+   * Informe `packages` (embalagens) OU `qty` (milli, ex.: 30 latas = 30_000).
+   */
   initialStock: z.object({
-    packages: z.number().positive().max(100_000),
+    packages: z.number().positive().max(100_000).optional(),
+    qty: zMilli.positive().optional(),
     totalCostCents: zCents.min(0),
     expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  }).optional(),
+  }).refine(oneQuantity, ONE_QUANTITY).optional(),
 });
 export type ProductInput = z.infer<typeof productSchema>;
 
@@ -238,13 +248,15 @@ export const purchaseSchema = z.object({
       z.object({
         productId: zUuid,
         /** Número de embalagens (pode ser fracionário, ex.: 0,5 kg). */
-        packages: z.number().positive().max(100_000),
-        /** Tamanho de cada embalagem em milli (permite 50 g e 100 g do mesmo produto). */
-        packageQty: zMilli.positive(),
+        packages: z.number().positive().max(100_000).optional(),
+        /** Alternativa a `packages`: quantidade total em milli (ex.: 30 latas = 30_000; 2.500 ml = 2_500_000). */
+        qty: zMilli.positive().optional(),
+        /** Tamanho de cada embalagem em milli (permite 50 g e 100 g do mesmo produto). Padrão: o do cadastro. */
+        packageQty: zMilli.positive().optional(),
         totalCostCents: zCents.min(0),
         expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v ?? null),
         lotCode: optionalText(40),
-      }),
+      }).refine(oneQuantity, ONE_QUANTITY),
     )
     .min(1, 'Inclua ao menos um item'),
 });

@@ -9,6 +9,7 @@
  *    correções geram novos lançamentos de estorno.
  */
 import type { Db } from './db';
+import { backfillProductCodes } from './product-codes';
 import { SYNCED_TABLES } from './sync-tables';
 
 const M001 = /* sql */ `
@@ -685,16 +686,32 @@ ALTER TABLE comanda_items ADD COLUMN hookah_session_id TEXT;
 CREATE INDEX comanda_items_hookah ON comanda_items(hookah_session_id);
 `;
 
+/**
+ * Estoque autoexplicativo.
+ *  - products.unit_label: nome da unidade avulsa ("lata") quando a embalagem
+ *    de compra tem várias ("fardo" de 12, em package_label).
+ *  - Código interno automático: produtos sem código recebem 0001, 0002… na
+ *    ordem de cadastro, pulando códigos já usados (etapa em código, abaixo).
+ *    A sequência 'product_code' continua de onde a migração parou.
+ * (Ids 4 e 5 pertencem a outras frentes de trabalho da 0.2.)
+ */
+const M006 = /* sql */ `
+ALTER TABLE products ADD COLUMN unit_label TEXT;
+`;
+
 export interface Migration {
   id: number;
   name: string;
   sql: string;
+  /** Etapa opcional em código, executada na mesma transação, depois do SQL. */
+  run?: (db: Db) => void;
 }
 
 export const MIGRATIONS: Migration[] = [
   { id: 1, name: 'schema inicial', sql: M001 },
   { id: 2, name: 'gatilhos de sincronização', sql: syncTriggersSql() },
   { id: 3, name: 'cartões, venda rápida e narguilé por item', sql: M003 },
+  { id: 6, name: 'código automático e unidade avulsa dos produtos', sql: M006, run: (db) => void backfillProductCodes(db, new Date().toISOString()) },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */
@@ -726,6 +743,7 @@ export function migrate(db: Db): { applied: number[] } {
     if (done.has(m.id)) continue;
     db.tx(() => {
       db.exec(m.sql);
+      m.run?.(db);
       db.run('INSERT INTO schema_migrations (id, name, applied_at) VALUES (?, ?, ?)', m.id, m.name, new Date().toISOString());
     });
     applied.push(m.id);

@@ -1,6 +1,7 @@
-import { DEFAULT_CATEGORIES, packageBreakdown, stockLevel, theoreticalYield, type Measure } from '@rupbar/core';
+import { DEFAULT_CATEGORIES, entryQtyMilli, packageBreakdown, stockLevel, theoreticalYield, type Measure } from '@rupbar/core';
 import { categorySchema, productSchema, supplierSchema, type ProductInput } from '@rupbar/core/schemas';
 import { bool, type Row } from '../db/db';
+import { allocateProductCode, peekProductCode } from '../db/product-codes';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { hasPerm, requirePerm, type Actor, type Ctx } from './context';
 import { attachmentUrl } from './settings';
@@ -177,6 +178,9 @@ export class CatalogService {
       measure,
       packageQty: p.package_qty,
       packageLabel: p.package_label,
+      unitLabel: p.unit_label ?? null,
+      /** Menor dose vendida do próprio produto (ex.: 50 ml), para "1 garrafa = 20 doses". */
+      doseQty: smallestDose,
       stockTracked: bool(p.stock_tracked),
       stockQty: p.stock_qty,
       minStock: p.min_stock,
@@ -205,8 +209,12 @@ export class CatalogService {
       params.push(filter.categoryId);
     }
     if (filter.q) {
-      where.push('(p.name LIKE ? OR p.internal_code = ? OR p.barcode = ?)');
-      params.push(`%${filter.q}%`, filter.q, filter.q);
+      // Código: "7", "07" e "#0007" encontram "0007"; texto busca pelo começo ("CERV" → "CERV-01").
+      const q = filter.q.trim();
+      const code = q.replace(/^#/, '');
+      where.push(`(p.name LIKE ? OR p.internal_code LIKE ? OR p.barcode = ?${/^\d+$/.test(code) ? " OR ltrim(p.internal_code, '0') = ltrim(?, '0')" : ''})`);
+      params.push(`%${q}%`, `${code}%`, q);
+      if (/^\d+$/.test(code)) params.push(code);
     }
     const rows = this.ctx.db.all(
       `SELECT p.*, c.name AS category_name, c.station AS category_station FROM products p
@@ -273,14 +281,26 @@ export class CatalogService {
       if (id) throw badRequest('Saldo inicial só pode ser informado no novo cadastro. Use uma entrada para repor o estoque.');
       if (!input.stockTracked) throw badRequest('Ative o controle de estoque para registrar o saldo inicial.');
       requirePerm(actor, 'stock.entry');
-      const qty = Math.round(input.initialStock.packages * input.packageQty);
+      const qty = entryQtyMilli(input.initialStock, input.packageQty);
       if (!Number.isSafeInteger(qty) || qty <= 0) throw badRequest('A quantidade inicial deve ser maior que zero e estar dentro do limite permitido.');
     }
     const productId = id ?? this.ctx.id();
+    let internalCode: string | null = null;
     this.ctx.tx(() => {
       if (!this.ctx.db.get('SELECT id FROM categories WHERE id = ?', input.categoryId)) throw notFound('Categoria');
       if (input.internalCode && this.ctx.db.value('SELECT id FROM products WHERE internal_code = ? AND id <> ?', input.internalCode, productId)) {
         throw conflict('Código interno já usado por outro produto.', 'DUPLICATE_CODE');
+      }
+      // "7" e "0007" se confundem na busca: um código numérico novo não pode repetir outro com zeros à esquerda.
+      if (input.internalCode && /^\d+$/.test(input.internalCode)) {
+        const current = id ? this.ctx.db.value<string | null>('SELECT internal_code FROM products WHERE id = ?', id) : null;
+        const twin = current !== input.internalCode
+          ? this.ctx.db.value<string>(
+              "SELECT internal_code FROM products WHERE id <> ? AND internal_code GLOB '[0-9]*' AND internal_code NOT GLOB '*[^0-9]*' AND ltrim(internal_code, '0') = ltrim(?, '0')",
+              productId, input.internalCode,
+            )
+          : undefined;
+        if (twin) throw conflict(`Código interno equivale ao ${twin}, já usado por outro produto.`, 'DUPLICATE_CODE');
       }
       if (input.barcode && this.ctx.db.value('SELECT id FROM products WHERE barcode = ? AND id <> ?', input.barcode, productId)) {
         throw conflict('Código de barras já usado por outro produto.', 'DUPLICATE_BARCODE');
@@ -292,23 +312,26 @@ export class CatalogService {
       if (before && before.measure !== input.measure && Number(before.stock_qty) !== 0) {
         throw conflict('Não é possível mudar a unidade de medida de um produto com saldo. Zere o estoque com um ajuste antes.', 'MEASURE_LOCKED');
       }
+      // Código interno: o informado; em branco mantém o atual; sem nenhum, o próximo da sequência (0001, 0002…).
+      const code = input.internalCode ?? (before?.internal_code ? String(before.internal_code) : null) ?? allocateProductCode(this.ctx.db);
+      internalCode = code;
 
       if (before) {
         this.ctx.db.run(
           `UPDATE products SET name=?, category_id=?, internal_code=?, barcode=?, description=?, supplier_id=?, measure=?, package_qty=?,
-             package_label=?, stock_tracked=?, min_stock=?, unit_cost_e4=COALESCE(?, unit_cost_e4), expiry_tracked=?, menu_visible=?, station=?,
-             active=?, version=version+1, updated_at=? WHERE id=?`,
-          input.name, input.categoryId, input.internalCode, input.barcode, input.description, input.supplierId, input.measure,
-          input.packageQty, input.packageLabel, input.stockTracked, input.minStock, input.unitCostE4 ?? null, input.expiryTracked,
+             package_label=?, unit_label=?, stock_tracked=?, min_stock=?, unit_cost_e4=COALESCE(?, unit_cost_e4), expiry_tracked=?, menu_visible=?,
+             station=?, active=?, version=version+1, updated_at=? WHERE id=?`,
+          input.name, input.categoryId, code, input.barcode, input.description, input.supplierId, input.measure,
+          input.packageQty, input.packageLabel, input.unitLabel, input.stockTracked, input.minStock, input.unitCostE4 ?? null, input.expiryTracked,
           input.menuVisible, input.station, input.active, now, productId,
         );
       } else {
         this.ctx.db.run(
           `INSERT INTO products (id, name, category_id, internal_code, barcode, description, supplier_id, measure, package_qty, package_label,
-             stock_tracked, stock_qty, min_stock, unit_cost_e4, expiry_tracked, menu_visible, station, active, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?)`,
-          productId, input.name, input.categoryId, input.internalCode, input.barcode, input.description, input.supplierId, input.measure,
-          input.packageQty, input.packageLabel, input.stockTracked, input.minStock, input.unitCostE4 ?? 0, input.expiryTracked,
+             unit_label, stock_tracked, stock_qty, min_stock, unit_cost_e4, expiry_tracked, menu_visible, station, active, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?)`,
+          productId, input.name, input.categoryId, code, input.barcode, input.description, input.supplierId, input.measure,
+          input.packageQty, input.packageLabel, input.unitLabel, input.stockTracked, input.minStock, input.unitCostE4 ?? 0, input.expiryTracked,
           input.menuVisible, input.station, input.active, now, now,
         );
       }
@@ -346,6 +369,7 @@ export class CatalogService {
 
       this.ctx.audit(actor, id ? 'products.updated' : 'products.created', 'product', productId, {
         name: input.name,
+        internalCode: code,
         presentations: input.presentations.map((p) => ({ name: p.name, priceCents: p.priceCents })),
         ...(before && before.min_stock !== input.minStock ? { minStock: { from: before.min_stock, to: input.minStock } } : {}),
       });
@@ -359,7 +383,13 @@ export class CatalogService {
       if (before && Number(before.min_stock) !== input.minStock) this.stock.evaluateAlert(productId);
       this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId } });
     });
-    return { id: productId };
+    return { id: productId, internalCode };
+  }
+
+  /** Prévia do próximo código automático (não reserva). */
+  nextProductCode(actor: Actor) {
+    requirePerm(actor, 'products.view');
+    return { code: peekProductCode(this.ctx.db) };
   }
 
   setPhoto(actor: Actor, productId: string, attachmentId: string | null) {

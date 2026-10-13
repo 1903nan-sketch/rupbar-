@@ -2,6 +2,7 @@ export * from './ids';
 export * from './money';
 export * from './units';
 export * from './stock';
+export * from './packaging';
 export * from './validators';
 export * from './permissions';
 export * from './domain';

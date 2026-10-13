@@ -1,10 +1,10 @@
 import {
-  consumptionFor, costOf, divergence, formatQty, restockSuggestion, stockLevel, unitCostFromPurchase, weightedAverageCost,
+  consumptionFor, costOf, divergence, entryQtyMilli, formatQty, restockSuggestion, stockLevel, unitCostFromPurchase, weightedAverageCost,
   type Measure, type StockMovementType,
 } from '@rupbar/core';
 import { adjustmentSchema, inventorySchema, purchaseSchema } from '@rupbar/core/schemas';
 import { bool, type Row } from '../db/db';
-import { conflict, notFound } from '../lib/errors';
+import { badRequest, conflict, notFound } from '../lib/errors';
 import { localDate } from '../lib/time';
 import { requirePerm, type Actor, type Ctx } from './context';
 import type { SettingsService } from './settings';
@@ -193,13 +193,17 @@ export class StockService {
       for (const item of input.items) {
         const p = this.productRow(item.productId);
         if (!bool(p.stock_tracked)) throw conflict(`${p.name} não tem controle de estoque.`, 'NOT_TRACKED');
-        const qty = Math.round(item.packages * item.packageQty);
+        // Quantidade em embalagens (2 fardos de 12) ou direto em unidades soltas (30 latas, 2.500 ml).
+        const packageQty = item.packageQty ?? Number(p.package_qty);
+        const qty = entryQtyMilli(item, packageQty);
+        if (!Number.isSafeInteger(qty) || qty <= 0) throw badRequest(`Confira a quantidade de ${p.name}: ela deve ser maior que zero.`, 'INVALID_QTY');
+        const packagesMilli = item.packages !== undefined ? Math.round(item.packages * 1000) : Math.round((qty * 1000) / packageQty);
         const unitCost = unitCostFromPurchase(item.totalCostCents, qty);
         const itemId = this.ctx.id();
         this.ctx.db.run(
           `INSERT INTO purchase_items (id, purchase_id, product_id, packages_milli, package_qty, qty, total_cost_cents, unit_cost_e4, expires_on, lot_code)
            VALUES (?,?,?,?,?,?,?,?,?,?)`,
-          itemId, id, item.productId, Math.round(item.packages * 1000), item.packageQty, qty, item.totalCostCents, unitCost, item.expiresOn, item.lotCode,
+          itemId, id, item.productId, packagesMilli, packageQty, qty, item.totalCostCents, unitCost, item.expiresOn, item.lotCode,
         );
         this.move({
           productId: item.productId, type: 'purchase', delta: qty, refType: 'purchase_item', refId: itemId,
@@ -237,7 +241,8 @@ export class StockService {
     return rows.map((r) => ({
       ...r,
       items: this.ctx.db.all(
-        `SELECT i.*, p.name AS product_name, p.measure FROM purchase_items i JOIN products p ON p.id = i.product_id WHERE i.purchase_id = ?`,
+        `SELECT i.*, p.name AS product_name, p.measure, p.package_label, p.unit_label
+         FROM purchase_items i JOIN products p ON p.id = i.product_id WHERE i.purchase_id = ?`,
         String(r.id),
       ),
     }));
@@ -322,7 +327,7 @@ export class StockService {
     if (filter.to) where.push('m.created_at < ?'), params.push(filter.to);
     params.push(Math.min(filter.limit ?? 200, 1000));
     return this.ctx.db.all(
-      `SELECT m.*, p.name AS product_name, p.measure, u.name AS user_name FROM stock_movements m
+      `SELECT m.*, p.name AS product_name, p.measure, p.package_qty, p.package_label, p.unit_label, u.name AS user_name FROM stock_movements m
        JOIN products p ON p.id = m.product_id LEFT JOIN users u ON u.id = m.user_id
        ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY m.created_at DESC LIMIT ?`,
       ...params,
@@ -335,7 +340,7 @@ export class StockService {
     const limit = localDate(new Date(this.ctx.clock.now().getTime() + withinDays * 86_400_000));
     return this.ctx.db
       .all(
-        `SELECT l.*, p.name AS product_name, p.measure FROM stock_lots l JOIN products p ON p.id = l.product_id
+        `SELECT l.*, p.name AS product_name, p.measure, p.package_qty, p.package_label, p.unit_label FROM stock_lots l JOIN products p ON p.id = l.product_id
          WHERE l.qty_remaining > 0 AND l.expires_on <= ? ORDER BY l.expires_on`,
         limit,
       )
@@ -347,8 +352,8 @@ export class StockService {
     requirePerm(actor, 'stock.view');
     return this.ctx.db
       .all(
-        `SELECT a.id, a.created_at, p.id AS product_id, p.name, p.measure, p.stock_qty, p.min_stock, p.package_qty, p.package_label,
-                s.name AS supplier_name, s.phone AS supplier_phone
+        `SELECT a.id, a.created_at, p.id AS product_id, p.name, p.internal_code, p.measure, p.stock_qty, p.min_stock, p.package_qty, p.package_label,
+                p.unit_label, s.name AS supplier_name, s.phone AS supplier_phone
          FROM stock_alerts a JOIN products p ON p.id = a.product_id LEFT JOIN suppliers s ON s.id = p.supplier_id
          WHERE a.status = 'open' ORDER BY (p.stock_qty * 1.0 / MAX(p.min_stock, 1)), p.name`,
       )
