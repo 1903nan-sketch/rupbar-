@@ -1,7 +1,9 @@
 // Prepara os recursos empacotados no instalador:
-//   src-tauri/resources/server/{node.exe, server.cjs, public/}
+//   src-tauri/resources/server/{node.exe, server.cjs, public/, downloads/rupbar-garcom.apk}
 //   src-tauri/resources/rupbar-service.exe
 // Requer: interface compilada, servidor empacotado e supervisor compilado (CI).
+// O APK do app Android do garçom é opcional (artefato do job "android" do CI,
+// baixado em apps/android/dist/ ou indicado por RUPBAR_ANDROID_APK).
 import { createWriteStream, cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -21,6 +23,16 @@ if (!existsSync(join(bundle, 'server.cjs'))) throw new Error('Rode antes: pnpm b
 cpSync(join(bundle, 'server.cjs'), join(serverOut, 'server.cjs'));
 if (existsSync(join(bundle, 'public'))) cpSync(join(bundle, 'public'), join(serverOut, 'public'), { recursive: true });
 else throw new Error('Interface ausente em apps/server/dist/public');
+
+// App Android do garçom: o servidor oferece em /download/rupbar-garcom.apk.
+const apk = [process.env.RUPBAR_ANDROID_APK, join(repo, 'apps/android/dist/rupbar-garcom.apk')].find((p) => p && existsSync(p));
+if (apk) {
+  mkdirSync(join(serverOut, 'downloads'), { recursive: true });
+  cpSync(apk, join(serverOut, 'downloads', 'rupbar-garcom.apk'));
+  console.log('app Android incluído:', apk);
+} else {
+  console.warn('AVISO: rupbar-garcom.apk não encontrado; o PC não oferecerá o download do app Android.');
+}
 
 const svcCandidates = [
   join(repo, 'apps/service-host/target/x86_64-pc-windows-msvc/release/rupbar-service.exe'),

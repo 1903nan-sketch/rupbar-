@@ -34,6 +34,7 @@ O RupBar roda no **PC do bar** (Windows) e funciona **sem internet**: comandas, 
 | `apps/desktop` | Aplicativo Windows (Tauri v2): janela, bandeja e instalador NSIS que instala o serviço. |
 | `apps/service-host` | `rupbar-service.exe` (Rust): serviço do Windows que supervisiona o servidor (reinício automático, parada graciosa, firewall). |
 | `apps/owner-panel` | Painel online do proprietário (Next.js + Supabase Auth), para a Vercel. |
+| `apps/android` | App Android “RupBar Garçom” (Kotlin, sem bibliotecas): encontra o PC na rede Wi-Fi e abre `/m` em tela cheia. APK gerado na CI (`gradle assembleRelease`), incluído no instalador do Windows e servido pelo PC em `/download/rupbar-garcom.apk`. |
 | `supabase` | Migrações da nuvem (tabelas, RLS, RPCs) + testes em Postgres real (PGlite). |
 | `tests/e2e` | Teste ponta a ponta no Chromium. |
 | `docs` | [Arquitetura](docs/ARQUITETURA.md) · [Sincronização](docs/SINCRONIZACAO.md) · [Segurança e LGPD](docs/SEGURANCA-LGPD.md) · [Implantação e operação](docs/IMPLANTACAO.md) |
@@ -104,6 +105,7 @@ Detalhes de instalação, rede, impressoras, TV, nuvem e backups em [docs/IMPLAN
 
 - **Instalador do Windows**: gerado com sucesso na CI (runner Windows, ~25 MB com o Node.js embutido) e o supervisor do serviço foi testado (queda → reinício, parada graciosa) em Linux. A **instalação real** (serviço, firewall, WebView2) ainda precisa ser validada em um PC Windows do bar.
 - **Impressão** testada com transporte simulado e geração de bytes ESC/POS; acentuação depende do modelo da impressora (CP850/CP860/sem acentos configurável).
+- **App Android do garçom**: compilado na CI; ainda precisa ser testado em aparelhos reais (descoberta na rede, Wi-Fi sem internet com dados móveis ligados, instalação fora da Play Store). Para que atualizações instalem por cima, configure os segredos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD` (sem eles o APK sai com uma chave de depuração temporária).
 - **HTTPS na rede local** não é usado (certificados em rede local geram alertas nos celulares). Ver [Segurança](docs/SEGURANCA-LGPD.md) para as mitigações.
 - **Comprovantes (fotos/PDF)** ficam no PC; a nuvem recebe apenas a indicação de que existem.
 - O esquema da nuvem está instalado no projeto Supabase compartilhado com o Barberflow (detalhes e cuidados em [IMPLANTACAO.md](docs/IMPLANTACAO.md#instalação-atual-dentro-de-um-projeto-supabase-já-existente)); falta publicar o painel na Vercel e conectar o PC do bar.

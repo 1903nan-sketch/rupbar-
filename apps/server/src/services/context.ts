@@ -14,6 +14,12 @@ export interface ServerConfig {
   port: number;
   /** Diretório com a interface compilada (servida para PC, celulares e TV). */
   uiDir: string | null;
+  /**
+   * Arquivos que o PC oferece para download na rede local (ex.: o app Android do
+   * garçom, rupbar-garcom.apk, empacotado no instalador). Também é consultada a
+   * pasta `<dataDir>/downloads`.
+   */
+  downloadsDir?: string | null;
   version: string;
 }
 

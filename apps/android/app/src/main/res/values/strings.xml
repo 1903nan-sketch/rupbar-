@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RupBar Garçom</string>
+    <string name="brand_tagline">Comandas e pedidos direto do celular</string>
+    <string name="brand_logo_description">Logotipo do RupBar</string>
+    <string name="footer_version">Versão %1$s · by Ruptix</string>
+
+    <!-- Busca do PC do bar -->
+    <string name="status_checking">Conectando ao PC do bar…</string>
+    <string name="status_checking_detail">Último endereço usado: %1$s</string>
+    <string name="status_rescan">O PC do bar não respondeu</string>
+    <string name="status_rescan_detail">O endereço pode ter mudado (ex.: roteador reiniciado). Procurando de novo…</string>
+    <string name="status_scanning">Procurando o PC do bar…</string>
+    <string name="status_scanning_detail">Rede %1$s · %2$d de %3$d endereços verificados</string>
+    <string name="status_found">PC encontrado: %1$s</string>
+    <string name="status_not_found">PC do bar não encontrado</string>
+    <string name="status_not_found_detail">Confira se o PC do bar está ligado com o RupBar aberto e se este celular está no Wi-Fi do bar (e não no 4G/5G). Uma nova busca começa sozinha em alguns segundos.</string>
+    <string name="status_no_wifi">Conecte o celular no Wi-Fi do bar</string>
+    <string name="status_no_wifi_detail">O app encontra o PC do bar pela rede Wi-Fi. Assim que o Wi-Fi conectar, a busca recomeça sozinha.</string>
+
+    <string name="action_retry">Procurar novamente</string>
+    <string name="action_manual">Digitar o endereço</string>
+    <string name="action_wifi">Abrir o Wi-Fi</string>
+    <string name="action_connect">Conectar</string>
+    <string name="action_auto">Procurar automaticamente</string>
+
+    <!-- Endereço digitado -->
+    <string name="manual_title">Endereço do PC do bar</string>
+    <string name="manual_help">O endereço aparece no PC em Configurações → Conectar dispositivo (ex.: 192.168.0.10, porta 7420).</string>
+    <string name="manual_host_hint">Ex.: 192.168.0.10</string>
+    <string name="manual_port_hint">Porta</string>
+    <string name="manual_invalid">Digite um endereço válido, por exemplo 192.168.0.10.</string>
+    <string name="manual_checking">Verificando %1$s…</string>
+    <string name="manual_failed">Não encontramos o RupBar em %1$s. Confira o endereço e se o PC está ligado.</string>
+
+    <!-- Tela do garçom -->
+    <string name="menu_reload">Recarregar a página</string>
+    <string name="menu_switch">Trocar PC / Reconectar</string>
+    <string name="menu_exit">Fechar o app</string>
+    <string name="no_app_for_link">Nenhum app encontrado para abrir este link.</string>
+    <string name="file_chooser_failed">Não foi possível abrir a seleção de arquivos.</string>
+    <string name="webview_missing">Não foi possível abrir o navegador interno do Android. Atualize o app \"Android System WebView\" (ou o Chrome) na Play Store e tente de novo.</string>
+    <string name="ok">OK</string>
+
+    <!-- Atalho do ícone (toque longo) -->
+    <string name="shortcut_switch_short">Trocar PC</string>
+    <string name="shortcut_switch_long">Trocar PC / Reconectar</string>
+</resources>

@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import { AlertTriangle, CheckCircle2, Copy, Router, Smartphone, Trash2, Tv, Wifi } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, Download, Router, Share, Smartphone, Trash2, Tv, Wifi } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Badge, Button, Card, Confirm, ErrorBox, Field, Input, Loading, PageHeader, useToast } from '../../components/ui';
@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { fmtDateTime } from '../../lib/format';
 import { useInterval, useLoad } from '../../lib/hooks';
 import { useRealtime } from '../../lib/realtime';
+import '../../styles/android.css';
 
 interface NetworkInfo {
   port: number;
@@ -18,6 +19,8 @@ interface NetworkInfo {
   previousIp: string | null;
   changedAt: string | null;
   connectedClients: number;
+  /** App Android do garçom servido por este PC (opcional em servidores antigos). */
+  androidApp?: { path: string; available: boolean; size: number | null; updatedAt: string | null };
 }
 
 export function useQr(text: string | null) {
@@ -78,7 +81,7 @@ export function DevicesSettings() {
               <li><Wifi size={14} /> Conecte o celular ou tablet ao <strong>Wi-Fi do bar</strong>.</li>
               <li><Smartphone size={14} /> Abra a câmera e escaneie o QR Code.</li>
               <li>Abra o link do RupBar e entre com <strong>seu e-mail e senha</strong>.</li>
-              <li>Dica: use “Adicionar à tela inicial” para abrir como aplicativo.</li>
+              <li>Dica: no Android, instale o app <strong>RupBar Garçom</strong> (abaixo); no iPhone, use “Adicionar à Tela de Início”.</li>
             </ol>
             <p className="tiny muted" style={{ marginTop: 10 }}>O QR Code contém somente o endereço local — nunca senhas. Cada funcionário entra com a própria conta.</p>
           </Card>
@@ -92,6 +95,64 @@ export function DevicesSettings() {
           </Card>
         </div>
       </div>
+      <AndroidAppCard baseUrl={data.url} app={data.androidApp} />
+    </div>
+  );
+}
+
+/** Seção "App Android do garçom": QR Code para baixar o APK servido por este PC. */
+function AndroidAppCard({ baseUrl, app }: { baseUrl: string; app: NetworkInfo['androidApp'] }) {
+  const apkUrl = `${baseUrl}${app?.path ?? '/download/rupbar-garcom.apk'}`;
+  const qr = useQr(apkUrl);
+  const available = app?.available ?? false;
+  const sizeMb = app?.size ? (app.size / (1024 * 1024)).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : null;
+  return (
+    <div className="grid-2 android-app">
+      <Card title={<span className="row"><Smartphone size={18} /> App Android do garçom</span>}>
+        <div className="android-app-body">
+          <div className="qr android-app-qr">{qr ? <img src={qr} alt={`QR Code para baixar o app: ${apkUrl}`} /> : <div className="android-app-qr-empty" />}</div>
+          <div className="stack">
+            {available ? (
+              <Badge color="green">Disponível neste PC{sizeMb ? ` · ${sizeMb} MB` : ''}</Badge>
+            ) : (
+              <Badge color="orange">Ainda não incluído neste PC</Badge>
+            )}
+            <a className="mono small android-app-link" href={apkUrl} download>
+              <Download size={14} /> {apkUrl}
+            </a>
+            <p className="small muted">
+              O app encontra este PC sozinho no Wi-Fi do bar, mesmo sem internet, e procura de novo se o endereço mudar.
+            </p>
+            {!available && (
+              <p className="tiny muted">
+                Atualize o RupBar neste computador: o instalador mais recente já traz o app. O suporte também pode colocar o arquivo
+                <span className="mono"> rupbar-garcom.apk</span> na pasta <span className="mono">downloads</span> dos dados do RupBar.
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
+      <Card title="Como instalar no Android">
+        <ol className="android-steps">
+          <li>Conecte o celular ao <strong>Wi-Fi do bar</strong> e escaneie o QR Code ao lado com a câmera.</li>
+          <li>
+            Toque em <strong>Baixar</strong>. Se o Chrome avisar que o arquivo pode ser perigoso ou que o download não é seguro, toque em{' '}
+            <strong>Baixar mesmo assim</strong> / <strong>Manter</strong>: o arquivo vem do PC do bar.
+          </li>
+          <li>
+            Abra o <span className="mono">rupbar-garcom.apk</span>. Na primeira vez o Android pede permissão: toque em <strong>Configurações</strong>,
+            ative <strong>Permitir desta fonte</strong> (“Instalar apps desconhecidos”) e volte.
+          </li>
+          <li>Toque em <strong>Instalar</strong>. Se o <strong>Play Protect</strong> mostrar “App não verificado”, toque em <strong>Mais detalhes</strong> → <strong>Instalar mesmo assim</strong>.</li>
+          <li>Abra o <strong>RupBar Garçom</strong> e entre com <strong>seu e-mail e senha</strong>. Para trocar de PC, toque e segure o ícone do app → “Trocar PC”.</li>
+        </ol>
+        <div className="android-iphone">
+          <Share size={16} />
+          <p className="small muted">
+            <strong>iPhone:</strong> abra <span className="mono">{baseUrl}</span> no <strong>Safari</strong>, toque em <strong>Compartilhar</strong> → <strong>“Adicionar à Tela de Início”</strong>.
+          </p>
+        </div>
+      </Card>
     </div>
   );
 }

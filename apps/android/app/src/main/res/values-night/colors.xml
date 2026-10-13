@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cor de fundo do tema escuro da interface web (variável CSS bg). -->
+    <color name="web_bg">#FF000000</color>
+</resources>
