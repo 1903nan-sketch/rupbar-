@@ -1,20 +1,23 @@
 import { formatBRL, formatQty, LOSS_REASONS, type LossReason, type Measure } from '@rupbar/core';
-import { Badge, Card, Empty, PageHeader, PeriodForm, Stat } from '@/components/ui';
+import { CloudUpload, History, Layers, ListChecks, PackageMinus, PlusCircle, Tags } from 'lucide-react';
+import { BarList } from '@/components/charts/BarList';
+import { CountUp } from '@/components/CountUp';
+import { Badge, Card, Empty, PageHeader, PeriodForm, stagger, type BadgeColor } from '@/components/ui';
 import { currentEstablishment, periodFrom } from '@/lib/data';
+import { fmtShort } from '@/lib/format';
 import { cancelCommand } from './actions';
 import { LossForm } from './LossForm';
 
 export const metadata = { title: 'Perdas' };
 
-const CMD_STATUS: Record<string, [string, 'orange' | 'green' | 'red' | 'blue' | undefined]> = {
+const CMD_STATUS: Record<string, [string, BadgeColor]> = {
   pending: ['Aguardando aplicação', 'orange'],
   delivered: ['Aguardando aplicação', 'orange'],
   applied: ['Aplicada', 'green'],
   conflict: ['Conflito de estoque', 'red'],
-  rejected: ['Rejeitada', undefined],
-  canceled: ['Cancelada', undefined],
+  rejected: ['Rejeitada', 'gray'],
+  canceled: ['Cancelada', 'gray'],
 };
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
 export default async function Losses({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
@@ -29,61 +32,166 @@ export default async function Losses({ searchParams }: { searchParams: Promise<R
   ]);
   const prod = new Map((products ?? []).map((x) => [x.id as string, x as { name: string; measure: Measure }]));
   const r = report as null | { totalCostCents: number; byCategory: { category: string; count: number; cost_cents: number }[]; byReason: { reason: LossReason; count: number; cost_cents: number }[] };
+  const appliedCount = losses?.filter((l) => l.status === 'applied').length ?? 0;
+  const waiting = (commands ?? []).filter((c) => c.status === 'pending' || c.status === 'delivered').length;
 
   return (
     <div className="stack-l">
-      <PageHeader title="Perdas" subtitle="Somente o proprietário registra perdas. Registros feitos aqui são aplicados pelo PC do bar." actions={<PeriodForm de={p.de} ate={p.ate} />} />
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.4fr)', alignItems: 'start' }}>
-        <Card title="Registrar perda"><LossForm products={(products ?? []).map((x) => ({ id: x.id as string, name: x.name as string, measure: x.measure as string }))} /></Card>
-        <Card title="Registradas pelo painel" flush>
-          <div className="list">
-            {!commands?.length && <div className="list-item muted">Nenhuma perda registrada por aqui.</div>}
-            {commands?.map((c) => {
-              const pl = c.payload as { productId: string; qty: number; reason: LossReason };
-              const pr = prod.get(pl.productId);
-              const [label, color] = CMD_STATUS[c.status as string] ?? [c.status as string, undefined];
-              const msg = (c.result as { message?: string } | null)?.message;
-              return (
-                <div key={c.id as string} className="list-item">
-                  <div className="grow">
-                    <div className="strong">{pr?.name ?? 'Produto'} · {formatQty(Number(pl.qty), pr?.measure ?? 'unit')}</div>
-                    <div className="tiny muted">{LOSS_REASONS[pl.reason]} · {fmt(c.created_at as string)}{msg ? ` · ${msg}` : ''}</div>
-                  </div>
-                  <Badge color={color}>{label}</Badge>
-                  {c.status === 'pending' && (
-                    <form action={cancelCommand}><input type="hidden" name="id" value={c.id as string} /><button className="btn plain small" type="submit">Cancelar</button></form>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+      <PageHeader
+        title="Perdas"
+        eyebrow="Controle"
+        icon={PackageMinus}
+        subtitle="Somente o proprietário registra perdas. Registros feitos aqui são aplicados pelo PC do bar."
+        actions={<PeriodForm de={p.de} ate={p.ate} />}
+      />
+
+      <div className="split-form">
+        <Card title="Registrar perda" subtitle="Quebra, vencimento, derramamento…" icon={PlusCircle} tone="rose" className="reveal" style={stagger(0)}>
+          <LossForm products={(products ?? []).map((x) => ({ id: x.id as string, name: x.name as string, measure: x.measure as string }))} />
+        </Card>
+        <Card
+          title="Registradas pelo painel"
+          subtitle={waiting ? `${waiting} aguardando o PC do bar` : 'Fila de envio para o PC do bar'}
+          icon={CloudUpload}
+          tone="blue"
+          flush
+          className="reveal"
+          style={stagger(1)}
+        >
+          {!commands?.length ? (
+            <Empty title="Nenhuma perda registrada por aqui" icon={CloudUpload}>
+              As perdas que você registrar ao lado aparecem nesta fila até o PC do bar aplicá-las.
+            </Empty>
+          ) : (
+            <ul className="list scroll-list tall">
+              {commands.map((c) => {
+                const pl = c.payload as { productId: string; qty: number; reason: LossReason };
+                const pr = prod.get(pl.productId);
+                const [label, color] = CMD_STATUS[c.status as string] ?? [c.status as string, 'gray' as const];
+                const msg = (c.result as { message?: string } | null)?.message;
+                return (
+                  <li key={c.id as string} className="list-item">
+                    <div className="grow">
+                      <div className="strong">
+                        {pr?.name ?? 'Produto'} · {formatQty(Number(pl.qty), pr?.measure ?? 'unit')}
+                      </div>
+                      <div className="tiny muted">
+                        {LOSS_REASONS[pl.reason] ?? pl.reason} · {fmtShort(c.created_at as string)}
+                        {msg ? ` · ${msg}` : ''}
+                      </div>
+                    </div>
+                    <Badge color={color} dot pulse={c.status === 'pending' || c.status === 'delivered'}>
+                      {label}
+                    </Badge>
+                    {c.status === 'pending' && (
+                      <form action={cancelCommand}>
+                        <input type="hidden" name="id" value={c.id as string} />
+                        <button className="btn ghost small" type="submit">
+                          Cancelar
+                        </button>
+                      </form>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </Card>
       </div>
+
       {r && (
         <div className="grid-3">
-          <Stat label="Custo estimado das perdas" value={formatBRL(Number(r.totalCostCents))} hint={`${losses?.filter((l) => l.status === 'applied').length ?? 0} ocorrências aplicadas`} />
-          <Card title="Por motivo" flush><div className="list">{r.byReason.map((x) => <div key={x.reason} className="list-item"><span className="grow">{LOSS_REASONS[x.reason]}</span><span className="small muted">{x.count}</span><span className="num">{formatBRL(Number(x.cost_cents))}</span></div>)}{!r.byReason.length && <div className="list-item muted">Sem perdas.</div>}</div></Card>
-          <Card title="Por categoria" flush><div className="list">{r.byCategory.map((x) => <div key={x.category} className="list-item"><span className="grow">{x.category}</span><span className="small muted">{x.count}</span><span className="num">{formatBRL(Number(x.cost_cents))}</span></div>)}{!r.byCategory.length && <div className="list-item muted">Sem perdas.</div>}</div></Card>
+          <article className="card kpi glow tone-rose reveal" style={stagger(2)}>
+            <div className="stat-top">
+              <h2 className="stat-label">Custo estimado das perdas</h2>
+              <span className="icon-chip rose" aria-hidden="true">
+                <PackageMinus size={16} strokeWidth={2.2} />
+              </span>
+            </div>
+            <CountUp className="stat-value" value={Number(r.totalCostCents)} format="brl" />
+            <span className="stat-hint">
+              {appliedCount} ocorrência{appliedCount === 1 ? '' : 's'} aplicada{appliedCount === 1 ? '' : 's'} no período
+            </span>
+          </article>
+          <Card title="Por motivo" icon={Tags} tone="amber" className="reveal" style={stagger(3)}>
+            {r.byReason.length ? (
+              <BarList
+                label="Perdas por motivo"
+                rows={r.byReason.map((x) => ({
+                  key: x.reason,
+                  label: LOSS_REASONS[x.reason] ?? x.reason,
+                  value: Number(x.cost_cents),
+                  display: formatBRL(Number(x.cost_cents)),
+                  meta: `${x.count} ocorrência${Number(x.count) === 1 ? '' : 's'}`,
+                }))}
+              />
+            ) : (
+              <Empty title="Sem perdas" icon={ListChecks} />
+            )}
+          </Card>
+          <Card title="Por categoria" icon={Layers} tone="violet" className="reveal" style={stagger(4)}>
+            {r.byCategory.length ? (
+              <BarList
+                label="Perdas por categoria"
+                rows={r.byCategory.map((x) => ({
+                  key: x.category,
+                  label: x.category,
+                  value: Number(x.cost_cents),
+                  display: formatBRL(Number(x.cost_cents)),
+                  meta: `${x.count} ocorrência${Number(x.count) === 1 ? '' : 's'}`,
+                }))}
+              />
+            ) : (
+              <Empty title="Sem perdas" icon={ListChecks} />
+            )}
+          </Card>
         </div>
       )}
-      <Card title="Histórico de perdas" flush>
-        {!losses?.length ? <Empty title="Nenhuma perda no período" /> : (
-          <div className="table-wrap"><table className="table"><thead><tr><th>Data</th><th>Produto</th><th className="right">Quantidade</th><th>Motivo</th><th>Origem</th><th>Situação</th><th className="right">Custo</th></tr></thead><tbody>
-            {losses.map((l) => {
-              const pr = prod.get(l.product_id as string);
-              return (
-                <tr key={l.id as string}>
-                  <td className="small">{fmt(l.occurred_at as string)}</td>
-                  <td>{pr?.name ?? '—'}</td>
-                  <td className="right num">{formatQty(Number(l.applied_qty || l.qty), pr?.measure ?? 'unit')}</td>
-                  <td>{LOSS_REASONS[l.reason as LossReason]}</td>
-                  <td className="small muted">{l.source === 'remote' ? 'Painel online' : 'PC do bar'} · {l.registered_by_name as string}</td>
-                  <td><Badge color={l.status === 'applied' ? 'green' : l.status === 'conflict' ? 'red' : 'orange'}>{CMD_STATUS[l.status as string]?.[0] ?? (l.status as string)}</Badge></td>
-                  <td className="right num">{formatBRL(Number(l.cost_cents))}</td>
+
+      <Card title="Histórico de perdas" subtitle="Registradas no PC do bar e pelo painel" icon={History} flush className="reveal" style={stagger(5)}>
+        {!losses?.length ? (
+          <Empty title="Nenhuma perda no período" icon={History}>
+            Que bom! Nenhuma perda registrada entre as datas escolhidas.
+          </Empty>
+        ) : (
+          <div className="table-wrap tall">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Data</th>
+                  <th scope="col">Produto</th>
+                  <th scope="col" className="right">Quantidade</th>
+                  <th scope="col">Motivo</th>
+                  <th scope="col">Origem</th>
+                  <th scope="col">Situação</th>
+                  <th scope="col" className="right">Custo</th>
                 </tr>
-              );
-            })}
-          </tbody></table></div>
+              </thead>
+              <tbody>
+                {losses.map((l) => {
+                  const pr = prod.get(l.product_id as string);
+                  const st = l.status as string;
+                  return (
+                    <tr key={l.id as string}>
+                      <td className="small num">{fmtShort(l.occurred_at as string)}</td>
+                      <td className="strong">{pr?.name ?? '—'}</td>
+                      <td className="right num">{formatQty(Number(l.applied_qty || l.qty), pr?.measure ?? 'unit')}</td>
+                      <td>{LOSS_REASONS[l.reason as LossReason] ?? (l.reason as string)}</td>
+                      <td className="small muted">
+                        {l.source === 'remote' ? 'Painel online' : 'PC do bar'} · {l.registered_by_name as string}
+                      </td>
+                      <td>
+                        <Badge color={st === 'applied' ? 'green' : st === 'conflict' ? 'red' : st === 'rejected' ? 'gray' : 'orange'} dot>
+                          {CMD_STATUS[st]?.[0] ?? (st === 'pending_application' ? 'Aguardando aplicação' : st)}
+                        </Badge>
+                      </td>
+                      <td className="right num strong">{formatBRL(Number(l.cost_cents))}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>

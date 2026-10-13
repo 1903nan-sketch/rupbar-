@@ -1,10 +1,11 @@
 import { formatBRL, PAYMENT_METHODS, type PaymentMethod } from '@rupbar/core';
+import { ArrowDownToLine, ArrowUpFromLine, Banknote, Paperclip, Scale, Vault, Wallet, X } from 'lucide-react';
 import Link from 'next/link';
-import { Badge, Card, Empty, PageHeader, PeriodForm } from '@/components/ui';
+import { Badge, Card, Empty, PageHeader, PeriodForm, Stat, stagger } from '@/components/ui';
 import { currentEstablishment, periodFrom } from '@/lib/data';
+import { fmtShort } from '@/lib/format';
 
 export const metadata = { title: 'Caixas e sangrias' };
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
 export default async function CashPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
@@ -20,46 +21,146 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
   const name = new Map((users ?? []).map((u) => [u.id as string, u.name as string]));
   const sel = (sessions ?? []).find((s) => s.id === selected);
   const summary = sel?.summary as null | { byMethod: Record<string, number>; withdrawals: number; supplies: number; expectedCash: number };
+  const withdrawals = (movements ?? []).filter((m) => m.type === 'withdrawal').reduce((a, m) => a + Number(m.amount_cents), 0);
+  const supplies = (movements ?? []).filter((m) => m.type !== 'withdrawal').reduce((a, m) => a + Number(m.amount_cents), 0);
+  const diff = (sessions ?? []).reduce((a, s) => a + (s.difference_cents !== null ? Number(s.difference_cents) : 0), 0);
 
   return (
     <div className="stack-l">
-      <PageHeader title="Caixas e sangrias" actions={<PeriodForm de={p.de} ate={p.ate} />} />
-      <Card title="Caixas" flush>
-        {!sessions?.length ? <Empty title="Nenhum caixa no período" /> : (
-          <div className="table-wrap"><table className="table"><thead><tr><th>Caixa</th><th>Abertura</th><th>Fechamento</th><th className="right">Esperado</th><th className="right">Contado</th><th className="right">Diferença</th></tr></thead><tbody>
-            {sessions.map((s) => (
-              <tr key={s.id as string} style={s.id === selected ? { background: 'var(--accent-soft)' } : undefined}>
-                <td><Link href={`?de=${p.de}&ate=${p.ate}&id=${s.id}`} className="strong">nº {s.number as number}</Link></td>
-                <td className="small">{fmt(s.opened_at as string)}<div className="tiny muted">{name.get(s.opened_by as string) ?? '—'}</div></td>
-                <td className="small">{s.status === 'open' ? <Badge color="green">Aberto</Badge> : <>{fmt(s.closed_at as string)}<div className="tiny muted">{name.get(s.closed_by as string) ?? '—'}</div></>}</td>
-                <td className="right num">{s.expected_cash_cents !== null ? formatBRL(Number(s.expected_cash_cents)) : '—'}</td>
-                <td className="right num">{s.counted_cash_cents !== null ? formatBRL(Number(s.counted_cash_cents)) : '—'}</td>
-                <td className={`right num strong ${Number(s.difference_cents) < 0 ? 'danger-text' : Number(s.difference_cents) > 0 ? 'warning-text' : ''}`}>{s.difference_cents !== null ? formatBRL(Number(s.difference_cents)) : '—'}</td>
-              </tr>
-            ))}
-          </tbody></table></div>
+      <PageHeader title="Caixas e sangrias" eyebrow="Financeiro" icon={Wallet} subtitle="Aberturas, fechamentos e movimentações de dinheiro do caixa." actions={<PeriodForm de={p.de} ate={p.ate} />} />
+
+      <div className="grid-3 stagger">
+        <Stat label="Sangrias" value={formatBRL(withdrawals)} hint="retiradas de dinheiro no período" icon={ArrowUpFromLine} tone="amber" />
+        <Stat label="Suprimentos" value={formatBRL(supplies)} hint="reforços de troco no período" icon={ArrowDownToLine} tone="teal" />
+        <Stat
+          label="Diferença acumulada"
+          value={<span className={diff < 0 ? 'danger-text' : diff > 0 ? 'warning-text' : ''}>{formatBRL(diff)}</span>}
+          hint={`${sessions?.length ?? 0} caixa(s) no período`}
+          icon={Scale}
+          tone={diff < 0 ? 'rose' : 'violet'}
+        />
+      </div>
+
+      <Card title="Caixas" subtitle="Toque em um caixa para ver o resumo" icon={Vault} flush className="reveal" style={stagger(3)}>
+        {!sessions?.length ? (
+          <Empty title="Nenhum caixa no período" icon={Vault}>
+            Os caixas abertos e fechados no PC do bar aparecem aqui.
+          </Empty>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Caixa</th>
+                  <th scope="col">Abertura</th>
+                  <th scope="col">Fechamento</th>
+                  <th scope="col" className="right">Esperado</th>
+                  <th scope="col" className="right">Contado</th>
+                  <th scope="col" className="right">Diferença</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((s) => (
+                  <tr key={s.id as string} className={`clickable ${s.id === selected ? 'selected' : ''}`}>
+                    <td>
+                      <Link href={`?de=${p.de}&ate=${p.ate}&id=${s.id}`} className="row-link strong" scroll={false} aria-current={s.id === selected ? 'true' : undefined}>
+                        nº {s.number as number}
+                      </Link>
+                    </td>
+                    <td className="small">
+                      <span className="num">{fmtShort(s.opened_at as string)}</span>
+                      <div className="tiny muted">{name.get(s.opened_by as string) ?? '—'}</div>
+                    </td>
+                    <td className="small">
+                      {s.status === 'open' ? (
+                        <Badge color="green" dot pulse>
+                          Aberto
+                        </Badge>
+                      ) : (
+                        <>
+                          <span className="num">{fmtShort(s.closed_at as string)}</span>
+                          <div className="tiny muted">{name.get(s.closed_by as string) ?? '—'}</div>
+                        </>
+                      )}
+                    </td>
+                    <td className="right num">{s.expected_cash_cents !== null ? formatBRL(Number(s.expected_cash_cents)) : '—'}</td>
+                    <td className="right num">{s.counted_cash_cents !== null ? formatBRL(Number(s.counted_cash_cents)) : '—'}</td>
+                    <td className={`right num strong ${Number(s.difference_cents) < 0 ? 'danger-text' : Number(s.difference_cents) > 0 ? 'warning-text' : ''}`}>
+                      {s.difference_cents !== null ? formatBRL(Number(s.difference_cents)) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
+
       {sel && summary && (
-        <Card title={`Resumo do caixa nº ${sel.number}`}>
-          <div className="grid-3">
-            {Object.entries(summary.byMethod).map(([m, v]) => <div key={m} className="stat"><span className="label">{PAYMENT_METHODS[m as PaymentMethod] ?? m}</span><span className="value" style={{ fontSize: 20 }}>{formatBRL(v)}</span></div>)}
-            <div className="stat"><span className="label">Sangrias</span><span className="value" style={{ fontSize: 20 }}>{formatBRL(summary.withdrawals)}</span></div>
-            <div className="stat"><span className="label">Suprimentos</span><span className="value" style={{ fontSize: 20 }}>{formatBRL(summary.supplies)}</span></div>
+        <Card
+          key={sel.id as string}
+          title={`Resumo do caixa nº ${sel.number}`}
+          subtitle="Recebimentos por forma de pagamento e movimentações"
+          icon={Banknote}
+          tone="teal"
+          className="detail-card"
+          actions={
+            <Link href={`?de=${p.de}&ate=${p.ate}`} className="btn ghost icon" aria-label="Fechar resumo" scroll={false}>
+              <X size={18} aria-hidden="true" />
+            </Link>
+          }
+        >
+          <div className="mini-stats stagger">
+            {Object.entries(summary.byMethod).map(([m, v]) => (
+              <div key={m} className="mini-stat">
+                <span className="mini-label">{PAYMENT_METHODS[m as PaymentMethod] ?? m}</span>
+                <span className="mini-value">{formatBRL(v)}</span>
+              </div>
+            ))}
+            <div className="mini-stat">
+              <span className="mini-label">Sangrias</span>
+              <span className="mini-value">{formatBRL(summary.withdrawals)}</span>
+            </div>
+            <div className="mini-stat">
+              <span className="mini-label">Suprimentos</span>
+              <span className="mini-value">{formatBRL(summary.supplies)}</span>
+            </div>
           </div>
         </Card>
       )}
-      <Card title="Sangrias e suprimentos" flush>
-        {!movements?.length ? <Empty title="Nenhuma movimentação no período" /> : (
-          <div className="list">
-            {movements.map((m) => (
-              <div key={m.id as string} className="list-item">
-                {m.type === 'withdrawal' ? <Badge color="orange">Sangria</Badge> : <Badge color="blue">Suprimento</Badge>}
-                <div className="grow"><div>{m.reason as string}</div><div className="tiny muted">{fmt(m.created_at as string)} · {name.get(m.created_by as string) ?? '—'}{m.has_attachment ? ' · com comprovante (no PC do bar)' : ''}</div></div>
-                <span className="num strong">{formatBRL(Number(m.amount_cents))}</span>
-              </div>
-            ))}
-          </div>
+
+      <Card title="Sangrias e suprimentos" subtitle="Movimentações de dinheiro registradas no caixa" icon={Banknote} tone="amber" flush className="reveal" style={stagger(4)}>
+        {!movements?.length ? (
+          <Empty title="Nenhuma movimentação no período" icon={Banknote} />
+        ) : (
+          <ul className="list scroll-list tall">
+            {movements.map((m) => {
+              const out = m.type === 'withdrawal';
+              return (
+                <li key={m.id as string} className="list-item">
+                  <span className={`icon-chip ${out ? 'amber' : 'teal'} sm`} aria-hidden="true">
+                    {out ? <ArrowUpFromLine size={14} /> : <ArrowDownToLine size={14} />}
+                  </span>
+                  <div className="grow">
+                    <div className="row" style={{ gap: 8 }}>
+                      {out ? <Badge color="orange">Sangria</Badge> : <Badge color="blue">Suprimento</Badge>}
+                      <span className="ellipsis">{m.reason as string}</span>
+                    </div>
+                    <div className="tiny muted">
+                      {fmtShort(m.created_at as string)} · {name.get(m.created_by as string) ?? '—'}
+                      {m.has_attachment ? (
+                        <>
+                          {' · '}
+                          <Paperclip size={11} aria-hidden="true" /> com comprovante (no PC do bar)
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  <span className="num strong">{formatBRL(Number(m.amount_cents))}</span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Card>
     </div>
