@@ -1,104 +1,125 @@
-import { BASE_UNIT, formatQty, type Measure } from '@rupbar/core';
-import { Boxes, Package, Wine } from 'lucide-react';
+import { buyModeOf, describeStock, MILLI } from '@rupbar/core';
 import { useState } from 'react';
-import { Button, Card, DecimalInput, ErrorBox, Field, Input, Loading, Modal, MoneyInput, Select, Switch, useToast } from '../components/ui';
+import { BuyModePicker, CostEntry, EntrySentence, QtyEntry, SellModePicker, totalCostOf } from '../components/stock-units';
+import { Button, Card, ErrorBox, Field, Input, Loading, Modal, Select, useToast } from '../components/ui';
 import { api } from '../lib/api';
-import { formatBRL } from '../lib/format';
 import { useLoad } from '../lib/hooks';
 import { useSession } from '../lib/session';
+import {
+  defaultCostMode, defaultSell, emptyQty, entryPayload, PACK_DEFAULTS, packagingFromDraft, presentationsFor, previewPackaging, qtyOf,
+  type CostDraft, type PackDraft, type QtyDraft, type SellDraft,
+} from '../lib/stock-units';
+import '../styles/stock.css';
 import type { Category } from './Products';
 
-type Kind = 'unit' | 'volume' | 'mass';
-const KINDS: { value: Kind; title: string; hint: string; icon: typeof Package; size: number; label: string }[] = [
-  { value: 'unit', title: 'Por unidade', hint: 'Latas, garrafas e itens avulsos', icon: Package, size: 1, label: 'unidade' },
-  { value: 'volume', title: 'Garrafa e doses', hint: 'Bebidas vendidas por ml', icon: Wine, size: 1000, label: 'garrafa' },
-  { value: 'mass', title: 'Ingrediente', hint: 'Insumos controlados por grama', icon: Boxes, size: 50, label: 'pacote' },
-];
-
-/** Cadastro e primeira entrada juntos, sem navegar por três abas. */
+/**
+ * Cadastro e primeira entrada juntos, em perguntas simples:
+ * o que é → como você compra → como você vende → quanto tem agora.
+ */
 export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; onSaved: (id: string) => void }) {
   const toast = useToast();
   const { can } = useSession();
   const categories = useLoad(() => api.get<Category[]>('/api/categories'));
-  const [kind, setKind] = useState<Kind>('unit');
+  const nextCode = useLoad(() => api.get<{ code: string }>('/api/products/next-code').catch(() => null));
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [size, setSize] = useState<number | null>(1);
-  const [label, setLabel] = useState('unidade');
-  const [sell, setSell] = useState(true);
-  const [price, setPrice] = useState<number | null>(null);
-  const [dose, setDose] = useState<number | null>(50);
-  const [packages, setPackages] = useState<number | null>(null);
-  const [cost, setCost] = useState<number | null>(null);
-  const [min, setMin] = useState<number | null>(null);
+  const [code, setCode] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [pack, setPack] = useState<PackDraft>(PACK_DEFAULTS.single);
+  const [sell, setSell] = useState<SellDraft>(defaultSell('single'));
+  const packaging = previewPackaging(pack);
+  const [stock, setStock] = useState<QtyDraft>(emptyQty(packaging));
+  const [cost, setCost] = useState<CostDraft>({ cents: null, mode: defaultCostMode(packaging) });
+  const [min, setMin] = useState<QtyDraft>(emptyQty(packaging));
   const [busy, setBusy] = useState(false);
-  const unit = BASE_UNIT[kind as Measure];
   const selectedCategory = categoryId || categories.data?.[0]?.id || '';
-  const initialQty = Math.round((packages ?? 0) * (size ?? 0) * 1000);
-  const totalCost = Math.round((packages ?? 0) * (cost ?? 0));
+  const qty = qtyOf(stock, packaging);
+  const minQty = qtyOf(min, packaging);
+  const totalCost = totalCostOf(cost, qty, packaging);
+  const dose = sell.mode === 'dose' && sell.dose ? Math.round(sell.dose * MILLI) : null;
+
+  const changePack = (next: PackDraft) => {
+    if (next.buyMode !== pack.buyMode) {
+      // Novo jeito de comprar: modos e venda voltam ao padrão mais comum daquele tipo.
+      const p = previewPackaging(next);
+      setSell(defaultSell(next.buyMode));
+      setStock({ ...emptyQty(p), amount: stock.amount });
+      setMin({ ...emptyQty(p), amount: min.amount });
+      setCost({ ...cost, mode: defaultCostMode(p) });
+    }
+    setPack(next);
+  };
 
   const submit = async () => {
     if (busy) return;
     if (name.trim().length < 2 || !selectedCategory) return toast.error('Informe o nome e a categoria do produto.');
-    if (!size || size <= 0 || Math.round(size * 1000) <= 0) return toast.error('Informe um conteúdo de embalagem maior que zero.');
-    if (sell && (price === null || price < 0)) return toast.error('Informe o preço de venda.');
-    if (sell && kind === 'volume' && (!dose || dose <= 0 || Math.round(dose * 1000) <= 0)) return toast.error('Informe o tamanho da dose.');
-    if (min !== null && min < 0) return toast.error('O estoque mínimo não pode ser negativo.');
-    if (packages !== null && (packages < 0 || packages > 100_000 || (packages > 0 && initialQty === 0))) return toast.error('Confira a quantidade de embalagens do saldo inicial.');
-    if ((packages ?? 0) > 0 && (cost === null || cost < 0)) return toast.error('Informe o custo de compra por embalagem. Use zero somente se não houve custo.');
+    const pk = packagingFromDraft(pack);
+    if (!pk.ok) return toast.error(pk.error);
+    const pres = presentationsFor(sell, pk.value);
+    if (!pres.ok) return toast.error(pres.error);
+    if (min.amount !== null && min.amount < 0) return toast.error('O estoque mínimo não pode ser negativo.');
+    const withStock = can('stock.entry') && (stock.amount ?? 0) > 0;
+    if (stock.amount !== null && (stock.amount < 0 || (stock.amount > 0 && qty <= 0) || (stock.mode === 'pack' && stock.amount > 100_000))) {
+      return toast.error('Confira a quantidade em estoque.');
+    }
+    if (withStock && (totalCost === null || totalCost < 0)) return toast.error('Informe quanto você pagou. Use zero somente se não houve custo.');
     setBusy(true);
     try {
-      const result = await api.post<{ id: string }>('/api/products', {
-        name: name.trim(), categoryId: selectedCategory, measure: kind, packageQty: Math.round(size * 1000), packageLabel: label.trim() || null,
-        stockTracked: true, minStock: Math.round((min ?? 0) * 1000), menuVisible: sell,
-        presentations: sell ? [{ name: kind === 'volume' ? `Dose ${dose} ml` : 'Unidade', priceCents: price,
-          components: [{ productId: null, qty: Math.round((kind === 'volume' ? dose! : kind === 'mass' ? size : 1) * 1000) }] }] : [],
-        initialStock: can('stock.entry') && (packages ?? 0) > 0 ? { packages, totalCostCents: totalCost } : undefined,
+      const result = await api.post<{ id: string; internalCode: string | null }>('/api/products', {
+        name: name.trim(), categoryId: selectedCategory, internalCode: code.trim() || null, barcode: barcode.trim() || null,
+        measure: pk.value.measure, packageQty: pk.value.packageQty, packageLabel: pk.value.packageLabel, unitLabel: pk.value.unitLabel,
+        stockTracked: true, minStock: minQty, menuVisible: sell.mode !== 'ingredient', presentations: pres.value,
+        initialStock: withStock ? { ...entryPayload(stock, pk.value), totalCostCents: totalCost } : undefined,
       });
-      toast.success((packages ?? 0) > 0 ? 'Produto e saldo inicial cadastrados' : 'Produto cadastrado');
+      const codeText = result.internalCode ? ` (código ${result.internalCode})` : '';
+      toast.success(withStock ? `Produto${codeText} e saldo inicial cadastrados` : `Produto${codeText} cadastrado`);
       onSaved(result.id);
       onClose();
     } catch (error) { toast.error(error); }
     finally { setBusy(false); }
   };
 
+  const minText = minQty > 0 ? describeStock(minQty, packaging) : null;
+
   return <Modal title="Novo produto" wide onClose={onClose} footer={<><Button onClick={onClose} disabled={busy}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!categories.data?.length} onClick={submit}>Cadastrar produto</Button></>}>
-    {categories.error ? <ErrorBox error={categories.error} onRetry={categories.reload} /> : !categories.data ? <Loading /> : <div className="stack">
-      <p className="muted small">Cadastre o produto e o estoque em uma única etapa. Depois, abra o produto para adicionar fotos, fornecedores ou outras apresentações.</p>
-      <div className="product-kind-options" role="group" aria-label="Tipo de produto">{KINDS.map((option) => {
-        const Icon = option.icon;
-        return <button key={option.value} type="button" className={`product-kind ${kind === option.value ? 'active' : ''}`} aria-pressed={kind === option.value} onClick={() => {
-          setKind(option.value); setSize(option.size); setLabel(option.label); setSell(option.value !== 'mass');
-        }}><Icon size={22} /><strong>{option.title}</strong><span>{option.hint}</span></button>;
-      })}</div>
-      <div className="grid-2">
-        <Card title="1. Identifique o produto" className="form-section">
-          <div className="stack">
-            <Field label="Nome do produto"><Input autoFocus placeholder="Ex.: Coca-Cola 600 ml" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-            <Field label="Categoria"><Select value={selectedCategory} onChange={(e) => setCategoryId(e.target.value)}>{categories.data.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
-            <div className="grid-2">
-              <Field label={`Conteúdo da embalagem (${unit})`} hint={kind === 'unit' ? '1 para uma lata; 12 para uma caixa com 12 unidades.' : kind === 'volume' ? 'Garrafa de 1 L = 1000 ml.' : 'Pacote de 50 g = 50.'}><DecimalInput value={size} onChange={setSize} suffix={unit} /></Field>
-              <Field label="Nome da embalagem"><Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="lata, caixa, garrafa…" /></Field>
-            </div>
-            <Switch label="Vender no cardápio" description="Desative para ingredientes e insumos." checked={sell} onChange={setSell} />
-            {sell && <div className={kind === 'volume' ? 'grid-2' : ''}>
-              {kind === 'volume' && <Field label="Tamanho da dose (ml)"><DecimalInput value={dose} onChange={setDose} suffix="ml" /></Field>}
-              <Field label={kind === 'volume' ? 'Preço da dose' : kind === 'mass' ? 'Preço da embalagem' : 'Preço por unidade'}><MoneyInput value={price} onChange={setPrice} /></Field>
-            </div>}
+    {categories.error ? <ErrorBox error={categories.error} onRetry={categories.reload} /> : !categories.data ? <Loading /> : <div className="stack quick-product">
+      <p className="muted small">Responda quatro perguntas simples. Fotos, fornecedor e outras apresentações você ajusta depois, abrindo o produto.</p>
+
+      <Card title={<h3><span className="step-number">1</span>O que você está cadastrando?</h3>} className="form-section">
+        <div className="grid-2">
+          <Field label="Nome do produto"><Input autoFocus placeholder="Ex.: Heineken lata 350 ml" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label="Categoria"><Select value={selectedCategory} onChange={(e) => setCategoryId(e.target.value)}>{categories.data.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+        </div>
+        <details className="optional-fields" style={{ marginTop: 14 }}>
+          <summary>Código interno e código de barras (opcional)</summary>
+          <div className="grid-2">
+            <Field label="Código interno" hint={`Em branco: o sistema gera o próximo número${nextCode.data ? ` (${nextCode.data.code})` : ''}.`}>
+              <Input value={code} placeholder={nextCode.data ? `Automático: ${nextCode.data.code}` : 'Automático'} onChange={(e) => setCode(e.target.value)} />
+            </Field>
+            <Field label="Código de barras"><Input inputMode="numeric" value={barcode} onChange={(e) => setBarcode(e.target.value)} /></Field>
           </div>
+        </details>
+      </Card>
+
+      <Card title={<h3><span className="step-number">2</span>Como você compra este produto?</h3>} className="form-section">
+        <BuyModePicker value={pack} onChange={changePack} />
+      </Card>
+
+      <div className="grid-2">
+        <Card title={<h3><span className="step-number">3</span>Como você vende?</h3>} className="form-section">
+          <SellModePicker packaging={packaging} value={sell} onChange={setSell} />
         </Card>
-        <Card title="2. Informe o estoque" className="form-section">
+        <Card title={<h3><span className="step-number">4</span>Quanto tem agora?</h3>} className="form-section">
           <div className="stack">
             {can('stock.entry') && <>
-              <Field label="Embalagens em estoque" hint="Opcional. Deixe em branco para cadastrar sem saldo."><DecimalInput value={packages} onChange={setPackages} placeholder="Ex.: 24" /></Field>
-              <Field label="Custo de compra por embalagem" hint="O custo de compra é diferente do preço de venda."><MoneyInput value={cost} onChange={setCost} /></Field>
+              <QtyEntry label="Quantidade em estoque agora" packaging={packaging} value={stock} onChange={setStock}
+                hint={buyModeOf(packaging) === 'single' ? 'Opcional. Deixe em branco para cadastrar sem saldo.' : 'Opcional. Escolha se está contando embalagens fechadas ou unidades soltas.'} />
+              <CostEntry label="Quanto você pagou?" packaging={packaging} value={cost} onChange={setCost} hint="Custo de compra (não é o preço de venda)." />
+              <EntrySentence packaging={packaging} qty={stock} cost={cost} doseQty={dose} verb="cadastrando" empty="Sem saldo inicial: o produto começa zerado." />
             </>}
-            <Field label={`Estoque mínimo (${unit})`} hint="Opcional. Avisa quando o saldo chegar a este nível."><DecimalInput value={min} onChange={setMin} suffix={unit} /></Field>
-            <div className="stock-entry-summary">
-              <span className="label">Saldo inicial</span><strong>{formatQty(initialQty, kind)}</strong>
-              {(packages ?? 0) > 0 && <span className="small muted">{packages} × {size} {unit} · custo total {cost === null ? 'a informar' : formatBRL(totalCost)}</span>}
-            </div>
-            <p className="tiny muted">O saldo inicial gera uma entrada no histórico. As vendas baixam o estoque automaticamente.</p>
+            <QtyEntry label="Estoque mínimo" packaging={packaging} value={min} onChange={setMin} suggest={false}
+              hint={minText ? `Avisamos quando ficar em ${minText.main}${minText.detail ? ` (${minText.detail})` : ''} ou menos.` : 'Opcional. Avisa quando chegar neste nível.'} />
+            <p className="tiny muted">O saldo inicial vira uma entrada no histórico. As vendas baixam o estoque sozinhas.</p>
           </div>
         </Card>
       </div>

@@ -1,12 +1,15 @@
-import { BASE_UNIT, costOf, formatQty, MEASURE_LABEL, type Measure } from '@rupbar/core';
+import { BASE_UNIT, buyModeOf, costOf, packName, unitName, type Measure, type Packaging } from '@rupbar/core';
 import { Camera, ImageOff, Plus, Search, Trash2, Wine } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
-import { Badge, Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Switch, Tabs, Textarea, useToast } from '../components/ui';
+import { BuyModePicker, CodeTag, LevelChip, QtyEntry, StockQty } from '../components/stock-units';
+import { Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Switch, Tabs, Textarea, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { formatBRL } from '../lib/format';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
+import { draftFromPackaging, packagingFromDraft, previewPackaging, qtyDraftFrom, qtyOf, type PackDraft, type QtyDraft } from '../lib/stock-units';
+import '../styles/stock.css';
 import { QuickProductModal } from './QuickProduct';
 
 export interface Product {
@@ -22,6 +25,10 @@ export interface Product {
   measure: Measure;
   packageQty: number;
   packageLabel: string | null;
+  /** Nome da unidade avulsa ("lata") quando a embalagem tem várias. */
+  unitLabel: string | null;
+  /** Menor dose vendida do próprio produto (milli), se houver. */
+  doseQty: number | null;
   stockTracked: boolean;
   stockQty: number;
   minStock: number;
@@ -52,11 +59,16 @@ export interface Category {
 }
 
 export const LEVEL_BADGE: Record<Product['level'], ReactElement> = {
-  ok: <Badge color="green">OK</Badge>,
-  low: <Badge color="orange">Baixo</Badge>,
-  out: <Badge color="red">Zerado</Badge>,
-  negative: <Badge color="red">Negativo</Badge>,
+  ok: <LevelChip level="ok" />,
+  low: <LevelChip level="low" />,
+  out: <LevelChip level="out" />,
+  negative: <LevelChip level="negative" />,
 };
+
+/** Embalagem do produto no formato usado pelas conversões. */
+export function packagingOf(p: Pick<Product, 'measure' | 'packageQty' | 'packageLabel' | 'unitLabel'>): Packaging {
+  return { measure: p.measure, packageQty: p.packageQty, packageLabel: p.packageLabel, unitLabel: p.unitLabel };
+}
 
 export function ProductsPage() {
   const { can } = useSession();
@@ -78,7 +90,7 @@ export function ProductsPage() {
       <div className="row wrap">
         <div className="input-group" style={{ width: 300, maxWidth: '100%' }}>
           <Search size={16} className="prefix" />
-          <Input placeholder="Nome, código ou código de barras" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input aria-label="Buscar produtos" placeholder="Nome, código (ex.: 0007) ou código de barras" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <Select value={cat} onChange={(e) => setCat(e.target.value)} style={{ width: 220 }}>
           <option value="">Todas as categorias</option>
@@ -101,20 +113,15 @@ export function ProductsPage() {
                       <div className="row">
                         {p.photoUrl ? <img src={p.photoUrl} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover' }} /> : <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--fill)' }} />}
                         <div>
-                          <div className="strong">{p.name}</div>
-                          <div className="tiny muted">{p.internalCode ?? ''}{p.menuVisible ? '' : ' · fora do cardápio'}</div>
+                          <div className="row product-name-line"><CodeTag code={p.internalCode} /><span className="strong">{p.name}</span></div>
+                          {!p.menuVisible && <div className="tiny muted">fora do cardápio</div>}
                         </div>
                       </div>
                     </td>
                     <td className="muted">{p.categoryName}</td>
                     <td className="small">{p.presentations.filter((x) => x.active).map((x) => `${x.name} ${formatBRL(x.priceCents)}`).join(' · ') || <span className="muted">—</span>}</td>
                     <td className="right num">
-                      {p.stockTracked ? (
-                        <>
-                          <div>{formatQty(p.stockQty, p.measure)}</div>
-                          {p.packages && p.packageQty > 1000 && <div className="tiny muted">{p.packages.closed} fechada(s){p.packages.hasOpen ? ` + ${formatQty(p.packages.openRemaining, p.measure)} aberta` : ''}</div>}
-                        </>
-                      ) : <span className="muted">não controlado</span>}
+                      {p.stockTracked ? <StockQty qty={p.stockQty} packaging={packagingOf(p)} /> : <span className="muted">não controlado</span>}
                     </td>
                     <td>{p.stockTracked ? LEVEL_BADGE[p.level] : null}</td>
                   </tr>
@@ -157,6 +164,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
   const toast = useToast();
   const suppliers = useLoad(() => api.get<{ id: string; name: string }[]>('/api/suppliers').catch(() => []));
   const all = useLoad(() => api.get<Product[]>('/api/products'));
+  const nextCode = useLoad(() => (product ? Promise.resolve(null) : api.get<{ code: string }>('/api/products/next-code').catch(() => null)));
   const [tab, setTab] = useState<'geral' | 'estoque' | 'apresentacoes'>('geral');
   const [busy, setBusy] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
@@ -167,35 +175,41 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
     barcode: product?.barcode ?? '',
     description: product?.description ?? '',
     supplierId: product?.supplierId ?? '',
-    measure: product?.measure ?? ('unit' as Measure),
-    packageQty: (product?.packageQty ?? 1000) / 1000 as number | null,
-    packageLabel: product?.packageLabel ?? '',
     stockTracked: product?.stockTracked ?? true,
-    minStock: (product?.minStock ?? 0) / 1000 as number | null,
     expiryTracked: product?.expiryTracked ?? false,
     menuVisible: product?.menuVisible ?? true,
     station: product?.stationOverride ?? '',
     active: product?.active ?? true,
     packageCost: product?.unitCostE4 ? Math.round((product.unitCostE4 * product.packageQty) / 10_000_000) : (null as number | null),
   });
+  const [pack, setPack] = useState<PackDraft>(() => (product ? draftFromPackaging(packagingOf(product)) : draftFromPackaging({ measure: 'unit', packageQty: 1000 })));
+  const packaging = previewPackaging(pack);
+  const [min, setMin] = useState<QtyDraft>(() => qtyDraftFrom(product?.minStock ?? 0, product ? packagingOf(product) : packaging));
   const [initialCost] = useState(f.packageCost);
   const [pres, setPres] = useState<PresDraft[]>(() => toDraft(product));
-  const unit = BASE_UNIT[f.measure];
+  const unit = BASE_UNIT[packaging.measure];
   const ingredients = useMemo(() => (all.data ?? []).filter((p) => p.id !== product?.id && p.stockTracked), [all.data, product?.id]);
 
+  const changePack = (next: PackDraft) => {
+    if (next.buyMode !== pack.buyMode) setMin({ ...min, mode: next.buyMode === 'single' ? 'unit' : 'pack' });
+    setPack(next);
+  };
+
   const save = async () => {
-    if (!f.packageQty || f.packageQty <= 0) return toast.error('Informe o conteúdo da embalagem.');
+    const pk = packagingFromDraft(pack);
+    if (!pk.ok) { setTab('estoque'); return toast.error(pk.error); }
+    if (min.amount !== null && min.amount < 0) return toast.error('O estoque mínimo não pode ser negativo.');
     for (const p of pres) {
       if (p.priceCents === null) return toast.error(`Informe o preço de "${p.name}".`);
       if (p.mode === 'recipe' && p.components.some((c) => !c.productId || !c.qty)) return toast.error(`Complete a ficha técnica de "${p.name}".`);
     }
-    const packageQty = Math.round(f.packageQty * 1000);
+    const packageQty = pk.value.packageQty;
     setBusy(true);
     try {
       const body = {
-        name: f.name, categoryId: f.categoryId, internalCode: f.internalCode || null, barcode: f.barcode || null, description: f.description || null,
-        supplierId: f.supplierId || null, measure: f.measure, packageQty, packageLabel: f.packageLabel || null, stockTracked: f.stockTracked,
-        minStock: Math.round((f.minStock ?? 0) * 1000), expiryTracked: f.expiryTracked, menuVisible: f.menuVisible, station: f.station || null, active: f.active,
+        name: f.name, categoryId: f.categoryId, internalCode: f.internalCode.trim() || null, barcode: f.barcode || null, description: f.description || null,
+        supplierId: f.supplierId || null, measure: pk.value.measure, packageQty, packageLabel: pk.value.packageLabel || null, unitLabel: pk.value.unitLabel || null,
+        stockTracked: f.stockTracked, minStock: qtyOf(min, pk.value), expiryTracked: f.expiryTracked, menuVisible: f.menuVisible, station: f.station || null, active: f.active,
         // Só envia o custo se foi alterado aqui (preserva o custo médio exato das entradas).
         unitCostE4: f.packageCost !== null && f.packageCost !== initialCost ? Math.round((f.packageCost * 1000 * 10_000) / packageQty) : undefined,
         presentations: pres.map((p, i) => ({
@@ -203,9 +217,11 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
           components: p.mode === 'self' ? [{ productId: null, qty: Math.round((p.selfQty ?? 1) * 1000) }] : p.components.map((c) => ({ productId: c.productId, qty: Math.round((c.qty ?? 0) * 1000) })),
         })),
       };
-      const r = product ? await api.put<{ id: string }>(`/api/products/${product.id}`, body) : await api.post<{ id: string }>('/api/products', body);
+      const r = product
+        ? await api.put<{ id: string; internalCode: string | null }>(`/api/products/${product.id}`, body)
+        : await api.post<{ id: string; internalCode: string | null }>('/api/products', body);
       if (photo) await api.upload(`/api/products/${r.id}/photo`, photo);
-      toast.success('Produto salvo');
+      toast.success(r.internalCode ? `Produto ${r.internalCode} salvo` : 'Produto salvo');
       onSaved();
       onClose();
     } catch (e) {
@@ -215,7 +231,8 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
     }
   };
 
-  const unitCostE4 = f.packageCost && f.packageQty ? Math.round((f.packageCost * 1000 * 10_000) / (f.packageQty * 1000)) : null;
+  const unitCostE4 = f.packageCost && packaging.packageQty ? Math.round((f.packageCost * 1000 * 10_000) / packaging.packageQty) : null;
+  const single = buyModeOf(packaging) === 'single';
   const updatePres = (i: number, patch: Partial<PresDraft>) => setPres(pres.map((p, j) => (j === i ? { ...p, ...patch } : p)));
 
   return (
@@ -250,7 +267,9 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
           </div>
           {product?.photoUrl && !photo && <Button variant="plain" icon={<ImageOff size={15} />} style={{ alignSelf: 'flex-start' }} onClick={async () => { await api.del(`/api/products/${product.id}/photo`); toast.success('Foto removida'); onSaved(); }}>Remover foto</Button>}
           <div className="grid-3">
-            <Field label="Código interno"><Input value={f.internalCode} onChange={(e) => setF({ ...f, internalCode: e.target.value })} /></Field>
+            <Field label="Código interno" hint={product ? 'Pode trocar; em branco mantém o atual.' : `Em branco: gerado automaticamente${nextCode.data ? ` (${nextCode.data.code})` : ''}.`}>
+              <Input className="mono" value={f.internalCode} placeholder={nextCode.data ? `Automático: ${nextCode.data.code}` : product?.internalCode ?? 'Automático'} onChange={(e) => setF({ ...f, internalCode: e.target.value })} />
+            </Field>
             <Field label="Código de barras"><Input inputMode="numeric" value={f.barcode} onChange={(e) => setF({ ...f, barcode: e.target.value })} /></Field>
             <Field label="Fornecedor">
               <Select value={f.supplierId} onChange={(e) => setF({ ...f, supplierId: e.target.value })}>
@@ -267,26 +286,24 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
       {tab === 'estoque' && (
         <div className="stack">
           <Switch checked={f.stockTracked} onChange={(v) => setF({ ...f, stockTracked: v })} label="Controlar estoque" description="Desative para itens preparados cujo estoque é controlado pelos ingredientes (ficha técnica)." />
-          <div className="grid-3">
-            <Field label="Unidade de medida" hint={product && product.stockQty !== 0 ? 'Zere o saldo para alterar.' : undefined}>
-              <Select value={f.measure} disabled={!!product && product.stockQty !== 0} onChange={(e) => setF({ ...f, measure: e.target.value as Measure })}>
-                {(Object.keys(MEASURE_LABEL) as Measure[]).map((m) => <option key={m} value={m}>{MEASURE_LABEL[m]}</option>)}
-              </Select>
-            </Field>
-            <Field label={`Conteúdo da embalagem (${unit})`} hint={f.measure === 'volume' ? 'Ex.: garrafa de 1 L = 1000' : f.measure === 'mass' ? 'Ex.: pacote de 50 g = 50' : 'Ex.: caixa com 12 = 12'}>
-              <DecimalInput value={f.packageQty} onChange={(v) => setF({ ...f, packageQty: v })} suffix={unit} />
-            </Field>
-            <Field label="Nome da embalagem"><Input value={f.packageLabel} onChange={(e) => setF({ ...f, packageLabel: e.target.value })} placeholder="garrafa, lata, pacote…" /></Field>
-          </div>
+          <div className="section-label">Como você compra este produto?</div>
+          <BuyModePicker value={pack} onChange={changePack} lockedMeasure={product && product.stockQty !== 0 ? product.measure : null} />
+          {product && product.stockQty !== 0 && <p className="tiny muted">Com saldo, só dá para trocar entre unidade avulsa e fardo. Para mudar para ml ou g, zere o saldo com um ajuste.</p>}
           {f.stockTracked && (
             <div className="grid-3">
-              <Field label={`Estoque mínimo (${unit})`} hint="Gera alerta e sugestão de reposição."><DecimalInput value={f.minStock} onChange={(v) => setF({ ...f, minStock: v })} suffix={unit} /></Field>
-              <Field label="Custo da embalagem" hint="Atualizado automaticamente pelas entradas (custo médio)."><MoneyInput value={f.packageCost} onChange={(v) => setF({ ...f, packageCost: v })} /></Field>
-              <Field label="Saldo atual"><div className="input num" style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-3)' }}>{product ? formatQty(product.stockQty, product.measure) : '—'}</div></Field>
+              <QtyEntry label="Estoque mínimo" packaging={packaging} value={min} onChange={setMin} suggest={false} hint="Gera alerta e sugestão de reposição." />
+              <Field label={`Custo por ${packName(packaging, 1)}`} hint={unitCostE4 && !single && packaging.measure === 'unit'
+                ? `Custo médio das entradas. Por ${unitName(packaging, 1)}: ${formatBRL(costOf(1000, unitCostE4))}.`
+                : 'Atualizado automaticamente pelas entradas (custo médio).'}>
+                <MoneyInput value={f.packageCost} onChange={(v) => setF({ ...f, packageCost: v })} />
+              </Field>
+              <Field label="Saldo atual"><div className="input readonly-box">{product ? <StockQty qty={product.stockQty} packaging={packagingOf(product)} inline /> : '—'}</div></Field>
             </div>
           )}
           {f.stockTracked && <Switch checked={f.expiryTracked} onChange={(v) => setF({ ...f, expiryTracked: v })} label="Controlar validade por lote" description="As entradas pedem data de validade; o consumo segue a ordem de vencimento." />}
-          {product?.theoreticalYield && <div className="banner">Rendimento teórico: <strong>{product.theoreticalYield}</strong> doses da menor apresentação por embalagem.</div>}
+          {product?.theoreticalYield && product.measure !== 'unit' && (
+            <div className="banner">Rendimento teórico: 1 {packName(packagingOf(product), 1)} rende <strong>{product.theoreticalYield}</strong> {product.measure === 'mass' ? 'porções' : 'doses'} da menor apresentação.</div>
+          )}
           <p className="small muted">Para alterar o saldo, use Estoque → Entradas, Ajustes ou Inventário. Toda movimentação é registrada.</p>
         </div>
       )}
@@ -344,7 +361,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
               </Card>
             );
           })}
-          <Button icon={<Plus size={16} />} style={{ alignSelf: 'flex-start' }} onClick={() => setPres([...pres, { name: '', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: f.measure === 'volume' ? 50 : 1, components: [] }])}>Adicionar apresentação</Button>
+          <Button icon={<Plus size={16} />} style={{ alignSelf: 'flex-start' }} onClick={() => setPres([...pres, { name: '', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: packaging.measure === 'volume' ? 50 : 1, components: [] }])}>Adicionar apresentação</Button>
         </div>
       )}
     </Modal>

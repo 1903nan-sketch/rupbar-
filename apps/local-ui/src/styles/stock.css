@@ -1,0 +1,290 @@
+/*
+ * Estoque autoexplicativo: cartões de resumo em vidro, chips de situação,
+ * campos "embalagem × unidade" e animações suaves (desligadas com
+ * prefers-reduced-motion). Usa apenas os tokens de styles.css.
+ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- código, saldo e situação ---------- */
+.product-name-line { gap: 8px; flex-wrap: wrap; row-gap: 2px; }
+.code-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--text-2);
+  background: var(--fill);
+  border: 1px solid var(--separator);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stock-qty { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.right .stock-qty { align-items: flex-end; }
+.stock-qty-main { font-weight: 650; }
+.stock-qty-detail { font-size: 12px; color: var(--text-2); font-weight: 500; }
+.stock-qty.inline { flex-direction: row; align-items: baseline; gap: 6px; }
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.status-chip.ok { color: color-mix(in srgb, var(--green) 80%, var(--text)); background: color-mix(in srgb, var(--green) 14%, transparent); border-color: color-mix(in srgb, var(--green) 28%, transparent); }
+.status-chip.low { color: color-mix(in srgb, var(--orange) 78%, var(--text)); background: color-mix(in srgb, var(--orange) 16%, transparent); border-color: color-mix(in srgb, var(--orange) 32%, transparent); }
+.status-chip.out,
+.status-chip.negative { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); border-color: color-mix(in srgb, var(--red) 28%, transparent); }
+
+.stock-meter { display: block; width: 96px; max-width: 100%; height: 4px; margin: 6px 0 0 auto; border-radius: 99px; background: var(--fill); overflow: hidden; }
+.stock-meter > span { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width .4s ease; }
+.stock-meter.low > span { background: var(--orange); }
+.stock-meter.out > span,
+.stock-meter.negative > span { background: var(--red); }
+
+/* ---------- cartões de resumo (também filtram a lista) ---------- */
+.stock-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stock-kpi {
+  --tone: var(--accent);
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'icon label' 'value value' 'hint hint';
+  align-items: center;
+  gap: 6px 10px;
+  padding: 16px 18px;
+  text-align: left;
+  color: var(--text);
+  border-radius: var(--radius-l);
+  border: 1px solid var(--glass-edge);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--glass-panel) 90%, white), var(--glass-panel));
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.stock-kpi::after {
+  content: '';
+  position: absolute;
+  right: -24px;
+  top: -34px;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tone) 22%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.stock-kpi.green { --tone: var(--green); }
+.stock-kpi.orange { --tone: var(--orange); }
+.stock-kpi.red { --tone: var(--red); }
+.stock-kpi:hover { transform: translateY(-2px); box-shadow: var(--glass-shadow), 0 10px 26px color-mix(in srgb, var(--tone) 14%, transparent); }
+.stock-kpi:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.stock-kpi.active { border-color: color-mix(in srgb, var(--tone) 70%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 60%, transparent), var(--glass-shadow); }
+.stock-kpi-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+.stock-kpi-label { grid-area: label; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.stock-kpi-value { grid-area: value; font-family: var(--font-display); font-size: 30px; font-weight: 680; letter-spacing: -.035em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stock-kpi-hint { grid-area: hint; font-size: 12px; color: var(--text-2); }
+
+.stock-filters > .select { width: auto; min-width: 200px; }
+.stock-value { margin-left: auto; white-space: nowrap; }
+.stock-value strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---------- tabela de saldos ---------- */
+.stock-table td { vertical-align: middle; }
+.stock-actions { width: 1%; white-space: nowrap; }
+.stock-row { animation: stock-row-in .32s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--i, 0) * 28ms); }
+.stock-table tbody tr { transition: background .15s ease; }
+.stock-table tr.level-out td:first-child,
+.stock-table tr.level-negative td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--red) 70%, transparent); }
+.stock-table tr.level-low td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--orange) 70%, transparent); }
+.stock-empty-actions { align-items: center; max-width: 420px; gap: 12px; }
+
+@keyframes stock-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* ---------- campos embalagem × unidade ---------- */
+/* Campos numéricos sem prefixo (o recuo de 38px é reservado ao ícone/R$). */
+:is(.qty-entry, .count-entry, .buy-mode, .quick-product, .purchase-line, .modal) .input-group > .input:first-child { padding-left: 12px; }
+.qty-entry-row { display: flex; align-items: center; gap: 8px; }
+.qty-entry-row > .input-group { flex: 1; min-width: 0; }
+.qty-entry-unit { font-size: 13px; font-weight: 600; color: var(--text-2); padding: 0 6px; white-space: nowrap; }
+.unit-toggle { flex: none; max-width: 62%; overflow-x: auto; scrollbar-width: none; }
+.unit-toggle::-webkit-scrollbar { display: none; }
+.unit-toggle button { padding: 7px 12px; transition: background .15s ease, box-shadow .15s ease; }
+.unit-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.entry-suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text);
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--orange) 34%, transparent);
+  animation: stock-row-in .2s ease both;
+}
+.entry-suggestion > svg { color: var(--orange); flex: none; }
+
+.entry-sentence { gap: 4px; padding: 14px 16px; font-size: 14px; line-height: 1.5; }
+.entry-sentence p { margin: 0; }
+.entry-sentence strong { font-variant-numeric: tabular-nums; }
+.entry-sentence.muted { color: var(--text-2); background: var(--fill); border-color: transparent; }
+.entry-costs { font-size: 13px; color: var(--text-2); }
+.entry-costs strong { color: var(--text); }
+.entry-warning { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; color: color-mix(in srgb, var(--orange) 70%, var(--text)); }
+.entry-warning svg { flex: none; margin-top: 2px; }
+
+.count-entry { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; min-width: 240px; }
+.count-entry .field > label { font-size: 12px; }
+
+.readonly-box { display: flex; align-items: center; background: var(--surface-3); }
+
+/* ---------- como compra / como vende ---------- */
+.buy-mode-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.buy-mode-options .product-kind,
+.sell-mode-options .product-kind { transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+.buy-mode-options .product-kind:hover:not(:disabled),
+.sell-mode-options .product-kind:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 50%, var(--separator-strong)); }
+.product-kind:disabled { opacity: .45; cursor: not-allowed; }
+.product-kind.compact { padding: 12px 14px; gap: 4px; }
+.sell-mode-options { display: grid; gap: 8px; }
+.sell-mode-options.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sell-mode-options.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.buy-mode-details:empty { display: none; }
+.pack-preview {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 8px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  color: var(--text-2);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.pack-preview strong { color: var(--text); }
+.quick-chips { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
+.quick-chips .chip { height: 28px; padding: 0 12px; font-size: 13px; }
+
+.quick-product .card-title h3 { display: flex; align-items: center; gap: 10px; }
+.step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  flex: none;
+}
+
+/* ---------- entrada de mercadorias ---------- */
+.purchase-line-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 10px; }
+.purchase-line-body .span-all { grid-column: 1 / -1; }
+.purchase-pack { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--text-2); }
+.purchase-pack strong { color: var(--text); }
+.link-button { border: 0; padding: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+.link-button:hover { text-decoration: underline; }
+.link-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.stock-count-table td { vertical-align: top; }
+
+/* ---------- telas menores ---------- */
+@media (max-width: 1100px) {
+  .buy-mode-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stock-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .buy-mode-options,
+  .sell-mode-options.cols-2,
+  .sell-mode-options.cols-3,
+  .purchase-line-body { grid-template-columns: 1fr; }
+  .stock-kpi { padding: 12px 14px; }
+  .stock-kpi-value { font-size: 24px; }
+  .stock-filters > .select { width: 100%; min-width: 0; }
+  .stock-value { margin-left: 0; }
+  .qty-entry-row { flex-wrap: wrap; }
+  .unit-toggle { max-width: 100%; }
+
+  /* Saldos viram cartões no celular. */
+  .stock-table thead { display: none; }
+  .stock-table, .stock-table tbody { display: block; }
+  .stock-table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--separator);
+  }
+  .stock-table tr:last-child { border-bottom: 0; }
+  .stock-table td { display: block; padding: 0; border: 0; text-align: left; }
+  .stock-table td[data-label='Produto'] { grid-column: 1 / -1; }
+  .stock-table td[data-label='Saldo'] { text-align: left; }
+  .stock-table td[data-label='Saldo'] .stock-qty { align-items: flex-start; }
+  .stock-table td[data-label='Saldo'] .stock-meter { margin-left: 0; }
+  .stock-table td[data-label='Mínimo'] { grid-column: 1 / -1; text-align: left; }
+  .stock-table td[data-label='Mínimo']::before { content: 'Mínimo: '; }
+  .stock-table td[data-label='Situação'] { grid-row: 2; grid-column: 2; justify-self: end; }
+  .stock-table .stock-actions { grid-column: 1 / -1; width: auto; }
+  .stock-table .stock-actions .row { justify-content: flex-start; }
+  .stock-table tr.level-out td:first-child,
+  .stock-table tr.level-negative td:first-child,
+  .stock-table tr.level-low td:first-child { box-shadow: none; }
+  .stock-table tr.level-low { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--orange) 70%, transparent); }
+  .stock-table tr.level-out,
+  .stock-table tr.level-negative { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--red) 70%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stock-row,
+  .entry-suggestion { animation: none; }
+  .stock-kpi,
+  .stock-meter > span,
+  .unit-toggle button,
+  .buy-mode-options .product-kind,
+  .sell-mode-options .product-kind,
+  .stock-table tbody tr { transition: none; }
+  .stock-kpi:hover,
+  .buy-mode-options .product-kind:hover:not(:disabled),
+  .sell-mode-options .product-kind:hover:not(:disabled) { transform: none; }
+}
