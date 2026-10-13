@@ -117,7 +117,8 @@ export async function buildApp(services: Services, opts: AppOptions = {}): Promi
         "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; " +
           `connect-src 'self' ws: http://*:${services.ctx.config.port}; media-src 'self' blob: data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'`,
       );
-    } else {
+    } else if (!reply.hasHeader('Cache-Control')) {
+      // Respostas da API não ficam em cache, exceto quando a rota define a política (arquivos, mídia da TV).
       reply.header('Cache-Control', 'no-store');
     }
     return payload;

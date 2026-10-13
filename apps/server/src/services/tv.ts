@@ -1,16 +1,36 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tvApproveSchema } from '@rupbar/core/schemas';
+import { pickupAnnouncement } from '@rupbar/core';
+import { tvApproveSchema, tvDisplaySettingsSchema, type TvDisplaySettings } from '@rupbar/core/schemas';
 import { numericCode, randomToken, safeEqual, sha256 } from '../lib/crypto';
 import { AppError, conflict, notFound } from '../lib/errors';
 import { addMinutes } from '../lib/time';
 import { requirePerm, type Actor, type Ctx } from './context';
 import type { KitchenService } from './kitchen';
 import type { SettingsService } from './settings';
+import type { TvMediaService } from './tv-media';
 
 const PAIRING_MINUTES = 10;
 const MAX_CLAIM_ATTEMPTS = 300;
+/** Chave das configurações de exibição da TV (som da chamada e anúncios). */
+const DISPLAY_KEY = 'tv_display';
+/** Chamada de teste (sem pedido): usada para ajustar o volume da TV. */
+export const TEST_CALL_ID = 'teste';
+
+/**
+ * Lê as configurações de exibição campo a campo: um valor inválido (ex.: de
+ * uma versão antiga) volta ao padrão sem descartar os demais.
+ */
+function tolerantDisplay(raw: unknown): TvDisplaySettings {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(tvDisplaySettingsSchema.shape)) {
+    const r = field.safeParse(src[key]);
+    out[key] = r.success ? r.data : field.parse(undefined);
+  }
+  return out as TvDisplaySettings;
+}
 
 export interface TvDevice {
   id: string;
@@ -41,6 +61,7 @@ export class TvService {
     private readonly ctx: Ctx,
     private readonly settings: SettingsService,
     private readonly kitchen: KitchenService,
+    private readonly media: TvMediaService,
   ) {}
 
   // ---------------------------------------------------------- pareamento
@@ -146,7 +167,55 @@ export class TvService {
       voice: this.settings.operation().tvVoiceEnabled,
       serverTts: this.ttsAvailable === true,
       serverTime: this.ctx.nowIso(),
+      pickupPlace: this.settings.operation().pickupPlace,
+      /** Som da chamada e modo de anúncios (alterados em Configurações → TV). */
+      display: this.display(),
+      /** Anúncios ativos, na ordem de exibição. */
+      media: this.media.playlist(),
     };
+  }
+
+  // ------------------------------------------------------------- exibição
+
+  display(): TvDisplaySettings {
+    return tolerantDisplay(this.settings.getJson<unknown>(DISPLAY_KEY, {}));
+  }
+
+  displaySettings(actor: Actor): TvDisplaySettings {
+    requirePerm(actor, 'devices.manage');
+    return this.display();
+  }
+
+  /** Salva e avisa as TVs, que recarregam a configuração na hora. */
+  updateDisplay(actor: Actor, raw: unknown): TvDisplaySettings {
+    requirePerm(actor, 'devices.manage');
+    const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const merged = tvDisplaySettingsSchema.parse({ ...this.display(), ...input });
+    this.ctx.tx(() => {
+      this.settings.setJson(DISPLAY_KEY, merged);
+      this.ctx.audit(actor, 'tv.display_updated', 'settings', DISPLAY_KEY, merged);
+      this.ctx.emit({ channel: 'tv', type: 'tv.config' });
+    });
+    return merged;
+  }
+
+  private testCallText(): string {
+    return `Teste de som da TV. ${pickupAnnouncement(0, 'Cliente', this.settings.operation().pickupPlace)}`;
+  }
+
+  /** Dispara uma chamada de teste em todas as TVs (ajuste de volume), sem pedido real. */
+  testCall(actor: Actor) {
+    requirePerm(actor, 'devices.manage');
+    const text = this.testCallText();
+    this.ctx.emit({
+      channel: 'tv',
+      type: 'pickup.call',
+      data: {
+        callId: TEST_CALL_ID, ticketId: null, number: 0, customerFirstName: 'Teste', customerDisplayName: 'Teste de som', comandaDisplayNumber: null,
+        text, voice: this.settings.operation().tvVoiceEnabled, test: true,
+      },
+    });
+    return { ok: true, text };
   }
 
   // ------------------------------------------------------------- voz
@@ -185,7 +254,7 @@ export class TvService {
   /** Áudio WAV do anúncio de uma chamada (com cache em disco). */
   async callAudio(callId: string): Promise<Buffer> {
     if (!this.ttsAvailable) throw new AppError(404, 'TTS_UNAVAILABLE', 'Voz do Windows indisponível.');
-    const text = this.ctx.db.value<string>('SELECT text FROM pickup_calls WHERE id = ?', callId);
+    const text = callId === TEST_CALL_ID ? this.testCallText() : this.ctx.db.value<string>('SELECT text FROM pickup_calls WHERE id = ?', callId);
     if (!text) throw notFound('Chamada');
     const dir = join(this.ctx.config.dataDir, 'tts');
     mkdirSync(dir, { recursive: true });

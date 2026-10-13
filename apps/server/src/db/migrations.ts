@@ -685,6 +685,32 @@ ALTER TABLE comanda_items ADD COLUMN hookah_session_id TEXT;
 CREATE INDEX comanda_items_hookah ON comanda_items(hookah_session_id);
 `;
 
+/**
+ * 0.3: anúncios da TV de retirada (fotos e vídeos guardados no PC do bar).
+ *  - arquivos em <dados>/tv-media; o conteúdo de um id nunca muda (cache imutável).
+ *  - position: ordem de exibição; duration_s: tempo das fotos (vídeos tocam até o fim).
+ *  - somente local: não é sincronizado com a nuvem.
+ */
+const M005 = /* sql */ `
+CREATE TABLE tv_media (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('image','video')),
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  stored_name TEXT NOT NULL,
+  original_name TEXT,
+  title TEXT NOT NULL DEFAULT '',
+  duration_s INTEGER NOT NULL DEFAULT 10,
+  position INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX tv_media_position ON tv_media(position);
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -695,6 +721,8 @@ export const MIGRATIONS: Migration[] = [
   { id: 1, name: 'schema inicial', sql: M001 },
   { id: 2, name: 'gatilhos de sincronização', sql: syncTriggersSql() },
   { id: 3, name: 'cartões, venda rápida e narguilé por item', sql: M003 },
+  // id 4 já é usado no ramo de integração; esta migração usa o 5.
+  { id: 5, name: 'anúncios da TV de retirada', sql: M005 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

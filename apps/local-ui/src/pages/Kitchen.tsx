@@ -6,7 +6,7 @@ import { elapsed, fmtTime, minutesSince } from '../lib/format';
 import { useLoad, useNow } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
-import { chime } from './Tv';
+import { chime } from './tv/audio';
 
 interface Ticket {
   id: string;

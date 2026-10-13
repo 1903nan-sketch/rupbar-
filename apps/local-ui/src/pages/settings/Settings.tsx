@@ -13,7 +13,7 @@ export function SettingsHome() {
     { to: '/configuracoes/identidade', icon: <Building2 size={22} />, title: 'Identidade do estabelecimento', text: 'Nome, logotipo, cores, capa, telefone e redes sociais.', show: can('settings.manage') },
     { to: '/configuracoes/operacao', icon: <SlidersHorizontal size={22} />, title: 'Operação', text: 'Estoque, caixa, taxa de serviço, narguilés e LGPD.', show: can('settings.manage') },
     { to: '/configuracoes/dispositivos', icon: <Smartphone size={22} />, title: 'Conectar dispositivo', text: 'QR Code para celulares e tablets da equipe.', show: can('devices.manage') },
-    { to: '/configuracoes/tv', icon: <Tv size={22} />, title: 'Conectar TV', text: 'Painel de retirada com chamada por voz.', show: can('devices.manage') },
+    { to: '/configuracoes/tv', icon: <Tv size={22} />, title: 'Conectar TV', text: 'Painel de retirada, chamada por voz e anúncios.', show: can('devices.manage') },
     { to: '/configuracoes/impressoras', icon: <Printer size={22} />, title: 'Impressoras', text: 'Impressoras térmicas ESC/POS, setores e histórico.', show: can('printers.manage') },
     { to: '/configuracoes/sincronizacao', icon: <Cloud size={22} />, title: 'Sincronização', text: 'Conexão com o painel online do proprietário.', show: can('settings.manage') },
     { to: '/configuracoes/notificacoes', icon: <Bell size={22} />, title: 'Notificações', text: 'Alertas de estoque pelo WhatsApp.', show: can('settings.manage') },
