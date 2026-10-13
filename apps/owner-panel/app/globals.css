@@ -1075,7 +1075,7 @@ table.table {
 /* ---------- kanban (produção) ---------- */
 .kanban {
   display: grid;
-  grid-template-columns: repeat(3, minmax(250px, 1.25fr)) repeat(2, minmax(200px, 0.75fr));
+  grid-template-columns: repeat(3, minmax(210px, 1.25fr)) repeat(2, minmax(150px, 0.75fr));
   gap: 14px;
   overflow-x: auto;
   padding-bottom: 8px;

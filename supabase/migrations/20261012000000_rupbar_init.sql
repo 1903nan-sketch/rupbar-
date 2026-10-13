@@ -106,7 +106,8 @@ create policy remote_commands_owner_read on public.remote_commands
 
 -- Nenhuma política de escrita: inserções/alterações somente pelas funções abaixo.
 revoke insert, update, delete on public.establishments, public.devices, public.sync_records, public.remote_commands from anon, authenticated;
-revoke select on public.devices from anon;
+-- O papel anônimo (usado pelo PC com a chave pública) não lê tabelas: só chama as RPCs do dispositivo.
+revoke select on public.establishments, public.devices, public.sync_records, public.remote_commands from anon;
 grant select on public.establishments, public.devices, public.sync_records, public.remote_commands to authenticated;
 
 -- ------------------------------------------------------- dispositivo (PC)
@@ -602,9 +603,14 @@ grant execute on function public.rupbar_owner_revoke_device(uuid) to authenticat
 grant execute on function public.rupbar_sales_summary(uuid, timestamptz, timestamptz) to authenticated;
 grant execute on function public.rupbar_product_comparison(uuid, timestamptz, timestamptz, uuid[]) to authenticated;
 grant execute on function public.rupbar_losses_report(uuid, timestamptz, timestamptz) to authenticated;
+revoke all on public.v_products, public.v_categories, public.v_comandas, public.v_comanda_items, public.v_payments,
+  public.v_cash_sessions, public.v_cash_movements, public.v_losses, public.v_stock_alerts, public.v_hookah_sessions, public.v_users
+  from anon;
 grant select on public.v_products, public.v_categories, public.v_comandas, public.v_comanda_items, public.v_payments,
   public.v_cash_sessions, public.v_cash_movements, public.v_losses, public.v_stock_alerts, public.v_hookah_sessions, public.v_users
   to authenticated;
+revoke execute on function public.rupbar_register_device(uuid, text, text), public.rupbar_owner_register_loss(uuid, uuid, bigint, text, text, timestamptz, text),
+  public.rupbar_owner_cancel_command(uuid), public.rupbar_owner_revoke_device(uuid) from public, anon;
 
 -- Tempo real no painel: mudanças na fila de comandos e nos dispositivos.
 do $$

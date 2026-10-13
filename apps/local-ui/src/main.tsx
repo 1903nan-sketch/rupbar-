@@ -1,5 +1,5 @@
 import { ShieldOff, WifiOff } from 'lucide-react';
-import { StrictMode, useEffect, useState, type ReactNode } from 'react';
+import { lazy, StrictMode, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import type { Permission } from '@rupbar/core';
@@ -7,26 +7,33 @@ import { Button, Card, Empty, Loading, ToastProvider } from './components/ui';
 import { DesktopShell } from './layouts/DesktopShell';
 import { findServer, rememberServer } from './lib/discovery';
 import { SessionProvider, useSession } from './lib/session';
-import { CashPage } from './pages/Cash';
 import { ComandaDetailPage } from './pages/ComandaDetail';
 import { ComandasPage } from './pages/Comandas';
 import { DashboardPage } from './pages/Dashboard';
-import { HookahsPage } from './pages/Hookahs';
 import { KitchenPage } from './pages/Kitchen';
 import { ChangePasswordPage, LoginPage } from './pages/Login';
-import { LossesPage } from './pages/Losses';
 import { MobileComanda, MobileComandas, MobileOrders, MobileShell } from './pages/mobile/Mobile';
-import { ProductsPage } from './pages/Products';
-import { ReportsPage } from './pages/Reports';
-import { NotificationSettings, SyncSettings } from './pages/settings/Cloud';
-import { DevicesSettings, TvSettings } from './pages/settings/Connect';
-import { PrintersSettings } from './pages/settings/Printers';
-import { BackupSettings, IdentitySettings, OperationSettings, SettingsHome } from './pages/settings/Settings';
-import { SetupPage } from './pages/Setup';
-import { StaffPage } from './pages/Staff';
-import { StockPage } from './pages/Stock';
-import { TvPage } from './pages/Tv';
 import './styles.css';
+
+// Páginas carregadas sob demanda: o celular do garçom baixa só o necessário.
+const CashPage = lazy(() => import('./pages/Cash').then((m) => ({ default: m.CashPage })));
+const HookahsPage = lazy(() => import('./pages/Hookahs').then((m) => ({ default: m.HookahsPage })));
+const LossesPage = lazy(() => import('./pages/Losses').then((m) => ({ default: m.LossesPage })));
+const ProductsPage = lazy(() => import('./pages/Products').then((m) => ({ default: m.ProductsPage })));
+const ReportsPage = lazy(() => import('./pages/Reports').then((m) => ({ default: m.ReportsPage })));
+const SetupPage = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupPage })));
+const StaffPage = lazy(() => import('./pages/Staff').then((m) => ({ default: m.StaffPage })));
+const StockPage = lazy(() => import('./pages/Stock').then((m) => ({ default: m.StockPage })));
+const TvPage = lazy(() => import('./pages/Tv').then((m) => ({ default: m.TvPage })));
+const NotificationSettings = lazy(() => import('./pages/settings/Cloud').then((m) => ({ default: m.NotificationSettings })));
+const SyncSettings = lazy(() => import('./pages/settings/Cloud').then((m) => ({ default: m.SyncSettings })));
+const DevicesSettings = lazy(() => import('./pages/settings/Connect').then((m) => ({ default: m.DevicesSettings })));
+const TvSettings = lazy(() => import('./pages/settings/Connect').then((m) => ({ default: m.TvSettings })));
+const PrintersSettings = lazy(() => import('./pages/settings/Printers').then((m) => ({ default: m.PrintersSettings })));
+const BackupSettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.BackupSettings })));
+const IdentitySettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.IdentitySettings })));
+const OperationSettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.OperationSettings })));
+const SettingsHome = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.SettingsHome })));
 
 /** Garante que o servidor local responde; senão tenta reencontrá-lo na rede. */
 function ServerGate({ children }: { children: ReactNode }) {
@@ -87,6 +94,7 @@ function LoginRoute() {
 
 function App() {
   return (
+    <Suspense fallback={<Loading />}>
     <Routes>
       <Route path="/tv" element={<TvPage />} />
       <Route path="/setup" element={<SetupPage />} />
@@ -123,6 +131,7 @@ function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 
