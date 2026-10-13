@@ -7,6 +7,7 @@ import { formatBRL } from '../lib/format';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
+import { QuickProductModal } from './QuickProduct';
 
 export interface Product {
   id: string;
@@ -62,7 +63,7 @@ export function ProductsPage() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [showInactive, setShowInactive] = useState(false);
-  const [editing, setEditing] = useState<Product | 'new' | null>(null);
+  const [editing, setEditing] = useState<Product | 'new' | 'advanced' | null>(null);
   const cats = useLoad(() => api.get<Category[]>('/api/categories'));
   const { data, error, reload } = useLoad(() => api.get<Product[]>(`/api/products${qs({ q, categoryId: cat, all: showInactive ? 1 : undefined })}`), [q, cat, showInactive]);
   useRealtime(['stock'], () => void reload());
@@ -72,7 +73,7 @@ export function ProductsPage() {
       <PageHeader
         title="Produtos"
         subtitle="Cadastro único: o mesmo produto é usado no cardápio, no estoque e nas fichas técnicas."
-        actions={can('products.manage') && <Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button>}
+        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
       />
       <div className="row wrap">
         <div className="input-group" style={{ width: 300, maxWidth: '100%' }}>
@@ -123,7 +124,7 @@ export function ProductsPage() {
           </div>
         </Card>
       )}
-      {editing && <ProductEditor product={editing === 'new' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} />}
+      {editing === 'new' ? <QuickProductModal onClose={() => setEditing(null)} onSaved={() => void reload()} /> : editing && <ProductEditor product={editing === 'advanced' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} />}
     </div>
   );
 }

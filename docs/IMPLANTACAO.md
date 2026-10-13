@@ -18,6 +18,8 @@
 
 Instale a nova versão por cima. O instalador para o serviço, substitui os arquivos e reinicia. Na primeira execução, o servidor faz **backup automático** do banco antes de aplicar mudanças de esquema.
 
+A versão **0.1.1** traz o novo visual Glassmorphism e o cadastro rápido de estoque. Para atualizar, use o instalador da release `v0.1.1` quando a compilação do GitHub Actions terminar. A atualização mantém o banco existente; não registre novamente o saldo inicial de produtos já cadastrados. Para repor produtos existentes, use **Estoque → Entrada**.
+
 ### Desinstalar
 
 O desinstalador remove o serviço e as regras de firewall. **Os dados são preservados** em `C:\ProgramData\RupBar`.

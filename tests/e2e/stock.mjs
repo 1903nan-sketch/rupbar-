@@ -1,0 +1,102 @@
+// Fluxo real do cadastro rápido e da reposição de estoque, em PC e celular.
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+
+const repo = fileURLToPath(new URL('../..', import.meta.url));
+const port = 7467;
+const base = `http://127.0.0.1:${port}`;
+const out = resolve(process.argv[2] ?? join(repo, 'tests/e2e/screenshots/stock'));
+mkdirSync(out, { recursive: true });
+const server = spawn(process.execPath, [join(repo, 'apps/server/dist/server.cjs'), '--data-dir', mkdtempSync(join(tmpdir(), 'rupbar-stock-')), '--port', String(port)], { stdio: ['pipe', 'inherit', 'inherit'], env: { ...process.env, TZ: 'America/Sao_Paulo' } });
+let browser;
+try {
+  let ready = false;
+  for (let i = 0; i < 60; i++) {
+    try { if ((await fetch(`${base}/api/health`)).ok) { ready = true; break; } } catch {}
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  assert(ready, 'servidor deve iniciar');
+  browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const request = async (method, path, data) => {
+    const res = await page.request.fetch(base + path, { method, headers: { 'x-rupbar': '1' }, data });
+    assert(res.ok(), `${method} ${path}: ${res.status()} ${await res.text()}`);
+    return res.json();
+  };
+  await request('POST', '/api/setup', { identity: { tradeName: 'Bar de teste', primaryColor: '#ff375f', secondaryColor: '#222538' }, owner: { name: 'Marina Souza', email: 'marina@example.com', password: 'Lua-Cheia-2026' } });
+  await page.goto(base + '/estoque');
+  await page.getByRole('button', { name: 'Novo produto', exact: true }).click();
+  await page.getByLabel('Nome do produto', { exact: true }).fill('Cerveja teste');
+  await page.getByLabel('Categoria', { exact: true }).selectOption({ label: 'Cervejas' });
+  await page.getByLabel('Preço por unidade').fill('12,00');
+  await page.getByLabel('Embalagens em estoque').fill('24');
+  await page.getByLabel('Custo de compra por embalagem').fill('4,50');
+  await page.getByLabel('Estoque mínimo (un)').fill('6');
+  await page.screenshot({ path: join(out, '01-cadastro-rapido-dark.png') });
+  await page.getByRole('button', { name: 'Cadastrar produto', exact: true }).click();
+  await page.getByRole('row').filter({ hasText: 'Cerveja teste' }).waitFor();
+  let product = (await request('GET', '/api/products')).find((p) => p.name === 'Cerveja teste');
+  assert.equal(product.stockQty, 24_000);
+  assert.equal(product.unitCostE4, 4_500_000);
+  await page.getByRole('row').filter({ hasText: 'Cerveja teste' }).getByRole('button', { name: 'Entrada', exact: true }).click();
+  assert.equal(await page.getByLabel('Produto', { exact: true }).inputValue(), product.id);
+  await page.getByLabel('Quantidade de unidades').fill('6');
+  await page.getByLabel('Custo total de compra').fill('27,00');
+  await page.screenshot({ path: join(out, '02-reposicao-dark.png') });
+  await page.getByRole('button', { name: 'Registrar entrada', exact: true }).click();
+  await page.locator('.modal').waitFor({ state: 'hidden' });
+  product = await request('GET', `/api/products/${product.id}`);
+  assert.equal(product.stockQty, 30_000);
+  await page.reload();
+  await page.getByRole('row').filter({ hasText: 'Cerveja teste' }).waitFor();
+  assert.equal((await request('GET', `/api/products/${product.id}`)).stockQty, 30_000);
+  assert.equal((await request('GET', '/api/stock/purchases')).length, 2);
+  await page.getByLabel('Situação do estoque').selectOption('out');
+  await page.getByText('Nenhum produto neste filtro').waitFor();
+  await page.getByLabel('Situação do estoque').selectOption('');
+  await page.getByLabel('Buscar no estoque').fill('inexistente');
+  await page.getByText('Nenhum produto neste filtro').waitFor();
+  await page.getByLabel('Buscar no estoque').fill('');
+  await page.getByRole('button', { name: 'Novo produto', exact: true }).click();
+  await page.getByRole('button', { name: /Garrafa e doses/ }).click();
+  await page.getByLabel('Nome do produto', { exact: true }).fill('Whisky teste');
+  await page.getByLabel('Categoria', { exact: true }).selectOption({ label: 'Destilados' });
+  await page.getByLabel('Preço da dose').fill('29,90');
+  await page.getByLabel('Embalagens em estoque').fill('2');
+  await page.getByLabel('Custo de compra por embalagem').fill('150,00');
+  await page.getByRole('button', { name: 'Cadastrar produto', exact: true }).click();
+  await page.getByRole('row').filter({ hasText: 'Whisky teste' }).waitFor();
+  const whisky = (await request('GET', '/api/products')).find((p) => p.name === 'Whisky teste');
+  assert.equal(whisky.stockQty, 2_000_000);
+  assert.equal(whisky.presentations[0].components[0].qty, 50_000);
+  assert.equal(whisky.presentations[0].available, 40);
+  await page.locator('.toast').waitFor({ state: 'hidden' });
+  await page.screenshot({ path: join(out, '03-estoque-dark.png') });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.screenshot({ path: join(out, '04-estoque-light.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Novo produto', exact: true }).click();
+  await page.getByRole('button', { name: /Ingrediente/ }).click();
+  await page.getByLabel('Nome do produto', { exact: true }).fill('Ingrediente teste');
+  await page.getByLabel('Embalagens em estoque').fill('4');
+  await page.getByLabel('Custo de compra por embalagem').fill('10,00');
+  assert.equal(await page.getByLabel('Vender no cardápio').isChecked(), false);
+  assert(await page.locator('.modal').evaluate((el) => el.scrollWidth <= el.clientWidth), 'modal não deve transbordar no celular');
+  await page.screenshot({ path: join(out, '05-cadastro-mobile.png') });
+  await page.getByRole('button', { name: 'Cadastrar produto', exact: true }).click();
+  await page.locator('.modal').waitFor({ state: 'hidden' });
+  const ingredient = (await request('GET', '/api/products')).find((p) => p.name === 'Ingrediente teste');
+  assert.equal(ingredient.stockQty, 200_000);
+  assert.equal(ingredient.menuVisible, false);
+  assert.equal(ingredient.presentations.length, 0);
+  assert.deepEqual(errors, []);
+  console.log(`Estoque E2E OK — cadastro, reposição, filtros, unidades, doses, ingrediente e celular. Capturas em ${out}`);
+} catch (error) { console.error(error); process.exitCode = 1; }
+finally { await browser?.close(); server.stdin.write('shutdown\n'); setTimeout(() => server.kill(), 3000).unref(); }

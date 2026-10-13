@@ -269,6 +269,13 @@ export class CatalogService {
   saveProduct(actor: Actor, id: string | null, raw: unknown) {
     requirePerm(actor, 'products.manage');
     const input = productSchema.parse(raw);
+    if (input.initialStock) {
+      if (id) throw badRequest('Saldo inicial só pode ser informado no novo cadastro. Use uma entrada para repor o estoque.');
+      if (!input.stockTracked) throw badRequest('Ative o controle de estoque para registrar o saldo inicial.');
+      requirePerm(actor, 'stock.entry');
+      const qty = Math.round(input.initialStock.packages * input.packageQty);
+      if (!Number.isSafeInteger(qty) || qty <= 0) throw badRequest('A quantidade inicial deve ser maior que zero e estar dentro do limite permitido.');
+    }
     const productId = id ?? this.ctx.id();
     this.ctx.tx(() => {
       if (!this.ctx.db.get('SELECT id FROM categories WHERE id = ?', input.categoryId)) throw notFound('Categoria');
@@ -342,6 +349,13 @@ export class CatalogService {
         presentations: input.presentations.map((p) => ({ name: p.name, priceCents: p.priceCents })),
         ...(before && before.min_stock !== input.minStock ? { minStock: { from: before.min_stock, to: input.minStock } } : {}),
       });
+      if (input.initialStock) {
+        this.stock.purchase(actor, {
+          supplierId: input.supplierId,
+          notes: 'Estoque inicial no cadastro do produto',
+          items: [{ productId, packageQty: input.packageQty, ...input.initialStock }],
+        });
+      }
       if (before && Number(before.min_stock) !== input.minStock) this.stock.evaluateAlert(productId);
       this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId } });
     });
