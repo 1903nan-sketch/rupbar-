@@ -18,3 +18,4 @@ apps/service-host/target/
 .DS_Store
 .vercel
 tests/e2e/screenshots/
+.claude/worktrees/

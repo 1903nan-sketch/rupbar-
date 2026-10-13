@@ -1,5 +1,7 @@
 import { hookahCharge, HOOKAH_STATUS, type HookahPricing, type HookahStatus } from '@rupbar/core';
-import { hookahFinishSchema, hookahRoshSchema, hookahSchema, hookahStartSchema, hookahStatusSchema } from '@rupbar/core/schemas';
+import {
+  hookahFinishSchema, hookahPricingSchema, hookahRoshSchema, hookahSchema, hookahStartSchema, hookahStatusSchema, type HookahPricingTable,
+} from '@rupbar/core/schemas';
 import { json, type Row } from '../db/db';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import type { ComandasService } from './comandas';
@@ -27,6 +29,43 @@ export class HookahService {
     return s;
   }
 
+  /** Tabela única de preços (aluguel, troca de rosh, rosh do narguilé próprio). */
+  pricing(): HookahPricingTable {
+    return hookahPricingSchema.parse(this.settings.getJson('hookahPricing', {}));
+  }
+
+  updatePricing(actor: Actor, raw: unknown): HookahPricingTable {
+    requirePerm(actor, 'hookah.manage');
+    const input = hookahPricingSchema.parse(raw);
+    this.ctx.tx(() => {
+      const before = this.pricing();
+      this.settings.setJson('hookahPricing', input);
+      this.ctx.audit(actor, 'hookah.pricing', 'settings', 'hookahPricing', { from: before, to: input });
+      this.ctx.emit({ channel: 'hookah', type: 'hookah.pricing', data: input });
+    });
+    return input;
+  }
+
+  /** Lança um item de narguilé na comanda (aluguel, troca, rosh próprio). */
+  private chargeItem(actor: Actor, session: { id: string; comandaId: string }, name: string, detail: string, priceCents: number, costCents: number, notes: string | null = null) {
+    const id = this.ctx.id();
+    const now = this.ctx.nowIso();
+    this.ctx.db.run(
+      `INSERT INTO comanda_items (id, comanda_id, order_id, kind, presentation_id, product_id, product_name, presentation_name, quantity,
+         unit_price_cents, unit_cost_cents, notes, station, hookah_session_id, created_by, created_at, updated_at)
+       VALUES (?,?,NULL,'hookah',NULL,NULL,?,?,1,?,?,?,'none',?,?,?,?)`,
+      id, session.comandaId, name, detail, priceCents, costCents, notes, session.id, actor.userId ?? 'system', now, now,
+    );
+    return id;
+  }
+
+  /** Valor já lançado por uma locação (itens ativos). */
+  private chargedCents(sessionId: string): number {
+    return Number(
+      this.ctx.db.value("SELECT COALESCE(SUM(quantity * unit_price_cents),0) FROM comanda_items WHERE hookah_session_id = ? AND status = 'active'", sessionId),
+    );
+  }
+
   private setStatus(hookahId: string, from: string | null, to: HookahStatus, actor: Actor, notes: string | null = null) {
     const now = this.ctx.nowIso();
     this.ctx.db.run('UPDATE hookahs SET status = ?, version = version + 1, updated_at = ? WHERE id = ?', to, now, hookahId);
@@ -40,9 +79,10 @@ export class HookahService {
   list(actor: Actor) {
     requirePerm(actor, 'hookah.view');
     const rows = this.ctx.db.all(
-      `SELECT h.*, s.id AS session_id, s.started_at, s.customer_name, s.rosh_count, c.number AS comanda_number, c.table_label
+      `SELECT h.*, s.id AS session_id, s.started_at, s.customer_name, s.rosh_count, s.mode AS session_mode, c.number AS comanda_number, c.card_number, c.table_label
        FROM hookahs h LEFT JOIN hookah_sessions s ON s.hookah_id = h.id AND s.status = 'active'
        LEFT JOIN comandas c ON c.id = s.comanda_id
+       WHERE h.owner = 'house'
        ORDER BY h.active DESC, h.code`,
     );
     return rows.map((h) => ({
@@ -52,8 +92,10 @@ export class HookahService {
       session: h.session_id
         ? {
             id: h.session_id, startedAt: h.started_at, customerName: h.customer_name, roshCount: h.rosh_count,
-            comandaNumber: h.comanda_number, table: h.table_label,
-            currentCharge: hookahCharge(this.pricingOf(h), Date.parse(String(h.started_at)), this.ctx.clock.now()),
+            comandaNumber: h.comanda_number, comandaDisplayNumber: h.card_number ?? h.comanda_number, table: h.table_label,
+            mode: h.session_mode,
+            chargedCents: h.session_mode === 'legacy' ? null : this.chargedCents(String(h.session_id)),
+            currentCharge: h.session_mode === 'legacy' ? hookahCharge(this.pricingOf(h), Date.parse(String(h.started_at)), this.ctx.clock.now()) : null,
           }
         : null,
     }));
@@ -131,8 +173,10 @@ export class HookahService {
     };
   }
 
-  private consume(sessionId: string, roshNo: number, essences: { productId: string; qty: number }[], coalProductId: string | null, coalUnits: number, actor: Actor) {
+  /** Registra essência/carvão de um rosh (baixa no estoque). Devolve o custo. */
+  private consume(sessionId: string, roshNo: number, essences: { productId: string; qty: number }[], coalProductId: string | null, coalUnits: number, actor: Actor): number {
     const now = this.ctx.nowIso();
+    let total = 0;
     const record = (productId: string, kind: 'essence' | 'coal', qty: number) => {
       const p = this.ctx.db.get('SELECT id, name, measure FROM products WHERE id = ?', productId);
       if (!p) throw notFound('Produto');
@@ -151,6 +195,7 @@ export class HookahService {
         }).costCents;
       }
       this.ctx.db.run('UPDATE hookah_consumptions SET cost_cents = ? WHERE id = ?', cost, id);
+      total += cost;
     };
     for (const e of essences) record(e.productId, 'essence', e.qty);
     if (coalUnits > 0) {
@@ -158,48 +203,101 @@ export class HookahService {
       record(coalProductId, 'coal', coalUnits * 1000);
     }
     this.ctx.db.run('UPDATE hookah_sessions SET rosh_count = ?, version = version + 1, updated_at = ? WHERE id = ?', roshNo, now, sessionId);
+    return total;
   }
 
+  /**
+   * Nova locação. Aparelho da casa: lança o aluguel (já inclui a 1ª essência e o
+   * carvão). Narguilé próprio do cliente: lança o rosh (essência + carvão).
+   */
   start(actor: Actor, raw: unknown) {
     requirePerm(actor, 'hookah.rent');
     const input = hookahStartSchema.parse(raw);
     return this.ctx.tx(() => {
       const dup = this.ctx.db.value<string>('SELECT id FROM hookah_sessions WHERE client_request_id = ?', input.clientRequestId);
       if (dup) return this.session(actor, dup);
-      const h = this.hookahRow(input.hookahId);
-      if (h.status !== 'available') throw conflict(`Narguilé ${h.code} está "${HOOKAH_STATUS[h.status as HookahStatus]}".`, 'HOOKAH_UNAVAILABLE');
       const c = this.ctx.db.get('SELECT * FROM comandas WHERE id = ?', input.comandaId);
       if (!c) throw notFound('Comanda');
       if (c.status !== 'open') throw conflict('A comanda precisa estar aberta.', 'COMANDA_NOT_OPEN');
-      const id = this.ctx.id();
+      const table = this.pricing();
       const now = this.ctx.nowIso();
+      let hookahId: string;
+      let label: string;
+      if (input.mode === 'house') {
+        const h = this.hookahRow(input.hookahId!);
+        if (h.owner !== 'house') throw badRequest('Escolha um narguilé da casa.');
+        if (h.status !== 'available') throw conflict(`Narguilé ${h.code} está "${HOOKAH_STATUS[h.status as HookahStatus]}".`, 'HOOKAH_UNAVAILABLE');
+        hookahId = String(h.id);
+        label = `Narguilé ${h.code}`;
+      } else {
+        // O aparelho do cliente vira um registro interno (fora da lista de aparelhos da casa).
+        hookahId = this.ctx.id();
+        let code: string;
+        do code = `P-${this.ctx.nextSeq('own_hookah')}`;
+        while (this.ctx.db.value('SELECT id FROM hookahs WHERE code = ? COLLATE NOCASE', code));
+        this.ctx.db.run(
+          `INSERT INTO hookahs (id, code, model, pricing_mode, price_cents, status, notes, active, owner, created_at, updated_at)
+           VALUES (?,?,?, 'fixed', 0, 'available', NULL, 0, 'customer', ?, ?)`,
+          hookahId, code, input.ownLabel ?? 'Narguilé do cliente', now, now,
+        );
+        label = input.ownLabel ? `Narguilé próprio (${input.ownLabel})` : 'Narguilé próprio';
+      }
+      const id = this.ctx.id();
       this.ctx.db.run(
-        `INSERT INTO hookah_sessions (id, hookah_id, comanda_id, customer_name, started_at, status, pricing_json, notes, client_request_id, created_by, created_at, updated_at)
-         VALUES (?,?,?,?,?, 'active', ?,?,?,?,?,?)`,
-        id, input.hookahId, input.comandaId, String(c.customer_name), now, JSON.stringify(this.pricingOf(h)), input.notes,
+        `INSERT INTO hookah_sessions (id, hookah_id, comanda_id, customer_name, started_at, status, pricing_json, mode, notes, client_request_id, created_by, created_at, updated_at)
+         VALUES (?,?,?,?,?, 'active', ?,?,?,?,?,?,?)`,
+        id, hookahId, input.comandaId, String(c.customer_name), now, JSON.stringify({ table }), input.mode, input.notes,
         input.clientRequestId, actor.userId, now, now,
       );
-      if (input.essences.length || input.coalUnits) this.consume(id, 1, input.essences, input.coalProductId, input.coalUnits, actor);
-      this.setStatus(input.hookahId, String(h.status), 'rented', actor);
+      const cost = input.essences.length || input.coalUnits ? this.consume(id, 1, input.essences, input.coalProductId, input.coalUnits, actor) : 0;
+      if (!input.essences.length && !input.coalUnits) {
+        this.ctx.db.run('UPDATE hookah_sessions SET rosh_count = 1 WHERE id = ?', id);
+      }
+      const session = { id, comandaId: input.comandaId };
+      if (input.mode === 'house') this.chargeItem(actor, session, label, 'Aluguel (essência e carvão inclusos)', table.rentalCents, cost);
+      else this.chargeItem(actor, session, label, 'Rosh — essência e carvão', table.ownRoshCents, cost);
+      this.setStatus(hookahId, 'available', 'rented', actor);
       this.comandas.touch(input.comandaId, 'hookah_started');
-      this.ctx.audit(actor, 'hookah.rented', 'hookah_session', id, { code: h.code, comanda: c.number });
+      this.ctx.audit(actor, 'hookah.rented', 'hookah_session', id, { label, mode: input.mode, comanda: c.number });
       return this.session(actor, id);
     });
   }
 
+  /** Troca de rosh: registra o consumo e lança o valor da troca (ou do rosh próprio). */
   addRosh(actor: Actor, sessionId: string, raw: unknown) {
     requirePerm(actor, 'hookah.rent');
     const input = hookahRoshSchema.parse(raw);
     return this.ctx.tx(() => {
       const s = this.sessionRow(sessionId);
       if (s.status !== 'active') throw conflict('Esta locação já foi encerrada.', 'SESSION_FINISHED');
-      this.consume(sessionId, Number(s.rosh_count) + 1, input.essences, input.coalProductId, input.coalUnits, actor);
-      this.ctx.audit(actor, 'hookah.rosh_added', 'hookah_session', sessionId, { rosh: Number(s.rosh_count) + 1 });
+      const roshNo = Number(s.rosh_count) + 1;
+      const cost = input.essences.length || input.coalUnits
+        ? this.consume(sessionId, roshNo, input.essences, input.coalProductId, input.coalUnits, actor)
+        : (this.ctx.db.run('UPDATE hookah_sessions SET rosh_count = ?, version = version + 1, updated_at = ? WHERE id = ?', roshNo, this.ctx.nowIso(), sessionId), 0);
+      if (s.mode !== 'legacy') {
+        const c = this.ctx.db.get('SELECT status FROM comandas WHERE id = ?', String(s.comanda_id));
+        if (!c || c.status !== 'open') throw conflict('A comanda vinculada não está aberta.', 'COMANDA_NOT_OPEN');
+        const table = this.pricing();
+        const h = this.hookahRow(String(s.hookah_id));
+        const own = s.mode === 'own';
+        const price = input.charge ? (own ? table.ownRoshCents : table.roshSwapCents) : 0;
+        this.chargeItem(
+          actor, { id: sessionId, comandaId: String(s.comanda_id) },
+          own ? 'Narguilé próprio' : `Narguilé ${h.code}`,
+          `${own ? 'Rosh — essência e carvão' : 'Troca de rosh'} (${roshNo}º)${input.charge ? '' : ' — cortesia'}`,
+          price, cost,
+        );
+        this.comandas.touch(String(s.comanda_id), 'hookah_rosh');
+      }
+      this.ctx.audit(actor, 'hookah.rosh_added', 'hookah_session', sessionId, { rosh: roshNo, charged: input.charge });
       return this.session(actor, sessionId);
     });
   }
 
-  /** Devolução: calcula o valor, lança na comanda e envia o aparelho para limpeza. */
+  /**
+   * Devolução/encerramento. No modelo atual o valor já foi lançado na comanda
+   * (aluguel e trocas); locações antigas calculam o valor aqui, como antes.
+   */
   finish(actor: Actor, sessionId: string, raw: unknown) {
     requirePerm(actor, 'hookah.rent');
     const input = hookahFinishSchema.parse(raw);
@@ -207,38 +305,45 @@ export class HookahService {
       const s = this.sessionRow(sessionId);
       if (s.status !== 'active') throw conflict('Esta locação já foi encerrada.', 'SESSION_FINISHED');
       const h = this.hookahRow(String(s.hookah_id));
-      const c = this.ctx.db.get('SELECT * FROM comandas WHERE id = ?', String(s.comanda_id));
-      if (!c || c.status !== 'open') throw conflict('A comanda vinculada não está aberta.', 'COMANDA_NOT_OPEN');
       const now = this.ctx.clock.now();
-      const pricing = json<HookahPricing>(s.pricing_json, this.pricingOf(h));
-      const charge = hookahCharge(pricing, Date.parse(String(s.started_at)), now);
-      const consumptionCost = Number(this.ctx.db.value('SELECT COALESCE(SUM(cost_cents),0) FROM hookah_consumptions WHERE session_id = ?', sessionId));
-      const itemId = this.ctx.id();
       const nowIso = now.toISOString();
+      let chargeCents: number;
+      let itemId: string | null = null;
+      if (s.mode === 'legacy') {
+        const c = this.ctx.db.get('SELECT * FROM comandas WHERE id = ?', String(s.comanda_id));
+        if (!c || c.status !== 'open') throw conflict('A comanda vinculada não está aberta.', 'COMANDA_NOT_OPEN');
+        const pricing = json<HookahPricing>(s.pricing_json, this.pricingOf(h));
+        const charge = hookahCharge(pricing, Date.parse(String(s.started_at)), now);
+        const consumptionCost = Number(this.ctx.db.value('SELECT COALESCE(SUM(cost_cents),0) FROM hookah_consumptions WHERE session_id = ?', sessionId));
+        itemId = this.chargeItem(
+          actor, { id: sessionId, comandaId: String(s.comanda_id) }, `Narguilé ${h.code}`, `${charge.description} (${charge.minutes} min)`,
+          charge.totalCents, consumptionCost, s.rosh_count ? `${s.rosh_count} rosh` : null,
+        );
+        chargeCents = charge.totalCents;
+      } else {
+        chargeCents = this.chargedCents(sessionId);
+      }
       this.ctx.db.run(
-        `INSERT INTO comanda_items (id, comanda_id, order_id, kind, presentation_id, product_id, product_name, presentation_name, quantity,
-           unit_price_cents, unit_cost_cents, notes, station, created_by, created_at, updated_at)
-         VALUES (?,?,NULL,'hookah',NULL,NULL,?,?,1,?,?,?, 'none', ?,?,?)`,
-        itemId, String(s.comanda_id), `Narguilé ${h.code}`, `${charge.description} (${charge.minutes} min)`, charge.totalCents,
-        consumptionCost, s.rosh_count ? `${s.rosh_count} rosh` : null, actor.userId, nowIso, nowIso,
-      );
-      this.ctx.db.run(
-        `UPDATE hookah_sessions SET status = 'finished', ended_at = ?, charge_cents = ?, comanda_item_id = ?, finished_by = ?,
+        `UPDATE hookah_sessions SET status = 'finished', ended_at = ?, charge_cents = ?, comanda_item_id = COALESCE(?, comanda_item_id), finished_by = ?,
            notes = COALESCE(?, notes), version = version + 1, updated_at = ? WHERE id = ?`,
-        nowIso, charge.totalCents, itemId, actor.userId, input.notes, nowIso, sessionId,
+        nowIso, chargeCents, itemId, actor.userId, input.notes, nowIso, sessionId,
       );
-      const needsCleaning = input.sendToCleaning && this.settings.operation().hookahRequiresCleaning;
-      this.setStatus(String(h.id), 'rented', needsCleaning ? 'cleaning' : 'available', actor, 'Devolução');
+      if (h.owner === 'customer') {
+        this.setStatus(String(h.id), 'rented', 'inactive', actor, 'Cliente levou o narguilé');
+      } else {
+        const needsCleaning = input.sendToCleaning && this.settings.operation().hookahRequiresCleaning;
+        this.setStatus(String(h.id), 'rented', needsCleaning ? 'cleaning' : 'available', actor, 'Devolução');
+      }
       this.comandas.touch(String(s.comanda_id), 'hookah_finished');
-      this.ctx.audit(actor, 'hookah.returned', 'hookah_session', sessionId, { code: h.code, chargeCents: charge.totalCents, minutes: charge.minutes });
-      return this.session(actor, sessionId);
+      this.ctx.audit(actor, 'hookah.returned', 'hookah_session', sessionId, { code: h.code, chargeCents });
+      return { ...this.session(actor, sessionId), chargeCents };
     });
   }
 
   session(actor: Actor, id: string) {
     requirePerm(actor, 'hookah.view');
     const s = this.ctx.db.get(
-      `SELECT s.*, h.code, h.model, c.number AS comanda_number, c.table_label FROM hookah_sessions s
+      `SELECT s.*, h.code, h.model, h.owner, c.number AS comanda_number, c.card_number, c.table_label FROM hookah_sessions s
        JOIN hookahs h ON h.id = s.hookah_id JOIN comandas c ON c.id = s.comanda_id WHERE s.id = ?`,
       id,
     );
@@ -248,12 +353,19 @@ export class HookahService {
        JOIN products p ON p.id = hc.product_id WHERE hc.session_id = ? ORDER BY hc.rosh_no, hc.kind DESC, p.name`,
       id,
     );
-    const pricing = json<HookahPricing>(s.pricing_json, { mode: 'fixed', priceCents: 0 });
+    const legacy = s.mode === 'legacy';
+    const pricing = legacy ? json<HookahPricing>(s.pricing_json, { mode: 'fixed', priceCents: 0 }) : null;
     return {
-      id: s.id, hookahId: s.hookah_id, code: s.code, model: s.model, comandaId: s.comanda_id, comandaNumber: s.comanda_number,
+      id: s.id, hookahId: s.hookah_id, code: s.code, model: s.model, owner: s.owner, mode: s.mode, comandaId: s.comanda_id,
+      comandaNumber: s.comanda_number, comandaDisplayNumber: s.card_number ?? s.comanda_number,
       table: s.table_label, customerName: s.customer_name, startedAt: s.started_at, endedAt: s.ended_at, status: s.status,
-      roshCount: s.rosh_count, chargeCents: s.charge_cents, notes: s.notes, pricing,
-      currentCharge: s.status === 'active' ? hookahCharge(pricing, Date.parse(String(s.started_at)), this.ctx.clock.now()) : null,
+      roshCount: s.rosh_count, chargeCents: legacy ? s.charge_cents : this.chargedCents(id), notes: s.notes, pricing,
+      currentCharge: legacy && s.status === 'active' && pricing ? hookahCharge(pricing, Date.parse(String(s.started_at)), this.ctx.clock.now()) : null,
+      items: this.ctx.db.all(
+        `SELECT id, presentation_name AS description, unit_price_cents AS price_cents, status, created_at FROM comanda_items
+         WHERE hookah_session_id = ? ORDER BY created_at`,
+        id,
+      ),
       consumptions,
     };
   }
@@ -266,7 +378,9 @@ export class HookahService {
     if (filter.from) where.push('s.started_at >= ?'), params.push(filter.from);
     if (filter.to) where.push('s.started_at < ?'), params.push(filter.to);
     return this.ctx.db.all(
-      `SELECT s.id, s.customer_name, s.started_at, s.ended_at, s.status, s.charge_cents, s.rosh_count, h.code, c.number AS comanda_number
+      `SELECT s.id, s.comanda_id, s.customer_name, s.started_at, s.ended_at, s.status, s.charge_cents, s.rosh_count, s.mode, h.code, h.model, h.owner,
+              c.number AS comanda_number, COALESCE(c.card_number, c.number) AS comanda_display_number, c.table_label,
+              (SELECT COALESCE(SUM(i.quantity * i.unit_price_cents),0) FROM comanda_items i WHERE i.hookah_session_id = s.id AND i.status = 'active') AS charged_cents
        FROM hookah_sessions s JOIN hookahs h ON h.id = s.hookah_id JOIN comandas c ON c.id = s.comanda_id
        ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY s.started_at DESC LIMIT 300`,
       ...params,

@@ -334,6 +334,19 @@ export const paymentSchema = z.object({
 
 export const reversePaymentSchema = z.object({ reason: trimmed(200).min(3) });
 
+/** Venda rápida (balcão): itens + pagamento na hora; o cliente é chamado pelo nome na TV. */
+export const quickSaleSchema = z.object({
+  clientRequestId: zUuid,
+  customerName: trimmed(60).default(''),
+  items: z.array(orderItemSchema).min(1, 'Adicione ao menos um item').max(60),
+  payments: z
+    .array(z.object({ method: zPaymentMethod, amountCents: zPositiveCents, receivedCents: zCents.min(0).optional() }))
+    .min(1, 'Informe o pagamento')
+    .max(6),
+  notes: optionalText(200),
+  printReceipt: z.boolean().default(false),
+});
+
 export const closeComandaSchema = versionSchema;
 export const cancelComandaSchema = versionSchema.extend({
   reason: trimmed(200).min(3),
@@ -379,8 +392,9 @@ export const lossResolveSchema = z.object({
 export const hookahSchema = z.object({
   code: trimmed(20).min(1),
   model: trimmed(60).default(''),
-  pricingMode: z.enum(['fixed', 'per_period']),
-  priceCents: zCents.min(0),
+  /** Legado: o preço agora vem da tabela única (hookahPricingSchema). */
+  pricingMode: z.enum(['fixed', 'per_period']).default('fixed'),
+  priceCents: zCents.min(0).default(0),
   periodMinutes: z.number().int().min(5).max(1440).default(60),
   toleranceMinutes: z.number().int().min(0).max(120).default(10),
   notes: optionalText(400),
@@ -389,20 +403,43 @@ export const hookahSchema = z.object({
 
 export const essenceUseSchema = z.object({ productId: zUuid, qty: zMilli.positive() });
 
-export const hookahStartSchema = z.object({
-  hookahId: zUuid,
-  comandaId: zUuid,
+/**
+ * Tabela de preços do narguilé (uma só para a casa, fácil de alterar):
+ *  - aluguel: aparelho da casa, já inclui a 1ª essência e o carvão;
+ *  - troca de rosh: nova essência/carvão no aparelho da casa;
+ *  - rosh do narguilé próprio: cliente traz o aparelho e compra essência + carvão.
+ * Essências não têm preço de venda: só controlam estoque e custo.
+ */
+export const hookahPricingSchema = z.object({
+  rentalCents: zCents.min(0).default(2000),
+  roshSwapCents: zCents.min(0).default(1000),
+  ownRoshCents: zCents.min(0).default(1500),
+});
+export type HookahPricingTable = z.infer<typeof hookahPricingSchema>;
+
+export const hookahStartSchema = z
+  .object({
+    /** 'house' = aparelho do bar (aluguel); 'own' = narguilé do cliente. */
+    mode: z.enum(['house', 'own']).default('house'),
+    hookahId: zUuid.nullable().optional().transform((v) => v ?? null),
+    /** Identificação do narguilé próprio (ex.: "do Pedro", "preto"). */
+    ownLabel: optionalText(40),
+    comandaId: zUuid,
+    essences: z.array(essenceUseSchema).default([]),
+    coalProductId: zUuid.nullable().optional().transform((v) => v ?? null),
+    coalUnits: z.number().int().min(0).max(50).default(0),
+    notes: optionalText(200),
+    clientRequestId: zUuid,
+  })
+  .refine((v) => v.mode === 'own' || v.hookahId !== null, { message: 'Escolha o narguilé', path: ['hookahId'] });
+
+export const hookahRoshSchema = z.object({
   essences: z.array(essenceUseSchema).default([]),
   coalProductId: zUuid.nullable().optional().transform((v) => v ?? null),
   coalUnits: z.number().int().min(0).max(50).default(0),
-  notes: optionalText(200),
-  clientRequestId: zUuid,
-});
-
-export const hookahRoshSchema = z.object({
-  essences: z.array(essenceUseSchema).min(1),
-  coalProductId: zUuid.nullable().optional().transform((v) => v ?? null),
-  coalUnits: z.number().int().min(0).max(50).default(0),
+  /** Troca cortesia: registra o consumo sem cobrar. */
+  charge: z.boolean().default(true),
+  clientRequestId: zUuid.optional(),
 });
 
 export const hookahFinishSchema = z.object({

@@ -335,3 +335,59 @@ describe('impressão', () => {
     expect(env.printed).toHaveLength(2);
   });
 });
+
+describe('cartões numerados e venda rápida', () => {
+  it('cartão físico: único entre as comandas abertas, busca pelo número e edição', async () => {
+    const a = await owner.ok('POST', '/api/comandas', { cardNumber: 23 });
+    expect(a).toMatchObject({ cardNumber: 23, displayNumber: 23, label: 'Comanda 23', customerName: '' });
+    const dup = await owner.fail('POST', '/api/comandas', { cardNumber: 23, customerName: 'Outro' });
+    expect(dup.code).toBe('CARD_IN_USE');
+    expect((await owner.fail('POST', '/api/comandas', {})).code).toBe('VALIDATION');
+    expect((await owner.ok('GET', '/api/comandas/by-number/23')).id).toBe(a.id);
+    expect(await owner.ok('GET', '/api/comandas/by-number/99')).toBeNull();
+    // Comanda sem cartão é encontrada pelo número do sistema.
+    const b = await owner.ok('POST', '/api/comandas', { customerName: 'Bia' });
+    expect((await owner.ok('GET', `/api/comandas/by-number/${b.number}`)).id).toBe(b.id);
+    // Trocar nome/cartão; cartão ocupado é recusado.
+    const edited = await owner.ok('PATCH', `/api/comandas/${a.id}`, { customerName: 'Pedro Henrique', cardNumber: 24, expectedVersion: a.version });
+    expect(edited).toMatchObject({ customerName: 'Pedro Henrique', cardNumber: 24 });
+    const c = await owner.ok('POST', '/api/comandas', { cardNumber: 23, customerName: 'Rita' });
+    expect((await owner.fail('PATCH', `/api/comandas/${c.id}`, { cardNumber: 24, customerName: 'Rita', expectedVersion: c.version })).code).toBe('CARD_IN_USE');
+    // Encerrada, o cartão volta a ficar livre.
+    await owner.ok('POST', `/api/comandas/${b.id}/cancel`, { expectedVersion: b.version, reason: 'teste', returnToStock: false });
+    const list = await owner.ok('GET', '/api/comandas?q=24');
+    expect(list.map((x: { id: string }) => x.id)).toEqual([a.id]);
+  });
+
+  it('venda rápida: paga na hora, vai para a produção e a TV chama pelo nome', async () => {
+    const porcoes = await category(owner, 'Porções');
+    const fritas = await owner.ok('POST', '/api/products', {
+      name: 'Batata frita', categoryId: porcoes, measure: 'unit', stockTracked: false, presentations: [{ name: 'Porção', priceCents: 3000 }],
+    });
+    const fp = (await owner.ok('GET', `/api/products/${fritas.id}`)).presentations[0].id;
+    const sale = { clientRequestId: uuid(), customerName: 'Juliana Prado', items: [{ presentationId: fp, quantity: 2 }] };
+    // Pagamento diferente do total é recusado (nada é gravado).
+    expect((await owner.fail('POST', '/api/quick-sales', { ...sale, payments: [{ method: 'pix', amountCents: 5000 }] })).code).toBe('PAYMENT_MISMATCH');
+    // Dinheiro exige caixa aberto.
+    expect((await owner.fail('POST', '/api/quick-sales', { ...sale, payments: [{ method: 'cash', amountCents: 6000, receivedCents: 10000 }] })).code).toBe('CASH_CLOSED');
+    await owner.ok('POST', '/api/cash/open', { openingBalanceCents: 10_000 });
+    const r = await owner.ok('POST', '/api/quick-sales', { ...sale, payments: [{ method: 'cash', amountCents: 6000, receivedCents: 10000 }] });
+    expect(r).toMatchObject({ totalCents: 6000, changeCents: 4000, callName: 'Juliana', waitsForPickup: true, duplicate: false });
+    // Reenvio (toque duplo / queda de rede) não duplica.
+    const again = await owner.ok('POST', '/api/quick-sales', { ...sale, payments: [{ method: 'cash', amountCents: 6000, receivedCents: 10000 }] });
+    expect(again).toMatchObject({ comandaId: r.comandaId, duplicate: true });
+    const d = await owner.ok('GET', `/api/comandas/${r.comandaId}`);
+    expect(d).toMatchObject({ status: 'closed', kind: 'quick', displayNumber: null, total: 6000, paid: 6000 });
+    // Não aparece entre as comandas abertas.
+    expect((await owner.ok('GET', '/api/comandas')).find((x: { id: string }) => x.id === r.comandaId)).toBeUndefined();
+    // Produção e TV: nome em destaque, sem número de comanda.
+    const [t] = await owner.ok('GET', '/api/kitchen/board?station=kitchen');
+    expect(t).toMatchObject({ customerDisplayName: 'Juliana P.', comandaDisplayNumber: null });
+    const called = await owner.ok('POST', `/api/kitchen/tickets/${t.id}/call`);
+    expect(called.text).toBe('Juliana, seu pedido está pronto. Retirar no balcão.');
+    expect(env.s.tv.board().ready[0]).toMatchObject({ displayName: 'Juliana P.', comandaDisplayNumber: null });
+    // Entra no caixa como venda normal.
+    const cash = await owner.ok('GET', '/api/cash/current');
+    expect(cash.summary.expectedCash).toBe(16_000);
+  });
+});

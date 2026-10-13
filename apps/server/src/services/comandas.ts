@@ -10,7 +10,7 @@ import { hasPerm, requirePerm, type Actor, type Ctx } from './context';
 import type { SettingsService } from './settings';
 import type { StockService } from './stock';
 
-export type OrderSource = 'desktop' | 'mobile';
+export type OrderSource = 'desktop' | 'mobile' | 'quick';
 
 export interface OrderCreatedHook {
   (orderId: string): void;
@@ -189,6 +189,20 @@ export class ComandasService {
       this.ctx.emit({ channel: 'comandas', type: 'comanda.opened', data: { comandaId: id, number } });
       return this.summary(this.row(id));
     });
+  }
+
+  /** Comanda interna da venda rápida (sem taxa de serviço; encerrada logo após o pagamento). */
+  openQuick(actor: Actor, customerName: string, clientRequestId: string, notes: string | null): string {
+    requirePerm(actor, 'comandas.open');
+    const id = this.ctx.id();
+    const number = this.ctx.nextSeq('comanda');
+    const now = this.ctx.nowIso();
+    this.ctx.db.run(
+      `INSERT INTO comandas (id, number, kind, customer_name, responsible_user_id, status, service_fee_bp, notes, opened_by, opened_at, client_request_id, updated_at)
+       VALUES (?,?,'quick',?,?,'open',0,?,?,?,?,?)`,
+      id, number, customerName, actor.userId, notes, actor.userId ?? 'system', now, clientRequestId, now,
+    );
+    return id;
   }
 
   /** Um cartão físico só pode estar em uma comanda aberta por vez. */

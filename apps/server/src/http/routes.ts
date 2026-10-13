@@ -256,6 +256,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/comandas/:id/print', (req, a) => ({ jobs: s.printing.printBill(a, id(req)) }));
   r('POST', '/api/comanda-items/:id/cancel', (req, a) => s.comandas.cancelItem(a, id(req), req.body));
   r('POST', '/api/orders', (req, a) => s.comandas.createOrder(a, req.body, q(req).source === 'mobile' ? 'mobile' : 'desktop'));
+  r('POST', '/api/quick-sales', (req, a) => s.sales.quickSale(a, req.body));
   r('GET', '/api/orders/mine', (_req, a) => s.comandas.myOrders(a));
   r('GET', '/api/orders/:id', (req, a) => {
     requirePerm(a, 'orders.view');
@@ -293,6 +294,11 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   // ------------------------------------------------------ narguilés
 
   r('GET', '/api/hookahs', (_req, a) => s.hookah.list(a));
+  r('GET', '/api/hookah/pricing', (_req, a) => {
+    requirePerm(a, 'hookah.view');
+    return s.hookah.pricing();
+  });
+  r('PUT', '/api/hookah/pricing', (req, a) => s.hookah.updatePricing(a, req.body));
   r('POST', '/api/hookahs', (req, a) => s.hookah.save(a, null, req.body));
   r('PUT', '/api/hookahs/:id', (req, a) => s.hookah.save(a, id(req), req.body));
   r('POST', '/api/hookahs/:id/status', (req, a) => s.hookah.changeStatus(a, id(req), req.body));

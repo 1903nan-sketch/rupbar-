@@ -20,6 +20,7 @@ import { NetworkService } from './network';
 import { NotificationsService, type HttpSender } from './notifications';
 import { PrintingService, type PrinterTransport } from './printing';
 import { ReportsService } from './reports';
+import { SalesService } from './sales';
 import { SettingsService } from './settings';
 import { SetupService } from './setup';
 import { StockService } from './stock';
@@ -73,6 +74,7 @@ export function createServices(opts: CreateOptions) {
   catalog.bind(stock);
   const comandas = new ComandasService(ctx, settings, stock);
   const cash = new CashService(ctx, settings, comandas);
+  const sales = new SalesService(ctx, comandas, cash);
   const kitchen = new KitchenService(ctx, settings);
   const losses = new LossesService(ctx, stock);
   const hookah = new HookahService(ctx, settings, stock, comandas);
@@ -95,9 +97,17 @@ export function createServices(opts: CreateOptions) {
     if (orderId) printing.enqueueOrderTickets(orderId, { reprint: true, ticketId, manual: true, createdBy: actor.userId });
   };
   cash.onSessionClosed = (sessionId) => printing.printCashClose(sessionId, null);
+  sales.onReceipt = (comandaId, actor) => {
+    try {
+      printing.printBill(actor, comandaId);
+    } catch (err) {
+      // Sem impressora de contas a venda continua válida; só não sai o comprovante.
+      ctx.log.warn('comprovante da venda rápida não impresso', { error: (err as Error).message });
+    }
+  };
 
   return {
-    ctx, db, settings, auth, users, catalog, stock, comandas, cash, kitchen, losses, hookah, printing, tv, notifications, sync,
+    ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, kitchen, losses, hookah, printing, tv, notifications, sync,
     network, reports, attachments, setup,
     startWorkers() {
       printing.start();

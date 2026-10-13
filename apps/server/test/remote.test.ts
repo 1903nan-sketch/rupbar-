@@ -173,7 +173,7 @@ describe('sincronização com a nuvem', () => {
 });
 
 describe('narguilés', () => {
-  it('locação por período com essências em gramas, carvão, rosh adicional e limpeza', async () => {
+  it('aluguel com essência e carvão inclusos, troca de rosh, narguilé próprio e tabela de preços', async () => {
     env = await createEnv();
     const owner = await setupEstablishment(env);
     const essCat = await category(owner, 'Essências');
@@ -195,40 +195,60 @@ describe('narguilés', () => {
     const coal = await owner.ok('POST', '/api/products', { name: 'Carvão de coco', categoryId: coalCat, measure: 'unit', packageQty: 72_000, menuVisible: false });
     await owner.ok('POST', '/api/stock/purchases', { items: [{ productId: coal.id, packages: 1, packageQty: 72_000, totalCostCents: 3_600 }] });
 
-    const h = await owner.ok('POST', '/api/hookahs', { code: 'N-01', model: 'Zeus', pricingMode: 'per_period', priceCents: 3_000, periodMinutes: 60, toleranceMinutes: 10 });
+    // Tabela única de preços: fácil de alterar; garçom não altera.
     const waiter = await createStaff(env, owner, 'waiter', 'Davi', 'davi@bar.com');
+    expect(await owner.ok('GET', '/api/hookah/pricing')).toEqual({ rentalCents: 2_000, roshSwapCents: 1_000, ownRoshCents: 1_500 });
+    expect((await waiter.fail('PUT', '/api/hookah/pricing', { rentalCents: 1 })).status).toBe(403);
+    await owner.ok('PUT', '/api/hookah/pricing', { rentalCents: 2_500, roshSwapCents: 1_200, ownRoshCents: 1_800 });
+
+    const h = await owner.ok('POST', '/api/hookahs', { code: 'N-01', model: 'Zeus' });
     const c = await waiter.ok('POST', '/api/comandas', { customerName: 'Rafa', table: '2' });
     const session = await waiter.ok('POST', '/api/hookah-sessions', {
       hookahId: h.id, comandaId: c.id, clientRequestId: uuid(), coalProductId: coal.id, coalUnits: 3,
       essences: [{ productId: menta, qty: 8_000 }, { productId: uva, qty: 4_000 }], // mistura 2:1 de 12 g
     });
-    expect(session.roshCount).toBe(1);
+    expect(session).toMatchObject({ roshCount: 1, mode: 'house', chargeCents: 2_500 });
     expect((await owner.ok('GET', '/api/hookahs'))[0]).toMatchObject({ status: 'rented' });
     expect((await waiter.fail('POST', '/api/hookah-sessions', { hookahId: h.id, comandaId: c.id, clientRequestId: uuid() })).code).toBe('HOOKAH_UNAVAILABLE');
 
+    // O aluguel entra na comanda na hora (já inclui essência e carvão).
+    let d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    expect(d.items).toEqual([expect.objectContaining({ kind: 'hookah', name: 'Narguilé N-01', totalCents: 2_500 })]);
+
     env.clock.advance(65 * 60_000);
-    await waiter.ok('POST', `/api/hookah-sessions/${session.id}/rosh`, { essences: [{ productId: menta, qty: 12_000 }], coalProductId: coal.id, coalUnits: 2 });
+    const swapped = await waiter.ok('POST', `/api/hookah-sessions/${session.id}/rosh`, { essences: [{ productId: menta, qty: 12_000 }], coalProductId: coal.id, coalUnits: 2 });
+    expect(swapped).toMatchObject({ roshCount: 2, chargeCents: 3_700 });
     expect((await owner.ok('GET', `/api/products/${menta}`)).stockQty).toBe(200_000 - 20_000);
     expect((await owner.ok('GET', `/api/products/${uva}`)).stockQty).toBe(200_000 - 4_000);
     expect((await owner.ok('GET', `/api/products/${coal.id}`)).stockQty).toBe(72_000 - 5_000);
 
-    let d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    d = await owner.ok('GET', `/api/comandas/${c.id}`);
     expect((await owner.fail('POST', `/api/comandas/${c.id}/close`, { expectedVersion: d.version })).code).toBe('HOOKAH_ACTIVE');
 
-    env.clock.advance(10 * 60_000); // 75 min no total → 2 períodos (tolerância de 10 min)
     const finished = await waiter.ok('POST', `/api/hookah-sessions/${session.id}/finish`, { sendToCleaning: true });
-    expect(finished).toMatchObject({ status: 'finished', chargeCents: 6_000, roshCount: 2 });
+    expect(finished).toMatchObject({ status: 'finished', chargeCents: 3_700, roshCount: 2 });
     d = await waiter.ok('GET', `/api/comandas/${c.id}`);
-    expect(d.items).toEqual([expect.objectContaining({ kind: 'hookah', name: 'Narguilé N-01', totalCents: 6_000 })]);
+    expect(d.items.map((i: { totalCents: number }) => i.totalCents)).toEqual([2_500, 1_200]);
     expect((await owner.ok('GET', '/api/hookahs'))[0].status).toBe('cleaning');
     expect((await waiter.fail('POST', `/api/hookahs/${h.id}/status`, { status: 'available' })).status).toBe(403);
     await owner.ok('POST', `/api/hookahs/${h.id}/status`, { status: 'available', notes: 'Limpo' });
 
+    // Narguilé próprio: cliente compra essência + carvão a cada rosh; troca cortesia não cobra.
+    const own = await waiter.ok('POST', '/api/hookah-sessions', {
+      mode: 'own', ownLabel: 'do Rafa', comandaId: c.id, clientRequestId: uuid(), essences: [{ productId: uva, qty: 10_000 }], coalProductId: coal.id, coalUnits: 3,
+    });
+    expect(own).toMatchObject({ mode: 'own', owner: 'customer', chargeCents: 1_800 });
+    await waiter.ok('POST', `/api/hookah-sessions/${own.id}/rosh`, { essences: [{ productId: uva, qty: 10_000 }], charge: false });
+    const ownDone = await waiter.ok('POST', `/api/hookah-sessions/${own.id}/finish`, {});
+    expect(ownDone.chargeCents).toBe(1_800);
+    // O aparelho do cliente não aparece entre os narguilés da casa.
+    expect((await owner.ok('GET', '/api/hookahs')).map((x: { code: string }) => x.code)).toEqual(['N-01']);
+
     const from = '2026-01-01T00:00:00.000Z';
     const to = '2027-01-01T00:00:00.000Z';
     const ind = await owner.ok('GET', `/api/hookah/indicators?from=${from}&to=${to}`);
-    expect(ind).toMatchObject({ sessions: 1, roshes: 2, revenueCents: 6_000, essenceGramsMilli: 24_000, avgGramsPerSessionMilli: 24_000, coalUnits: 5 });
-    expect(ind.flavors[0]).toMatchObject({ name: 'Essência Menta', qty: 20_000 });
+    expect(ind).toMatchObject({ sessions: 2, roshes: 4, revenueCents: 5_500, essenceGramsMilli: 44_000, coalUnits: 8 });
+    expect(ind.flavors.map((f: { name: string; qty: number }) => [f.name, f.qty])).toEqual([['Essência Uva', 24_000], ['Essência Menta', 20_000]]);
   });
 });
 
