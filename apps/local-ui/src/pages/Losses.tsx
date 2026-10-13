@@ -1,5 +1,5 @@
 import { BASE_UNIT, LOSS_REASONS, LOSS_STATUS, toMilli, UNITS, unitsFor, type LossReason, type LossStatus, type Measure } from '@rupbar/core';
-import { Cloud, PackageMinus, Plus } from 'lucide-react';
+import { Cloud, PackageMinus, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, PageHeader, Segmented, Select, Textarea, useToast } from '../components/ui';
 import { api, requestId } from '../lib/api';
@@ -8,6 +8,7 @@ import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
 import type { Product } from './Products';
+import { ReasonModal } from '../components/OwnerActions';
 
 interface Loss {
   id: string;
@@ -39,6 +40,7 @@ export function LossesPage() {
   const [status, setStatus] = useState<'' | LossStatus>('');
   const [creating, setCreating] = useState(false);
   const [resolving, setResolving] = useState<Loss | null>(null);
+  const [deleting, setDeleting] = useState<Loss | null>(null);
   const { data, error, reload } = useLoad(() => api.get<Loss[]>(`/api/losses${status ? `?status=${status}` : ''}`), [status]);
   useRealtime(['stock', 'sync'], () => void reload());
 
@@ -69,6 +71,7 @@ export function LossesPage() {
                     <td className="right">
                       {l.status === 'conflict' && can('losses.confirm') && <Button size="small" variant="primary" onClick={() => setResolving(l)}>Resolver</Button>}
                       {l.attachmentId && <a className="btn plain small" href={`/api/files/${l.attachmentId}`} target="_blank" rel="noreferrer">Comprovante</a>}
+                      {can('admin.override') && l.status !== 'rejected' && <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label="Excluir perda" title="Excluir (conta mestre)" onClick={() => setDeleting(l)} />}
                     </td>
                   </tr>
                 ))}
@@ -78,6 +81,10 @@ export function LossesPage() {
         </Card>
       )}
       {creating && <LossModal onClose={() => setCreating(false)} onDone={reload} />}
+      {deleting && (
+        <ReasonModal title="Excluir perda" danger confirmLabel="Excluir perda" description="A quantidade baixada volta para o estoque. A perda fica no histórico como excluída."
+          onClose={() => setDeleting(null)} onConfirm={async (reason) => { await api.post(`/api/admin/losses/${deleting.id}/delete`, { reason }); void reload(); }} />
+      )}
       {resolving && <ResolveModal loss={resolving} onClose={() => setResolving(null)} onDone={reload} />}
     </div>
   );
