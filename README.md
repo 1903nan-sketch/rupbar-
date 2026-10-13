@@ -49,7 +49,7 @@ pnpm dev:ui            # interface em http://localhost:5173 (proxy para a API)
 pnpm dev:panel         # painel online em http://localhost:3000 (requer .env.local do Supabase)
 
 pnpm typecheck
-pnpm test              # domínio, servidor (integração), nuvem (PGlite) — 70 testes
+pnpm test              # domínio, servidor (integração), nuvem (PGlite), interface — 73 testes
 pnpm test:e2e          # navegador real: configuração → comanda → cozinha → TV → celular
 ```
 
