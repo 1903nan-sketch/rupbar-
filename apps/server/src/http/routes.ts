@@ -7,6 +7,7 @@ import { requirePerm, type Actor } from '../services/context';
 import type { Services } from '../services';
 import { listWindowsPrinters } from '../services/printing';
 import { actorOf, isLoopback, RateLimiter, SESSION_COOKIE, setSessionCookie, TV_COOKIE, tokenFrom } from './app';
+import { sendFileWithRange } from './range';
 
 type Q = Record<string, string | undefined>;
 type Handler = (req: FastifyRequest, actor: Actor, reply: FastifyReply) => unknown;
@@ -130,6 +131,30 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/tv/approve', (req, a) => s.tv.approve(a, req.body));
   r('GET', '/api/tv/devices', (_req, a) => s.tv.devices(a));
   r('DELETE', '/api/tv/devices/:id', (req, a) => s.tv.revoke(a, id(req)));
+
+  // Som da chamada e anúncios (Configurações → TV). As TVs recebem tudo pelo painel.
+  r('GET', '/api/tv/display', (_req, a) => s.tv.displaySettings(a));
+  r('PUT', '/api/tv/display', (req, a) => s.tv.updateDisplay(a, req.body));
+  r('POST', '/api/tv/test-call', (_req, a) => s.tv.testCall(a));
+  r('GET', '/api/tv/media', (_req, a) => s.tvMedia.list(a));
+  r('POST', '/api/tv/media', async (req, a) => {
+    requirePerm(a, 'devices.manage');
+    if (!req.isMultipart()) throw badRequest('Envie o arquivo como multipart/form-data.');
+    // Vídeos de anúncio podem ser grandes: limite próprio somente nesta rota
+    // (o padrão das demais é 10 MB). O arquivo vai direto para o disco.
+    const file = await req.file({ limits: { fileSize: s.tvMedia.maxVideoBytes } });
+    if (!file) throw badRequest('Nenhum arquivo enviado.');
+    return s.tvMedia.upload(a, file.file, file.filename ?? null);
+  });
+  r('PUT', '/api/tv/media/order', (req, a) => s.tvMedia.reorder(a, req.body));
+  r('PATCH', '/api/tv/media/:id', (req, a) => s.tvMedia.update(a, id(req), req.body));
+  r('DELETE', '/api/tv/media/:id', (req, a) => s.tvMedia.remove(a, id(req)));
+
+  /** Arquivo do anúncio: somente TVs pareadas e usuários logados; com Range para vídeos. */
+  app.get('/api/tv/media/:id/file', async (req, reply) => {
+    if (!req.tv && !req.session) throw new AppError(401, 'TV_NOT_PAIRED', 'Esta TV não está autorizada.');
+    return sendFileWithRange(req, reply, s.tvMedia.file(id(req)), 'private, max-age=604800, immutable');
+  });
 
   // ------------------------------------------------------- painel / sistema
 

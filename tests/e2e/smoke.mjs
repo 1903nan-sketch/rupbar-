@@ -131,10 +131,15 @@ try {
   const tv = await tvCtx.newPage();
   watch(tv, 'tv');
   await tv.goto(B + '/tv');
-  await tv.waitForSelector('.pair-code');
-  const code = (await tv.locator('.pair-code').textContent()).trim();
+  await tv.waitForSelector('.ptv-code');
+  const code = (await tv.locator('.ptv-code').textContent()).trim();
   await api('POST', '/api/tv/approve', { code, name: 'TV do balcão' });
-  await tv.waitForSelector('.tv-cols');
+  // Tela "Toque para iniciar" libera o som (pulada se o navegador já permite).
+  await Promise.race([
+    tv.getByRole('button', { name: 'Toque para iniciar' }).click(),
+    tv.waitForSelector('.ptv-board'),
+  ]);
+  await tv.waitForSelector('.ptv-board');
   await page.goto(B + '/producao');
   const batata = page.locator('.kds-ticket', { hasText: 'Batata' });
   await batata.waitFor();
@@ -142,8 +147,10 @@ try {
   await batata.getByRole('button', { name: 'Começar' }).click();
   await batata.getByRole('button', { name: 'Pronto' }).click();
   await batata.getByRole('button', { name: 'Chamar na TV' }).click();
-  await tv.waitForSelector('.tv-call', { timeout: 8000 });
-  assert((await tv.locator('.tv-call').textContent()).includes('Carlos'), 'TV deveria anunciar o primeiro nome');
+  await tv.waitForSelector('.ptv-call', { timeout: 8000 });
+  const callText = await tv.locator('.ptv-call').textContent();
+  assert(callText.includes('Carlos'), 'TV deveria anunciar o nome');
+  assert(callText.includes('12'), 'TV deveria mostrar o número da comanda');
   await tv.screenshot({ path: join(out, '03-tv-chamada.png') });
   await page.screenshot({ path: join(out, '04-producao.png') });
 

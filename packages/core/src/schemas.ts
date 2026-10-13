@@ -541,6 +541,56 @@ export const tvApproveSchema = z.object({
   name: trimmed(40).default('TV'),
 });
 
+/**
+ * Modos de anúncios da TV de retirada:
+ *  - off: somente o painel de pedidos;
+ *  - carousel: alterna painel (N s) e anúncios (M s ou um vídeo inteiro);
+ *  - ads_first: anúncios o tempo todo; o painel aparece só quando alguém é chamado.
+ */
+export const TV_ADS_MODES = ['off', 'carousel', 'ads_first'] as const;
+export type TvAdsMode = (typeof TV_ADS_MODES)[number];
+
+const seconds = (min: number, max: number, def: number) =>
+  z.number({ invalid_type_error: 'Informe os segundos' }).int('Use segundos inteiros').min(min, `Mínimo de ${min} segundos`).max(max, `Máximo de ${max} segundos`).default(def);
+
+/**
+ * Exibição da TV de retirada (som da chamada e anúncios). Guardada como JSON
+ * nas configurações e entregue à TV junto com o painel.
+ */
+export const tvDisplaySettingsSchema = z.object({
+  /** Volume do toque de atenção e da voz (0–100%). */
+  volume: z.number().int().min(0, 'Volume entre 0 e 100%').max(100, 'Volume entre 0 e 100%').default(100),
+  /** Quantas vezes o toque de atenção soa antes da voz. */
+  chimeRepeat: z.number().int().min(1, 'Entre 1 e 5 toques').max(5, 'Entre 1 e 5 toques').default(2),
+  /** Quantas vezes a chamada completa (toque + voz) é feita. */
+  callRepeat: z.number().int().min(1, 'Entre 1 e 3 vezes').max(3, 'Entre 1 e 3 vezes').default(1),
+  adsMode: z.enum(TV_ADS_MODES).default('off'),
+  /** Carrossel: tempo exibindo os pedidos. */
+  boardSeconds: seconds(5, 600, 20),
+  /** Carrossel: tempo de anúncios (um vídeo em andamento sempre termina). */
+  adsSeconds: seconds(5, 600, 30),
+  /** Anúncios primeiro: tempo exibindo os pedidos depois de uma chamada. */
+  boardAfterCallSeconds: seconds(5, 300, 20),
+  /** Faixa com os nomes "Pronto para retirar" sobre os anúncios. */
+  readyTicker: z.boolean().default(true),
+  /** Som dos vídeos (desligado por padrão). */
+  videoSound: z.boolean().default(false),
+  videoVolume: z.number().int().min(0, 'Volume entre 0 e 100%').max(100, 'Volume entre 0 e 100%').default(60),
+});
+export type TvDisplaySettings = z.infer<typeof tvDisplaySettingsSchema>;
+
+/** Edição de um anúncio (foto ou vídeo) da TV. */
+export const tvMediaUpdateSchema = z.object({
+  title: trimmed(80).optional(),
+  /** Tempo de exibição de fotos (vídeos tocam até o fim). */
+  durationSeconds: z.number().int().min(3, 'Mínimo de 3 segundos').max(300, 'Máximo de 300 segundos').optional(),
+  enabled: z.boolean().optional(),
+});
+export type TvMediaUpdate = z.infer<typeof tvMediaUpdateSchema>;
+
+/** Nova ordem dos anúncios (ids na ordem de exibição). */
+export const tvMediaOrderSchema = z.object({ ids: z.array(zUuid).min(1).max(500) });
+
 const asciiOnly = (v: unknown) => (typeof v === 'string' ? v.replace(/[^\x21-\x7E]/g, '') : v);
 
 export const cloudConnectSchema = z.object({

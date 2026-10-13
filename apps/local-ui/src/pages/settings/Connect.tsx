@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { fmtDateTime } from '../../lib/format';
 import { useInterval, useLoad } from '../../lib/hooks';
 import { useRealtime } from '../../lib/realtime';
+import { TvDisplayPanel } from './TvDisplay';
 
 interface NetworkInfo {
   port: number;
@@ -109,7 +110,7 @@ export function TvSettings() {
 
   return (
     <div className="stack-l">
-      <PageHeader title="Conectar TV" subtitle="A TV mostra os pedidos em preparo e prontos, e chama os clientes por voz. Funciona sem internet." />
+      <PageHeader title="Conectar TV" subtitle="A TV mostra os pedidos em preparo e prontos, chama os clientes pelo nome com toque e voz, e pode exibir anúncios. Funciona sem internet." />
       <div className="grid-2">
         <Card title="1. Abra o endereço na TV">
           <div className="row top" style={{ gap: 16 }}>
@@ -129,7 +130,7 @@ export function TvSettings() {
             <Field label="Código da TV"><Input large inputMode="numeric" maxLength={6} className="mono" style={{ letterSpacing: '.3em', fontSize: 26, textAlign: 'center' }} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} /></Field>
             <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
             <Button type="submit" variant="primary" loading={busy} disabled={code.length !== 6}>Autorizar TV</Button>
-            <p className="tiny muted">A TV autorizada acessa somente o painel de retirada: número do pedido e primeiro nome. Nunca CPF, telefone ou valores.</p>
+            <p className="tiny muted">A TV autorizada acessa somente o painel de retirada e os anúncios: nome curto do cliente (ex.: Carlos S.), número da comanda e do pedido. Nunca CPF, telefone ou valores.</p>
           </form>
         </Card>
       </div>
@@ -145,6 +146,7 @@ export function TvSettings() {
           ))}
         </div>
       </Card>
+      <TvDisplayPanel />
       {revoke && <Confirm title="Desconectar TV?" danger confirmLabel="Desconectar" message="A TV deixará de exibir o painel até ser autorizada novamente." onClose={() => setRevoke(null)} onConfirm={async () => { await api.del(`/api/tv/devices/${revoke}`); void reload(); }} />}
     </div>
   );

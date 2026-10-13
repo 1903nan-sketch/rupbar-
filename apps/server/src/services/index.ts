@@ -27,6 +27,7 @@ import { SetupService } from './setup';
 import { StockService } from './stock';
 import { SyncService, type CloudApi } from './sync';
 import { TvService } from './tv';
+import { TvMediaService } from './tv-media';
 import { UsersService } from './users';
 
 export interface CreateOptions {
@@ -81,7 +82,8 @@ export function createServices(opts: CreateOptions) {
   const losses = new LossesService(ctx, stock);
   const hookah = new HookahService(ctx, settings, stock, comandas);
   const printing = new PrintingService(ctx, settings, comandas, opts.printerTransport);
-  const tv = new TvService(ctx, settings, kitchen);
+  const tvMedia = new TvMediaService(ctx);
+  const tv = new TvService(ctx, settings, kitchen, tvMedia);
   const notifications = new NotificationsService(ctx, settings, opts.httpSender);
   const sync = new SyncService(ctx, settings, losses, opts.cloudApi);
   const network = new NetworkService(ctx);
@@ -112,7 +114,7 @@ export function createServices(opts: CreateOptions) {
   };
 
   return {
-    ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, admin, kitchen, losses, hookah, printing, tv, notifications, sync,
+    ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, admin, kitchen, losses, hookah, printing, tv, tvMedia, notifications, sync,
     network, reports, attachments, setup,
     startWorkers() {
       printing.start();

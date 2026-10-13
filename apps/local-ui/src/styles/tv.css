@@ -1,0 +1,963 @@
+/*
+ * TV de retirada — tema próprio, escuro e dramático. Medidas em vh/vw para
+ * ficar legível a ~5 m numa TV 1080p. Animações só com transform/opacity
+ * (leves para TV box) e desligadas com "reduzir movimento".
+ */
+
+.ptv {
+  --ptv-bg: #04060b;
+  --ptv-ready: #34d982;
+  --ptv-ready-deep: #0b7d55;
+  --ptv-prep: #ffb53d;
+  --ptv-dim: rgba(255, 255, 255, 0.64);
+  --ptv-faint: rgba(255, 255, 255, 0.4);
+  --ptv-edge: rgba(255, 255, 255, 0.14);
+  --ptv-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ptv-accent: var(--accent, #0a84ff);
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--ptv-bg);
+  color: #fff;
+  font-family: var(--font-display, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  line-height: 1.2;
+}
+.ptv.is-idle,
+.ptv.is-idle * {
+  cursor: none !important;
+}
+.ptv h1,
+.ptv h2 {
+  margin: 0;
+  color: inherit;
+}
+
+/* Fundo "aurora" com a cor do estabelecimento (gradientes; sem filtros pesados). */
+.ptv-aurora {
+  position: absolute;
+  inset: -25%;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 42% at 18% 18%, rgba(10, 132, 255, 0.35), transparent 70%),
+    radial-gradient(34% 40% at 82% 84%, rgba(52, 217, 130, 0.18), transparent 70%),
+    radial-gradient(30% 36% at 84% 14%, rgba(124, 77, 255, 0.22), transparent 70%);
+  background:
+    radial-gradient(38% 42% at 18% 18%, color-mix(in srgb, var(--ptv-accent) 42%, transparent), transparent 70%),
+    radial-gradient(34% 40% at 82% 84%, rgba(52, 217, 130, 0.18), transparent 70%),
+    radial-gradient(30% 36% at 84% 14%, rgba(124, 77, 255, 0.22), transparent 70%);
+  animation: ptv-drift 48s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* ------------------------------------------------------------ botões */
+
+.ptv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8vw;
+  height: 6.4vh;
+  min-height: 40px;
+  padding: 0 1.8vw;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+  font: inherit;
+  font-size: max(15px, 2.4vh);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s var(--ptv-ease), background 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+.ptv-btn svg {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+}
+.ptv-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.ptv-btn:active {
+  transform: scale(0.97);
+}
+.ptv-btn:focus-visible {
+  outline: 0.5vh solid #fff;
+  outline-offset: 0.5vh;
+  transform: scale(1.04);
+}
+.ptv-btn.huge {
+  height: 10vh;
+  min-height: 56px;
+  padding: 0 3.4vw;
+  font-size: max(18px, 3.4vh);
+}
+.ptv-btn.primary {
+  border-color: transparent;
+  background: var(--ptv-accent);
+  background: linear-gradient(135deg, var(--ptv-accent), color-mix(in srgb, var(--ptv-accent) 55%, #7c4dff));
+  box-shadow: 0 1.6vh 5vh rgba(0, 0, 0, 0.45), 0 0 5vh rgba(10, 132, 255, 0.35);
+  box-shadow: 0 1.6vh 5vh rgba(0, 0, 0, 0.45), 0 0 5vh color-mix(in srgb, var(--ptv-accent) 45%, transparent);
+}
+.ptv-btn.warn {
+  background: rgba(255, 159, 10, 0.22);
+  border-color: rgba(255, 181, 61, 0.6);
+}
+
+/* ------------------------------------------------------------ tela inicial */
+
+.ptv-start {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 6vh 6vw;
+  text-align: center;
+}
+.ptv-start.is-gate {
+  background: rgba(4, 6, 11, 0.72);
+  animation: ptv-fade 0.5s ease both;
+}
+.ptv-start-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3vh;
+  max-width: 82vw;
+  padding: 6vh 5vw;
+  border-radius: 4vh;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--ptv-edge);
+  box-shadow: 0 4vh 12vh rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  animation: ptv-rise 0.8s var(--ptv-ease) both;
+}
+.ptv-start h1 {
+  font-size: 5.4vh;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.ptv-start p {
+  margin: 0;
+  max-width: 62vw;
+  font-size: 2.9vh;
+  line-height: 1.45;
+  color: var(--ptv-dim);
+}
+.ptv-start p strong {
+  color: #fff;
+}
+.ptv-start .logo {
+  box-shadow: 0 2vh 6vh rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.ptv-code {
+  font-size: 17vh;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  margin-right: -0.14em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 5vh rgba(255, 255, 255, 0.25), 0 1vh 3vh rgba(0, 0, 0, 0.5);
+}
+.ptv-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.6vw;
+  margin-top: 1vh;
+}
+p.ptv-start-hint {
+  font-size: 2.2vh;
+  color: var(--ptv-faint);
+}
+.ptv-sig {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2.4vh;
+  font-size: 1.8vh;
+  color: var(--ptv-faint);
+}
+.ptv-spinner {
+  width: 7vh;
+  height: 7vh;
+  border-radius: 50%;
+  border: 0.7vh solid rgba(255, 255, 255, 0.15);
+  border-top-color: #fff;
+  animation: ptv-spin 0.9s linear infinite;
+}
+
+/* ------------------------------------------------------------ cenas (painel × anúncios) */
+
+.ptv-scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(1.02);
+  transition: opacity 0.9s ease, transform 0.9s var(--ptv-ease), visibility 0s linear 0.9s;
+}
+.ptv-scene.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.9s ease, transform 0.9s var(--ptv-ease), visibility 0s;
+}
+.ptv-scene-ads {
+  background: #000;
+}
+
+/* ------------------------------------------------------------ cabeçalho */
+
+.ptv-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 13vh;
+  display: flex;
+  align-items: center;
+  gap: 1.6vw;
+  padding: 2.6vh 3vw 0;
+}
+.ptv-head .logo {
+  box-shadow: 0 1vh 3vh rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.ptv-brand {
+  font-size: 4.6vh;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ptv-clock {
+  margin-left: auto;
+  font-size: 5.6vh;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  opacity: 0.92;
+}
+.ptv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6vw;
+  padding: 0.8vh 1.2vw;
+  border-radius: 999px;
+  font-size: 2.2vh;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ptv-chip svg {
+  width: 2.6vh;
+  height: 2.6vh;
+}
+.ptv-chip.warn {
+  background: rgba(255, 159, 10, 0.22);
+  border: 1px solid rgba(255, 181, 61, 0.55);
+  color: #ffd9a0;
+}
+
+/* ------------------------------------------------------------ colunas */
+
+.ptv-board {
+  position: absolute;
+  top: 14.5vh;
+  bottom: 5.5vh;
+  left: 3vw;
+  right: 3vw;
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+  gap: 2.2vw;
+}
+.ptv-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 2.6vh 1.7vw;
+  border-radius: 3.4vh;
+  overflow: hidden;
+}
+.ptv-col-prep {
+  background: linear-gradient(165deg, rgba(255, 181, 61, 0.1), rgba(255, 255, 255, 0.025) 45%);
+  border: 1px solid rgba(255, 181, 61, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.ptv-col-ready {
+  background: linear-gradient(165deg, rgba(52, 217, 130, 0.2), rgba(15, 181, 160, 0.07) 45%, rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(52, 217, 130, 0.5);
+  box-shadow: 0 0 7vh rgba(52, 217, 130, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.ptv-col-head {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+  margin-bottom: 2.2vh;
+  min-width: 0;
+}
+.ptv-col-head svg {
+  width: 4.8vh;
+  height: 4.8vh;
+  flex: none;
+}
+.ptv-col-head h2 {
+  font-size: 4.4vh;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.ptv-col-prep .ptv-col-head {
+  color: var(--ptv-prep);
+}
+.ptv-col-ready .ptv-col-head {
+  color: var(--ptv-ready);
+}
+.ptv-count {
+  margin-left: auto;
+  min-width: 6vh;
+  padding: 0.5vh 1.1vw;
+  border-radius: 999px;
+  background: rgba(255, 181, 61, 0.16);
+  color: #fff;
+  font-size: 3vh;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ptv-col-sub {
+  margin-left: auto;
+  font-size: 2.8vh;
+  font-weight: 650;
+  color: var(--ptv-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ptv-grid {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+}
+.ptv-empty {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 2vh;
+  text-align: center;
+  font-size: 3vh;
+  font-weight: 600;
+  color: var(--ptv-faint);
+}
+.ptv-empty svg {
+  width: 10vh;
+  height: 10vh;
+  opacity: 0.35;
+}
+.ptv-more {
+  margin-top: auto;
+  padding-top: 1.4vh;
+  font-size: 2.8vh;
+  font-weight: 700;
+  color: var(--ptv-dim);
+  text-align: center;
+}
+
+/* ------------------------------------------------------------ cartões de pedido */
+
+.ptv-tile {
+  position: relative;
+  min-width: 0;
+  isolation: isolate;
+}
+.ptv-tile-name {
+  font-weight: 850;
+  line-height: 1.06;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ptv-tile-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.9vw;
+  font-weight: 750;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+.ptv-tile-comanda {
+  padding: 0.15em 0.6em;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.ptv-tile-comanda b {
+  font-weight: 900;
+}
+.ptv-tile-order {
+  font-size: 0.68em;
+  font-weight: 650;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* colunas apertadas: "Pedido 12" vira "#12" */
+.ptv-col-prep:not([data-density='1']) .ptv-order-word,
+.ptv-col-ready[data-density='4'] .ptv-order-word {
+  display: none;
+}
+.ptv-col-prep:not([data-density='1']) .ptv-tile-order::before,
+.ptv-col-ready[data-density='4'] .ptv-tile-order::before {
+  content: '#';
+}
+.ptv-tile-bell {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  margin-left: auto;
+  opacity: 0.85;
+}
+
+/* Preparando: vidro escuro, borda âmbar, mais discreto. */
+.ptv-tile.prep {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 0.7vh solid var(--ptv-prep);
+  animation: ptv-rise 0.6s var(--ptv-ease) both;
+}
+.ptv-tile.prep .ptv-tile-name {
+  color: rgba(255, 255, 255, 0.9);
+}
+.ptv-tile.prep .ptv-tile-meta {
+  color: #ffd391;
+}
+.ptv-tile.prep .ptv-tile-comanda {
+  background: rgba(255, 181, 61, 0.14);
+}
+
+/* Pronto: verde vivo, brilho e entrada animada. */
+.ptv-tile.ready {
+  color: #fff;
+  background: linear-gradient(135deg, #1fbf6f 0%, #12a067 45%, var(--ptv-ready-deep) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 1.4vh 4vh rgba(6, 90, 56, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  text-shadow: 0 0.3vh 1vh rgba(0, 40, 22, 0.45);
+  animation: ptv-pop 0.9s var(--ptv-ease) both;
+}
+.ptv-tile.ready .ptv-tile-comanda {
+  background: rgba(0, 40, 22, 0.35);
+}
+.ptv-tile.ready::before {
+  content: '';
+  position: absolute;
+  inset: -0.6vh;
+  z-index: -1;
+  border-radius: calc(var(--tile-radius, 2.2vh) + 0.4vh);
+  box-shadow: 0 0 0 0.45vh rgba(255, 255, 255, 0.85), 0 0 6vh rgba(52, 217, 130, 0.95);
+  opacity: 0;
+  pointer-events: none;
+}
+.ptv-tile.ready.is-fresh::before {
+  animation: ptv-glow 1.8s ease-in-out infinite;
+}
+.ptv-tile-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ptv-tile-shine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: skewX(-12deg);
+  animation: ptv-shine 1.5s 0.4s var(--ptv-ease) both;
+}
+
+/*
+ * Densidade: quanto menos pedidos, maiores os nomes. Cada nível define as
+ * variáveis da coluna; limites conferidos em 1920×1080 e 1280×720.
+ */
+.ptv-col {
+  --cols: 1;
+  --name: 5vh;
+  --meta: 2.6vh;
+  --meta-gap: 0.8vh;
+  --pad: 1.6vh 1.3vw;
+  --gap: 1.4vh 1vw;
+  --tile-radius: 2.2vh;
+}
+.ptv-grid {
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: var(--gap);
+}
+.ptv-col .ptv-tile {
+  padding: var(--pad);
+  border-radius: var(--tile-radius);
+}
+.ptv-tile-name {
+  font-size: calc(var(--name) * var(--k, 1));
+}
+/* nomes longos encolhem um pouco antes de serem cortados */
+.ptv-tile.is-long {
+  --k: 0.84;
+}
+.ptv-tile-meta {
+  font-size: var(--meta);
+  margin-top: var(--meta-gap);
+}
+.ptv-col-ready[data-density='1'] { --cols: 1; --name: 9.4vh; --meta: 3.9vh; --pad: 1.8vh 1.8vw; --gap: 1.6vh; }
+.ptv-col-ready[data-density='2'] { --cols: 2; --name: 6.6vh; --meta: 3.1vh; --pad: 1.6vh 1.4vw; --gap: 1.6vh 1.1vw; }
+.ptv-col-ready[data-density='3'] { --cols: 2; --name: 5vh; --meta: 2.5vh; --meta-gap: 0.5vh; --pad: 1.1vh 1.1vw; --gap: 1.2vh 1vw; }
+.ptv-col-ready[data-density='4'] { --cols: 3; --name: 3.6vh; --meta: 2vh; --meta-gap: 0.4vh; --pad: 0.9vh 0.9vw; --gap: 1vh 0.8vw; --tile-radius: 1.6vh; }
+.ptv-col-prep[data-density='1'] { --cols: 1; --name: 5.2vh; --meta: 2.8vh; --pad: 1.5vh 1.3vw; --gap: 1.4vh; }
+.ptv-col-prep[data-density='2'] { --cols: 2; --name: 3.5vh; --meta: 2vh; --meta-gap: 0.5vh; --pad: 1.2vh 0.9vw; --gap: 1.2vh 0.8vw; }
+.ptv-col-prep[data-density='3'] { --cols: 2; --name: 2.8vh; --meta: 1.7vh; --meta-gap: 0.3vh; --pad: 0.8vh 0.8vw; --gap: 0.9vh 0.7vw; --tile-radius: 1.4vh; }
+
+.ptv-foot {
+  position: absolute;
+  left: 3vw;
+  right: 3vw;
+  bottom: 1.6vh;
+  text-align: right;
+  font-size: 1.7vh;
+  color: var(--ptv-faint);
+}
+
+/* ------------------------------------------------------------ anúncios */
+
+.ptv-ads {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+.ptv-ad {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  animation: ptv-ad-in 1s ease both;
+}
+.ptv-ad-backdrop {
+  position: absolute;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  object-fit: cover;
+  filter: blur(4.5vh) brightness(0.5) saturate(1.25);
+}
+.ptv-ad-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+}
+.ptv-ad-video .ptv-ad-media {
+  background: #000;
+}
+.ptv-ad-image .ptv-ad-media {
+  animation: ptv-kenburns var(--dur, 12s) linear both;
+}
+.ptv-ads:not(.is-active) .ptv-ad-media {
+  animation-play-state: paused;
+}
+
+/* Marca e relógio discretos sobre os anúncios. */
+.ptv-bug {
+  position: absolute;
+  top: 2.6vh;
+  right: 2vw;
+  display: flex;
+  align-items: center;
+  gap: 0.9vw;
+  padding: 0.8vh 1.4vw 0.8vh 0.8vh;
+  border-radius: 999px;
+  background: rgba(8, 10, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 1vh 4vh rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.ptv-bug .logo {
+  border-radius: 50%;
+}
+.ptv-bug-clock {
+  font-size: 3.2vh;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Faixa "Pronto para retirar" sobre os anúncios. */
+.ptv-ticker {
+  position: absolute;
+  left: 2vw;
+  right: 2vw;
+  bottom: 3vh;
+  height: 9.5vh;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 2.4vh;
+  background: rgba(4, 22, 14, 0.82);
+  border: 1px solid rgba(52, 217, 130, 0.6);
+  box-shadow: 0 2vh 6vh rgba(0, 0, 0, 0.55), 0 0 4vh rgba(52, 217, 130, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: ptv-rise 0.7s var(--ptv-ease) both;
+}
+.ptv-ticker-label {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.8vw;
+  padding: 0 1.8vw;
+  background: linear-gradient(135deg, #34d982, #0fb5a0);
+  color: #03170d;
+  font-size: 2.8vh;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ptv-ticker-label svg {
+  width: 3.6vh;
+  height: 3.6vh;
+}
+.ptv-ticker-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
+}
+.ptv-ticker-run {
+  display: inline-flex;
+  white-space: nowrap;
+}
+.ptv-ticker-run.is-moving {
+  animation: ptv-marquee var(--t, 20s) linear infinite;
+  will-change: transform;
+}
+.ptv-ticker-copy {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4vw;
+  padding: 0 2vw;
+}
+.ptv-ticker-item {
+  font-size: 4.8vh;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+}
+.ptv-ticker-item small {
+  margin-left: 0.8vw;
+  font-size: 0.6em;
+  font-weight: 750;
+  color: #8dffc3;
+}
+
+/* ------------------------------------------------------------ chamada */
+
+.ptv-call {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 46%, #128553 0%, #07432b 42%, #020b07 100%);
+  animation: ptv-fade 0.35s ease both;
+}
+.ptv-call-rings span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 90vh;
+  height: 90vh;
+  margin: -45vh 0 0 -45vh;
+  border-radius: 50%;
+  border: 0.6vh solid rgba(110, 255, 180, 0.6);
+  opacity: 0;
+  animation: ptv-ring 2.4s ease-out infinite;
+}
+.ptv-call-rings span:nth-child(2) {
+  animation-delay: 0.8s;
+}
+.ptv-call-rings span:nth-child(3) {
+  animation-delay: 1.6s;
+}
+.ptv-call-card {
+  position: relative;
+  max-width: 94vw;
+  padding: 5vh 4vw;
+  text-align: center;
+  animation: ptv-callpop 0.75s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+.ptv-call-glow {
+  position: absolute;
+  inset: -12vh -12vw;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(70, 255, 160, 0.42), transparent);
+  animation: ptv-breathe 1.6s ease-in-out infinite;
+}
+.ptv-call-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.2vw;
+  padding: 1.3vh 2.6vw;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #c9ffe2;
+  font-size: 4.4vh;
+  font-weight: 850;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+.ptv-call-label svg {
+  width: 5vh;
+  height: 5vh;
+  transform-origin: 50% 10%;
+  animation: ptv-bell 1.2s ease-in-out infinite;
+}
+.ptv-call-name {
+  margin-top: 3.4vh;
+  font-size: 22vh;
+  font-size: min(24vh, calc(170vw / (var(--len, 8) + 1)));
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  text-shadow: 0 0 7vh rgba(90, 255, 175, 0.55), 0 1.2vh 3vh rgba(0, 0, 0, 0.45);
+}
+.ptv-call-comanda {
+  display: inline-block;
+  margin-top: 3.4vh;
+  padding: 1.2vh 3.2vw;
+  border-radius: 3vh;
+  background: #fff;
+  color: #06402a;
+  font-size: 9vh;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow: 0 2vh 6vh rgba(0, 0, 0, 0.4), 0 0 0 0.8vh rgba(255, 255, 255, 0.18);
+  font-variant-numeric: tabular-nums;
+}
+.ptv-call-comanda strong {
+  font-weight: 950;
+}
+.ptv-call-place {
+  margin-top: 3.4vh;
+  font-size: 4.8vh;
+  font-weight: 750;
+  color: rgba(255, 255, 255, 0.92);
+}
+.ptv-call-order {
+  margin-top: 1.2vh;
+  font-size: 2.8vh;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+.ptv-call-queue {
+  position: absolute;
+  bottom: 3vh;
+  right: 2.4vw;
+  padding: 1vh 1.6vw;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 2.6vh;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------ avisos e barra */
+
+.ptv-audio-warn {
+  position: absolute;
+  left: 2vw;
+  bottom: 2.4vh;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+  max-width: 60vw;
+  padding: 1.2vh 1.6vw;
+  border-radius: 2vh;
+  border: 1px solid rgba(255, 181, 61, 0.7);
+  background: rgba(60, 34, 0, 0.88);
+  color: #ffe2b0;
+  font: inherit;
+  font-size: 2.4vh;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1.6vh 5vh rgba(0, 0, 0, 0.5);
+  animation: ptv-rise 0.6s var(--ptv-ease) both;
+}
+.ptv-audio-warn svg {
+  width: 4vh;
+  height: 4vh;
+  flex: none;
+  color: var(--ptv-prep);
+  animation: ptv-blink 1.4s ease-in-out infinite;
+}
+.ptv-audio-warn strong {
+  display: block;
+  color: #fff;
+  font-size: 1.15em;
+}
+
+.ptv-tools {
+  position: absolute;
+  left: 50%;
+  bottom: 2.4vh;
+  z-index: 66;
+  display: flex;
+  gap: 0.8vw;
+  padding: 0.9vh;
+  border-radius: 999px;
+  background: rgba(14, 16, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 1.6vh 5vh rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 2vh);
+  transition: opacity 0.35s ease, transform 0.35s var(--ptv-ease);
+}
+.ptv-tools.is-shown {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+/* ------------------------------------------------------------ TV em pé */
+
+@media (orientation: portrait) {
+  .ptv-board {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 0.75fr) minmax(0, 1.35fr);
+    gap: 1.6vh;
+  }
+  .ptv-head {
+    height: 9vh;
+  }
+  .ptv-board {
+    top: 10vh;
+  }
+}
+
+/* ------------------------------------------------------------ animações */
+
+@keyframes ptv-drift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to { transform: translate3d(3%, 2%, 0) scale(1.08); }
+}
+@keyframes ptv-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ptv-rise {
+  from { opacity: 0; transform: translateY(2.4vh); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ptv-pop {
+  0% { opacity: 0; transform: translateY(4vh) scale(0.82); }
+  60% { opacity: 1; transform: translateY(-0.6vh) scale(1.03); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes ptv-glow {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.95; }
+}
+@keyframes ptv-shine {
+  from { transform: translateX(0) skewX(-12deg); }
+  to { transform: translateX(420%) skewX(-12deg); }
+}
+@keyframes ptv-ad-in {
+  from { opacity: 0; transform: scale(1.03); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ptv-kenburns {
+  from { transform: scale(1); }
+  to { transform: scale(1.06); }
+}
+@keyframes ptv-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes ptv-ring {
+  0% { opacity: 0.9; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(1.9); }
+}
+@keyframes ptv-callpop {
+  0% { opacity: 0; transform: scale(0.55); }
+  70% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes ptv-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+@keyframes ptv-bell {
+  0%, 60%, 100% { transform: rotate(0); }
+  10% { transform: rotate(16deg); }
+  20% { transform: rotate(-14deg); }
+  30% { transform: rotate(10deg); }
+  40% { transform: rotate(-6deg); }
+}
+@keyframes ptv-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes ptv-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ptv *,
+  .ptv *::before,
+  .ptv *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .ptv-aurora,
+  .ptv-ticker-run.is-moving,
+  .ptv-ad-image .ptv-ad-media {
+    animation: none !important;
+  }
+  .ptv-call-rings {
+    display: none;
+  }
+  /* sem pulsar: brilho fixo e moderado nos pedidos recém-prontos */
+  .ptv-tile.ready.is-fresh::before {
+    animation: none !important;
+    opacity: 0.6;
+  }
+  .ptv-spinner {
+    animation: ptv-spin 2.4s linear infinite !important;
+  }
+}
