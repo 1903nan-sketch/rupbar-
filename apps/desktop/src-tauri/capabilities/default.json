@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "A tela inicial local pode chamar apenas os comandos de inicialização do servidor. Páginas remotas não têm acesso ao IPC.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

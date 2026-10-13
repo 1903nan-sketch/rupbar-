@@ -690,6 +690,14 @@ BEGIN INSERT INTO sync_outbox(entity, entity_id, created_at) VALUES ('${entity}'
   ).join('\n');
 }
 
+/** Migrações ainda não aplicadas (usado para fazer backup antes de atualizar). */
+export function pendingMigrations(db: Db): number[] {
+  const exists = db.value("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'");
+  if (!exists) return [];
+  const done = new Set(db.all<{ id: number }>('SELECT id FROM schema_migrations').map((r) => r.id));
+  return MIGRATIONS.filter((m) => !done.has(m.id)).map((m) => m.id);
+}
+
 export function migrate(db: Db): { applied: number[] } {
   db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)`);
   const done = new Set(db.all<{ id: number }>('SELECT id FROM schema_migrations').map((r) => r.id));

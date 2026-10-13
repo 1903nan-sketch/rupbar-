@@ -1,0 +1,19 @@
+[package]
+name = "rupbar-service"
+version = "0.1.0"
+edition = "2021"
+description = "Serviço do Windows que mantém o servidor local do RupBar sempre ativo (supervisor)."
+license = "UNLICENSED"
+publish = false
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

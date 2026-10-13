@@ -154,6 +154,7 @@ export class SyncService {
     });
     this.attempt = 0;
     this.nextRunAt = 0;
+    this.lastState = { status: 'pending', error: null };
     return this.status();
   }
 

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Db } from '../db/db';
-import { migrate } from '../db/migrations';
+import { migrate, pendingMigrations } from '../db/migrations';
 import { SecretBox } from '../lib/crypto';
 import { EventBus } from '../lib/events';
 import { silentLogger, type Logger } from '../lib/log';
@@ -55,6 +55,13 @@ export function createServices(opts: CreateOptions) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
   const db = new Db(opts.dbPath ?? join(config.dataDir, 'rupbar.db'));
+  // Atualização de versão: cópia de segurança antes de alterar o esquema.
+  const pending = pendingMigrations(db);
+  if (pending.length && !opts.dbPath) {
+    const file = join(config.backupsDir, `pre-migracao-${pending.join('-')}-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
+    db.backupTo(file);
+    opts.log?.info('backup antes da migração', { file, pending });
+  }
   migrate(db);
   const ctx = new Ctx(db, new EventBus(), opts.clock ?? systemClock, opts.log ?? silentLogger, config, new SecretBox(opts.masterKey ?? loadMasterKey(config.dataDir)));
 

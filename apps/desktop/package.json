@@ -1,0 +1,16 @@
+{
+  "name": "@rupbar/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplicativo Windows do RupBar (Tauri v2): janela, bandeja e instalador NSIS com o serviço local.",
+  "scripts": {
+    "tauri": "tauri",
+    "prepare-resources": "node scripts/prepare-resources.mjs",
+    "dev": "tauri dev",
+    "build:installer": "node scripts/prepare-resources.mjs && tauri build",
+    "typecheck": "node -e \"process.exit(0)\""
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}

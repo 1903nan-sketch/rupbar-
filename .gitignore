@@ -12,8 +12,9 @@ coverage/
 apps/server/.data/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
-apps/desktop/src-tauri/resources/server/
+apps/desktop/src-tauri/resources/
 apps/service-host/target/
 *.tsbuildinfo
 .DS_Store
 .vercel
+tests/e2e/screenshots/
