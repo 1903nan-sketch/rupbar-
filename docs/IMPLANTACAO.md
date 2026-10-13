@@ -61,6 +61,26 @@ Voz: o PC sintetiza o anúncio com a voz pt-BR do Windows (offline). Se indispon
 3. Authentication → crie o usuário do proprietário (mesmo e-mail usado no RupBar) ou habilite o cadastro por convite.
 4. Authentication → URL Configuration: adicione `https://<seu-painel>.vercel.app/auth/callback`.
 
+#### Instalação atual: dentro de um projeto Supabase já existente
+
+Em produção, o RupBar foi instalado no projeto Supabase já usado pelo Barberflow (`xraygbmishqxyrtiwyxy`), no esquema `public`, sem alterar nenhum objeto existente. O conteúdo de `supabase/migrations/20261012000000_rupbar_init.sql` foi aplicado em seis partes, registradas no histórico do projeto:
+
+| Versão | Nome | Conteúdo |
+|---|---|---|
+| 20261013011006 | `rupbar_01_tables` | tabelas `establishments`, `devices`, `sync_records`, `remote_commands`, índices, RLS ligado |
+| 20261013011840 | `rupbar_02_rls` | `rupbar_is_owner` e políticas de leitura do proprietário |
+| 20261013011916 | `rupbar_03_device_rpc` | RPCs do PC (registro, envio, comandos, confirmação, sinal de vida) |
+| 20261013012346 | `rupbar_04_owner_rpc` | RPCs do painel (perda remota, cancelar comando, revogar PC) |
+| 20261013012520 | `rupbar_05_views_reports` | visões `v_*`, relatórios, permissões e publicação em tempo real |
+| 20261013013809 | `rupbar_06_revokes` | retirada de privilégios de escrita e do papel anônimo |
+
+Consequências de compartilhar o projeto:
+
+- **Login compartilhado**: o painel usa o mesmo Supabase Auth do Barberflow. Qualquer conta do Barberflow consegue entrar no painel do RupBar, mas não vê nada (o RLS só mostra estabelecimentos dos quais a conta é proprietária).
+- **Site URL**: não altere a Site URL do projeto (ela é do Barberflow). Apenas **adicione** `https://<seu-painel>.vercel.app/auth/callback` em *Redirect URLs*.
+- **`supabase db push`** não deve ser usado contra esse projeto a partir deste repositório: o histórico remoto contém as migrações do Barberflow, que não estão aqui. Mudanças futuras no esquema do RupBar devem ser aplicadas como novas migrações nomeadas `rupbar_*` (pelo SQL Editor ou pela CLI do repositório do Barberflow).
+- Os objetos do RupBar são identificados pelos nomes acima (`rupbar_*`, `v_*` do RupBar e as quatro tabelas); para mover o RupBar para um projeto próprio no futuro, basta aplicar `20261012000000_rupbar_init.sql` no projeto novo e reconectar o PC.
+
 ### Vercel
 
 1. Importe o repositório; **Root Directory** = `apps/owner-panel` (a Vercel detecta pnpm/monorepo).

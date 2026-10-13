@@ -97,7 +97,7 @@ Detalhes de instalação, rede, impressoras, TV, nuvem e backups em [docs/IMPLAN
 - **Impressão** testada com transporte simulado e geração de bytes ESC/POS; acentuação depende do modelo da impressora (CP850/CP860/sem acentos configurável).
 - **HTTPS na rede local** não é usado (certificados em rede local geram alertas nos celulares). Ver [Segurança](docs/SEGURANCA-LGPD.md) para as mitigações.
 - **Comprovantes (fotos/PDF)** ficam no PC; a nuvem recebe apenas a indicação de que existem.
-- O painel online foi compilado e o esquema SQL testado em Postgres; a publicação exige criar o projeto Supabase e a Vercel (passo a passo em [IMPLANTACAO.md](docs/IMPLANTACAO.md)).
+- O esquema da nuvem está instalado no projeto Supabase compartilhado com o Barberflow (detalhes e cuidados em [IMPLANTACAO.md](docs/IMPLANTACAO.md#instalação-atual-dentro-de-um-projeto-supabase-já-existente)); falta publicar o painel na Vercel e conectar o PC do bar.
 - Emissão fiscal (NFC-e/SAT) não faz parte deste escopo; o cupom de conta é marcado como “não é documento fiscal”.
 
 ---
