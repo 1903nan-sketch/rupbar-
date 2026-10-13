@@ -1,0 +1,37 @@
+/* Narguilés: tabela de preços em destaque e cartões dos aparelhos. */
+
+.hookah-prices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: center;
+}
+.hookah-price {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: var(--fill);
+}
+.hookah-price strong {
+  font-family: var(--font-display);
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+.hookah-card.rented {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--glass-edge));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent), var(--glass-shadow);
+}
+.hookah-session {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, transparent), color-mix(in srgb, var(--accent) 4%, transparent));
+}
+@media (max-width: 900px) {
+  .hookah-prices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

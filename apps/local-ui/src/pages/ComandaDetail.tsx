@@ -1,10 +1,14 @@
 import { PAYMENT_METHODS, splitEqually, type PaymentMethod } from '@rupbar/core';
 import {
-  ArrowLeft, ArrowRightLeft, Ban, CheckCircle2, CreditCard, Divide, Eye, MoreHorizontal, Percent, Plus, Printer, Tag, Undo2, Wind, X,
+  ArrowLeft, ArrowRightLeft, Ban, CheckCircle2, CreditCard, Divide, Eye, MoreHorizontal, Pencil, Percent, Plus, Printer, RotateCcw, Tag, Trash2,
+  Undo2, Wind, X,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { OrderComposer } from '../components/OrderComposer';
+import {
+  DeleteComandaModal, DeleteItemModal, DeletePaymentModal, EditItemModal, EditPaymentModal, OwnerTag, ReopenComandaModal,
+} from '../components/OwnerActions';
 import { Badge, Button, Card, Confirm, ErrorBox, Field, Input, Loading, Modal, MoneyInput, Select, Switch, Textarea, useToast } from '../components/ui';
 import { api, requestId } from '../lib/api';
 import { elapsed, fmtDateTime, fmtTime, formatBRL } from '../lib/format';
@@ -13,6 +17,7 @@ import { useRealtime } from '../lib/realtime';
 import { PixQr } from '../components/PixQr';
 import { useSession } from '../lib/session';
 import { STATUS_BADGE, type ComandaSummary } from './Comandas';
+import '../styles/comandas.css';
 
 export interface ComandaItem {
   id: string;
@@ -41,6 +46,7 @@ export interface ComandaDetail extends ComandaSummary {
   serviceFee: number;
   serviceFeeBp: number;
   discountReason: string | null;
+  notes: string | null;
   items: ComandaItem[];
   payments: { id: string; method: PaymentMethod; amount_cents: number; change_cents: number; payer_label: string | null; status: string; created_at: string; created_by_name: string | null; reverse_reason: string | null }[];
   hookahSessions: { id: string; status: string; started_at: string; code: string; charge_cents: number | null }[];
@@ -58,12 +64,14 @@ export function ComandaDetailPage() {
   useRealtime(['comanda.changed', 'order.status', 'ticket.updated'], (e) => {
     if (!e.data?.comandaId || e.data.comandaId === id) void reload();
   });
-  const [modal, setModal] = useState<null | 'order' | 'pay' | 'transfer' | 'move' | 'discount' | 'fee' | 'split' | 'close' | 'cancel' | 'contact' | 'more'>(null);
+  const [modal, setModal] = useState<null | 'order' | 'pay' | 'transfer' | 'move' | 'discount' | 'fee' | 'split' | 'close' | 'cancel' | 'contact' | 'more' | 'edit' | 'reopen' | 'delete'>(null);
   const [cancelItem, setCancelItem] = useState<ComandaItem | null>(null);
+  const [fix, setFix] = useState<null | { kind: 'editItem' | 'deleteItem'; item: ComandaItem } | { kind: 'editPay' | 'deletePay'; payment: ComandaDetail['payments'][number] }>(null);
 
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!c) return <Loading />;
   const open = c.status === 'open';
+  const master = can('admin.override');
   const orders = groupByOrder(c.items);
 
   const printBill = async () => {
@@ -80,18 +88,27 @@ export function ComandaDetailPage() {
       <div className="row between wrap">
         <div className="row" style={{ gap: 14 }}>
           <Button variant="plain" icon={<ArrowLeft size={18} />} aria-label="Voltar" onClick={() => nav('/comandas')} />
+          {c.kind !== 'quick' && <span className="comanda-no">{c.displayNumber ?? c.number}</span>}
           <div>
             <div className="row">
-              <h1>Comanda #{c.number}</h1>
+              <h1>{c.kind === 'quick' ? `Venda rápida ${c.number}` : `Comanda ${c.displayNumber ?? c.number}`}</h1>
               {STATUS_BADGE[c.status]}
+              {(open ? can('comandas.edit') : master) && <Button size="small" variant="plain" icon={<Pencil size={15} />} aria-label="Editar nome, cartão e mesa" onClick={() => setModal('edit')} />}
             </div>
             <div className="muted">
-              {c.customerName}
+              {c.customerName || 'Sem nome'}
               {c.table && <> · Mesa {c.table}</>}
               {' · '}aberta {fmtDateTime(c.openedAt)} ({elapsed(c.openedAt, now)}){c.responsibleName && <> · {c.responsibleName}</>}
             </div>
           </div>
         </div>
+        {!open && master && (
+          <div className="row wrap owner-zone">
+            <OwnerTag />
+            {c.status === 'closed' && <Button icon={<RotateCcw size={16} />} onClick={() => setModal('reopen')}>Reabrir</Button>}
+            {c.status !== 'canceled' && <Button variant="danger" icon={<Trash2 size={16} />} onClick={() => setModal('delete')}>Excluir comanda</Button>}
+          </div>
+        )}
         {open && (
           <div className="row wrap">
             {can('orders.create') && <Button variant="primary" icon={<Plus size={16} />} onClick={() => setModal('order')}>Lançar itens</Button>}
@@ -124,7 +141,12 @@ export function ComandaDetailPage() {
                     </div>
                     {i.ticketStatus && i.status === 'active' && <Badge color={i.ticketStatus === 'ready' ? 'green' : i.ticketStatus === 'delivered' ? undefined : 'orange'}>{TICKET_LABEL[i.ticketStatus] ?? i.ticketStatus}</Badge>}
                     <span className="num" style={{ minWidth: 86, textAlign: 'right' }}>{formatBRL(i.totalCents)}</span>
-                    {open && i.status === 'active' && can('comandas.cancel_item') && (
+                    {master && i.status === 'active' ? (
+                      <>
+                        <Button size="small" variant="plain" icon={<Pencil size={15} />} aria-label="Editar item" title="Editar (conta mestre)" onClick={() => setFix({ kind: 'editItem', item: i })} />
+                        <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label="Excluir item" title="Excluir (conta mestre)" onClick={() => setFix({ kind: 'deleteItem', item: i })} />
+                      </>
+                    ) : open && i.status === 'active' && can('comandas.cancel_item') && (
                       <Button size="small" variant="plain" icon={<X size={15} />} aria-label="Cancelar item" onClick={() => setCancelItem(i)} />
                     )}
                   </div>
@@ -133,7 +155,7 @@ export function ComandaDetailPage() {
             </Card>
           ))}
           {c.hookahSessions.some((h) => h.status === 'active') && (
-            <div className="banner"><Wind size={18} /> Narguilé em uso nesta comanda. Registre a devolução em Narguilés para lançar o valor.</div>
+            <div className="banner"><Wind size={18} /> Narguilé em uso nesta comanda. O aluguel e as trocas já estão lançados; registre a devolução em Narguilés antes de encerrar.</div>
           )}
         </div>
 
@@ -146,6 +168,7 @@ export function ComandaDetailPage() {
               <div className="divider" />
               <Line label={<strong>Total</strong>} value={<strong style={{ fontSize: 22 }}>{formatBRL(c.total)}</strong>} />
               {c.paid > 0 && <Line label="Pago" value={formatBRL(c.paid)} />}
+              {!open && c.paid > c.total && <Line label={<strong>Pago a mais</strong>} value={<strong className="warning-text">{formatBRL(c.paid - c.total)}</strong>} />}
               {open && <Line label={<strong>Restante</strong>} value={<strong className={c.remaining > 0 ? 'warning-text' : 'success-text'}>{formatBRL(c.remaining)}</strong>} />}
             </div>
             {open && (
@@ -174,7 +197,12 @@ export function ComandaDetailPage() {
                       {p.status === 'reversed' && <div className="tiny danger-text">Estornado: {p.reverse_reason}</div>}
                     </div>
                     <span className="num">{formatBRL(p.amount_cents)}</span>
-                    {open && p.status === 'active' && can('cash.payment_reverse') && <ReverseButton paymentId={p.id} onDone={reload} />}
+                    {master && p.status === 'active' ? (
+                      <>
+                        <Button size="small" variant="plain" icon={<Pencil size={15} />} aria-label="Corrigir pagamento" title="Corrigir (conta mestre)" onClick={() => setFix({ kind: 'editPay', payment: p })} />
+                        <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label="Excluir pagamento" title="Excluir (conta mestre)" onClick={() => setFix({ kind: 'deletePay', payment: p })} />
+                      </>
+                    ) : open && p.status === 'active' && can('cash.payment_reverse') && <ReverseButton paymentId={p.id} onDone={reload} />}
                   </div>
                 ))}
               </div>
@@ -184,7 +212,7 @@ export function ComandaDetailPage() {
       </div>
 
       {modal === 'order' && (
-        <Modal title={`Lançar itens — Comanda #${c.number}`} wide onClose={() => setModal(null)}>
+        <Modal title={`Lançar itens — ${c.label}`} wide onClose={() => setModal(null)}>
           <OrderComposer comandaId={c.id} onSent={() => { setModal(null); void reload(); }} />
         </Modal>
       )}
@@ -199,6 +227,7 @@ export function ComandaDetailPage() {
             {can('comandas.discount') && <ActionRow icon={<Percent size={18} />} label="Taxa de serviço" onClick={() => setModal('fee')} />}
             {can('comandas.open') && (c.customerPhoneMasked || c.customerCpfMasked) && <ActionRow icon={<Eye size={18} />} label="Ver contato do cliente" onClick={() => setModal('contact')} />}
             {can('comandas.cancel') && <ActionRow icon={<Ban size={18} />} label="Cancelar comanda" danger onClick={() => setModal('cancel')} />}
+            {master && c.paid > 0 && <ActionRow icon={<Trash2 size={18} />} label="Excluir comanda com pagamentos (conta mestre)" danger onClick={() => setModal('delete')} />}
           </div>
         </Modal>
       )}
@@ -208,11 +237,18 @@ export function ComandaDetailPage() {
       {modal === 'fee' && <ServiceFeeModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'contact' && <ContactModal comandaId={c.id} onClose={() => setModal(null)} />}
       {modal === 'close' && (
-        <Confirm title={`Encerrar comanda #${c.number}?`} message={`Total ${formatBRL(c.total)} pago integralmente.`} confirmLabel="Encerrar" onClose={() => setModal(null)}
+        <Confirm title={`Encerrar ${c.label}?`} message={`Total ${formatBRL(c.total)} pago integralmente.`} confirmLabel="Encerrar" onClose={() => setModal(null)}
           onConfirm={async () => { await api.post(`/api/comandas/${c.id}/close`, { expectedVersion: c.version }); toast.success('Comanda encerrada'); await reload(); }} />
       )}
       {modal === 'cancel' && <CancelComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {cancelItem && <CancelItemModal item={cancelItem} onClose={() => setCancelItem(null)} onDone={reload} />}
+      {modal === 'edit' && <EditComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
+      {modal === 'reopen' && <ReopenComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
+      {modal === 'delete' && <DeleteComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
+      {fix?.kind === 'editItem' && <EditItemModal item={fix.item} onClose={() => setFix(null)} onDone={reload} />}
+      {fix?.kind === 'deleteItem' && <DeleteItemModal item={fix.item} onClose={() => setFix(null)} onDone={reload} />}
+      {fix?.kind === 'editPay' && <EditPaymentModal payment={fix.payment} onClose={() => setFix(null)} onDone={reload} />}
+      {fix?.kind === 'deletePay' && <DeletePaymentModal payment={fix.payment} onClose={() => setFix(null)} onDone={reload} />}
     </div>
   );
 }
@@ -295,7 +331,7 @@ export function PaymentModal({ comanda, onClose, onDone, presetAmount, presetLab
   };
 
   return (
-    <Modal title={`Receber — Comanda #${comanda.number}`} onClose={onClose}
+    <Modal title={`Receber — ${comanda.label}`} onClose={onClose}
       footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} onClick={submit}>Confirmar {amount ? formatBRL(amount) : ''}</Button></>}>
       <div className="stack">
         <div className="banner"><span className="grow">Saldo da comanda</span><strong className="num">{formatBRL(comanda.remaining)}</strong></div>
@@ -367,7 +403,7 @@ function MoveItemsModal({ comanda, onClose, onDone }: { comanda: ComandaDetail; 
       <Field label="Comanda de destino">
         <Select value={target} onChange={(e) => setTarget(e.target.value)}>
           <option value="">Selecione…</option>
-          {others.data?.filter((o) => o.id !== comanda.id).map((o) => <option key={o.id} value={o.id}>#{o.number} — {o.customerName}{o.table ? ` (mesa ${o.table})` : ''}</option>)}
+          {others.data?.filter((o) => o.id !== comanda.id).map((o) => <option key={o.id} value={o.id}>{o.label} — {o.customerName || 'sem nome'}{o.table ? ` (mesa ${o.table})` : ''}</option>)}
         </Select>
       </Field>
       <div className="col">
@@ -437,11 +473,46 @@ function CancelComandaModal({ comanda, onClose, onDone }: { comanda: ComandaDeta
   const [reason, setReason] = useState('');
   const [returnToStock, setReturn] = useState(true);
   return (
-    <Confirm title={`Cancelar comanda #${comanda.number}`} danger confirmLabel="Cancelar comanda" onClose={onClose}
+    <Confirm title={`Cancelar ${comanda.label}`} danger confirmLabel="Cancelar comanda" onClose={onClose}
       message="Todos os itens serão cancelados. Esta ação fica registrada na auditoria."
       onConfirm={async () => { await api.post(`/api/comandas/${comanda.id}/cancel`, { reason, returnToStock, expectedVersion: comanda.version }); onDone(); }}>
       <Field label="Justificativa *"><Textarea autoFocus value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
       <Switch checked={returnToStock} onChange={setReturn} label="Devolver itens ao estoque" />
     </Confirm>
+  );
+}
+
+function EditComandaModal({ comanda, onClose, onDone }: { comanda: ComandaDetail; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [form, setForm] = useState({ customerName: comanda.customerName, cardNumber: comanda.cardNumber === null ? '' : String(comanda.cardNumber), table: comanda.table ?? '' });
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.patch(`/api/comandas/${comanda.id}`, {
+        customerName: form.customerName, cardNumber: form.cardNumber ? Number(form.cardNumber) : null, table: form.table || null,
+        notes: comanda.notes ?? null, expectedVersion: comanda.version,
+      });
+      toast.success('Comanda atualizada');
+      onDone();
+      onClose();
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title="Editar comanda" onClose={onClose}
+      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!form.customerName.trim() && !form.cardNumber} onClick={submit}>Salvar</Button></>}>
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        <div className="open-comanda-head">
+          <Field label="Nº do cartão"><Input large inputMode="numeric" className="card-input" value={form.cardNumber} onChange={(e) => setForm({ ...form, cardNumber: e.target.value.replace(/\D/g, '').slice(0, 5) })} /></Field>
+          <Field label="Nome do cliente"><Input large autoFocus value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></Field>
+        </div>
+        <Field label="Mesa / identificação"><Input value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></Field>
+        <button type="submit" hidden />
+      </form>
+    </Modal>
   );
 }

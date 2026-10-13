@@ -5,6 +5,7 @@ import { api, isOfflineError, requestId } from '../lib/api';
 import { formatBRL, PAYMENT_METHODS } from '../lib/format';
 import '../styles/quick.css';
 import { CartLines, MenuPicker, useCart } from './MenuPicker';
+import { PixQr } from './PixQr';
 import { Button, Input, MoneyInput, Switch, useToast } from './ui';
 
 interface SaleResult {
@@ -213,6 +214,7 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
                         <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label="Remover forma" onClick={() => setPayments((x) => x.filter((_, n) => n !== i))} />
                       </div>
                     )}
+                    {p.method === 'pix' && (line.amountCents ?? 0) > 0 && <PixQr amountCents={line.amountCents ?? 0} />}
                     {p.method === 'cash' && (line.amountCents ?? 0) > 0 && (
                       <div className="quick-cash">
                         <div className="small muted">Recebido em dinheiro</div>
