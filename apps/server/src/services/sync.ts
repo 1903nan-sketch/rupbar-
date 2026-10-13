@@ -1,4 +1,4 @@
-import { backoffMs, type CommandResult, type PushResponse, type RemoteCommand, type SyncRecord, type SyncStatus } from '@rupbar/core';
+import { backoffMs, RUPBAR_CLOUD, type CommandResult, type PushResponse, type RemoteCommand, type SyncRecord, type SyncStatus } from '@rupbar/core';
 import { cloudConnectSchema } from '@rupbar/core/schemas';
 import { SYNCED_TABLES, TABLE_BY_ENTITY } from '../db/sync-tables';
 import { AppError, badRequest } from '../lib/errors';
@@ -19,7 +19,31 @@ interface CloudConfig {
   connectedAt: string;
 }
 
-export class NetworkError extends Error {}
+/** Falha antes de obter resposta da nuvem (sem internet, DNS, TLS, bloqueio). */
+export class NetworkError extends AppError {
+  constructor(readonly causeCode: string, detail: string) {
+    super(502, 'CLOUD_UNREACHABLE', networkMessage(causeCode, detail));
+  }
+}
+
+function networkMessage(code: string, detail: string): string {
+  if (['ENOTFOUND', 'EAI_AGAIN'].includes(code)) {
+    return 'O PC não encontrou o endereço da nuvem. Confira se há internet no PC e se a URL do projeto está correta.';
+  }
+  if (/CERT|SSL|TLS|SELF_SIGNED|UNABLE_TO_(GET|VERIFY)/.test(code)) {
+    return 'A conexão segura com a nuvem foi bloqueada (certificado). Um antivírus ou firewall pode estar inspecionando conexões HTTPS: libere o RupBar nele ou atualize o RupBar.';
+  }
+  if (['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'TimeoutError', 'AbortError'].includes(code)) {
+    return 'A nuvem não respondeu. Verifique a internet do PC ou se um firewall está bloqueando o RupBar.';
+  }
+  return `Não foi possível falar com a nuvem (${code || detail}). Verifique a internet do PC.`;
+}
+
+function errorCode(err: unknown): { code: string; detail: string } {
+  const e = err as { name?: string; code?: string; message?: string; cause?: { code?: string; message?: string; name?: string } };
+  const code = e?.cause?.code ?? e?.code ?? (e?.name === 'TimeoutError' || e?.name === 'AbortError' ? e.name : '') ?? '';
+  return { code: String(code), detail: e?.cause?.message ?? e?.message ?? 'falha de rede' };
+}
 
 /** Cliente das funções RPC do Supabase usadas pelo PC do bar. */
 export interface CloudApi {
@@ -36,7 +60,8 @@ async function call<T>(url: string, init: RequestInit): Promise<T> {
   try {
     res = await fetch(url, { ...init, signal: AbortSignal.timeout(20_000) });
   } catch (err) {
-    throw new NetworkError(err instanceof Error ? err.message : 'Falha de rede');
+    const { code, detail } = errorCode(err);
+    throw new NetworkError(code, detail);
   }
   const text = await res.text();
   if (!res.ok) {
@@ -47,9 +72,19 @@ async function call<T>(url: string, init: RequestInit): Promise<T> {
     } catch {
       /* texto puro */
     }
-    throw new AppError(res.status >= 500 ? 502 : 400, 'CLOUD_ERROR', `Nuvem: ${msg}`);
+    throw new AppError(res.status >= 500 ? 502 : 400, 'CLOUD_ERROR', translateCloudError(res.status, msg));
   }
   return (text ? JSON.parse(text) : null) as T;
+}
+
+/** Mensagens do Supabase em português, com a ação que resolve. */
+export function translateCloudError(status: number, msg: string): string {
+  if (/invalid login credentials/i.test(msg)) return 'E-mail ou senha do painel online incorretos. Use o mesmo login do painel (se você entra pelo Google, crie uma senha em "Esqueci minha senha" no painel).';
+  if (/email not confirmed/i.test(msg)) return 'Este e-mail ainda não foi confirmado. Abra o e-mail de confirmação do Supabase e tente de novo.';
+  if (/invalid api key|no api key/i.test(msg) || status === 401) return 'A chave pública (anon) não confere com a URL do projeto. Copie as duas de novo.';
+  if (/pertence a outra conta/i.test(msg)) return 'Este bar já está ligado a outra conta do painel. Entre com o e-mail do proprietário original.';
+  if (status === 404) return 'O RupBar não está instalado neste projeto da nuvem. Confira a URL do projeto.';
+  return `Nuvem: ${msg}`;
 }
 
 export const supabaseCloudApi: CloudApi = {
@@ -135,7 +170,8 @@ export class SyncService {
   /** Conecta o PC à nuvem com o login do proprietário (o token não é guardado). */
   async connect(actor: Actor, raw: unknown) {
     requirePerm(actor, 'sync.manage');
-    const input = cloudConnectSchema.parse(raw);
+    const parsed = cloudConnectSchema.parse(raw);
+    const input = { ...parsed, supabaseUrl: parsed.supabaseUrl || RUPBAR_CLOUD.url, anonKey: parsed.anonKey || RUPBAR_CLOUD.anonKey };
     const url = input.supabaseUrl.replace(/\/+$/, '');
     const est = this.settings.establishmentRow();
     if (!est) throw badRequest('Conclua a configuração inicial antes.');

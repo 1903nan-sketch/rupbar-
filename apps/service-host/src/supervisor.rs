@@ -105,7 +105,10 @@ impl Supervisor {
         let out = self.log_file();
         let err = self.log_file();
         let mut cmd = Command::new(&self.cfg.node);
+        // --use-system-ca: confia nos certificados do Windows (antivírus e redes
+        // que inspecionam HTTPS), senão a conexão com a nuvem falha no TLS.
         cmd.arg("--disable-warning=ExperimentalWarning")
+            .arg("--use-system-ca")
             .arg(&self.cfg.server_js)
             .arg("--data-dir")
             .arg(&self.cfg.data_dir)

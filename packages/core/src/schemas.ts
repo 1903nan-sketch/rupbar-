@@ -423,9 +423,13 @@ export const tvApproveSchema = z.object({
   name: trimmed(40).default('TV'),
 });
 
+const asciiOnly = (v: unknown) => (typeof v === 'string' ? v.replace(/[^\x21-\x7E]/g, '') : v);
+
 export const cloudConnectSchema = z.object({
-  supabaseUrl: z.string().trim().url(),
-  anonKey: z.string().trim().min(20),
+  /** Vazios = nuvem padrão do RupBar. */
+  // Valores colados de chats/PDFs podem trazer caracteres invisíveis: URL e chave são ASCII puro.
+  supabaseUrl: z.preprocess(asciiOnly, z.string().url('URL do projeto inválida (ex.: https://xxxx.supabase.co)').or(z.literal('')).default('')),
+  anonKey: z.preprocess(asciiOnly, z.string().min(20, 'Chave pública incompleta').or(z.literal('')).default('')),
   email: zEmail,
   password: z.string().min(1).max(128),
 });

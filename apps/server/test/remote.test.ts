@@ -11,7 +11,7 @@ class FakeCloud implements CloudApi {
   pushes = 0;
   heartbeats = 0;
   private check() {
-    if (this.offline) throw new NetworkError('fetch failed');
+    if (this.offline) throw new NetworkError('ECONNREFUSED', 'fetch failed');
   }
   async signIn(_u: string, _k: string, email: string, password: string) {
     this.check();

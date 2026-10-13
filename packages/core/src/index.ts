@@ -9,3 +9,4 @@ export * from './hookah';
 export * from './cash';
 export * from './speech';
 export * from './sync';
+export * from './cloud';

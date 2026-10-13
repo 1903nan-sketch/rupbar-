@@ -1,4 +1,4 @@
-import { SYNC_STATUS, type SyncStatus } from '@rupbar/core';
+import { RUPBAR_CLOUD, SYNC_STATUS, type SyncStatus } from '@rupbar/core';
 import { Cloud, CloudOff, MessageCircle, RefreshCw, Send } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, Confirm, Field, Input, Loading, PageHeader, Select, useToast } from '../../components/ui';
@@ -29,6 +29,7 @@ export function SyncSettings() {
   useRealtime('sync', () => void reload());
   const [f, setF] = useState({ supabaseUrl: '', anonKey: '', email: user?.email ?? '', password: '' });
   const [busy, setBusy] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [disconnect, setDisconnect] = useState(false);
   if (!data) return <Loading />;
 
@@ -60,16 +61,23 @@ export function SyncSettings() {
           <form className="stack" onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
-            try { await api.post('/api/sync/connect', f); toast.success('PC conectado à nuvem. Enviando dados…'); setF({ ...f, password: '' }); void reload(); } catch (err) { toast.error(err); } finally { setBusy(false); }
+            setConnectError(null);
+            try { await api.post('/api/sync/connect', f); toast.success('PC conectado à nuvem. Enviando dados…'); setF({ ...f, password: '' }); void reload(); } catch (err) { setConnectError(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); }
           }}>
-            <p className="small muted">Use os dados do projeto Supabase do RupBar (fornecidos pela Ruptix) e o login do proprietário no painel online. A senha não é guardada: o PC recebe uma credencial própria e revogável.</p>
+            <p className="small muted">Entre com o mesmo e-mail e senha do painel online do proprietário. A senha não fica guardada: o PC recebe uma credencial própria, que pode ser revogada pelo painel.</p>
             <div className="grid-2">
-              <Field label="URL do projeto"><Input value={f.supabaseUrl} onChange={(e) => setF({ ...f, supabaseUrl: e.target.value })} placeholder="https://xxxx.supabase.co" /></Field>
-              <Field label="Chave pública (anon)"><Input value={f.anonKey} onChange={(e) => setF({ ...f, anonKey: e.target.value })} /></Field>
-              <Field label="E-mail do proprietário (painel online)"><Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
-              <Field label="Senha do painel online"><Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
+              <Field label="E-mail do proprietário"><Input type="email" autoComplete="username" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+              <Field label="Senha do painel online"><Input type="password" autoComplete="current-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
             </div>
-            <Button type="submit" variant="primary" loading={busy} style={{ alignSelf: 'flex-start' }}>Conectar</Button>
+            <details className="optional-fields">
+              <summary>Avançado: usar outro projeto Supabase</summary>
+              <div className="grid-2">
+                <Field label="URL do projeto" hint="Em branco = nuvem do RupBar"><Input value={f.supabaseUrl} onChange={(e) => setF({ ...f, supabaseUrl: e.target.value })} placeholder={RUPBAR_CLOUD.url} /></Field>
+                <Field label="Chave pública (anon)" hint="Em branco = chave do RupBar"><Input value={f.anonKey} onChange={(e) => setF({ ...f, anonKey: e.target.value })} /></Field>
+              </div>
+            </details>
+            {connectError && <div className="banner danger" role="alert">{connectError}</div>}
+            <Button type="submit" variant="primary" loading={busy} disabled={!f.email || !f.password} style={{ alignSelf: 'flex-start' }}>Conectar</Button>
           </form>
         </Card>
       )}
