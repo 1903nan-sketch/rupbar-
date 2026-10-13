@@ -188,6 +188,10 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
       requireCustomerPhone: o.requireCustomerPhone, requireCustomerCpf: o.requireCustomerCpf,
     };
   });
+  r('GET', '/api/settings/pix', (_req, a) => s.settings.pixConfig(a));
+  r('PUT', '/api/settings/pix', (req, a) => s.settings.updatePix(a, req.body));
+  /** Pix copia e cola (BR Code) para um valor; com comandaId, o txid identifica a comanda. */
+  r('GET', '/api/pix/payload', (req, a) => s.settings.pixPayload(a, q(req)));
 
   r('POST', '/api/attachments', async (req, a) => {
     const kind = z.enum(['receipt', 'loss_proof', 'invoice', 'product_photo']).parse(q(req).kind) as AttachmentKind;

@@ -176,6 +176,31 @@ export class EscPosBuilder {
     return this.raw([ESC, 0x42, Math.min(9, times), 3]);
   }
 
+  /**
+   * QR Code nativo da impressora (GS ( k, modelo 2): seleciona o modelo, o
+   * tamanho do módulo, a correção de erros, grava os dados e imprime.
+   * Suportado pela maioria das térmicas atuais (Epson TM-T20, Elgin i9,
+   * Bematech MP-4200 TH...). Nas que não suportam, desative o QR Code na
+   * impressora — o cupom sai com a informação em texto.
+   */
+  qr(data: string, opts: { moduleSize?: number; ec?: 'L' | 'M' | 'Q' | 'H' } = {}): this {
+    // Os dados (Pix copia e cola) são ASCII; qualquer outro caractere vira "?".
+    const bytes = Array.from(data, (ch) => {
+      const c = ch.codePointAt(0)!;
+      return c < 0x80 ? c : 0x3f;
+    });
+    if (!bytes.length) return this;
+    if (bytes.length > 7089) throw new RangeError('Conteúdo grande demais para um QR Code');
+    const size = Math.max(1, Math.min(16, Math.round(opts.moduleSize ?? 6)));
+    const ec = { L: 0x30, M: 0x31, Q: 0x32, H: 0x33 }[opts.ec ?? 'M'];
+    const stored = bytes.length + 3;
+    return this.raw([GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]) // função 165: modelo 2
+      .raw([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, size]) // função 167: tamanho do módulo (pontos)
+      .raw([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, ec]) // função 169: correção de erros
+      .raw([GS, 0x28, 0x6b, stored & 0xff, (stored >> 8) & 0xff, 0x31, 0x50, 0x30, ...bytes]) // função 180: grava os dados
+      .raw([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]); // função 181: imprime
+  }
+
   build(): Uint8Array {
     return Uint8Array.from(this.bytes);
   }
@@ -195,6 +220,8 @@ export interface PrintOptions {
   paper: PaperWidth;
   codepage: CodePage;
   beep?: boolean;
+  /** A impressora imprime QR Code nativo (GS ( k). Padrão: sim. */
+  qr?: boolean;
 }
 
 export interface OrderTicketData {
@@ -259,6 +286,32 @@ export interface BillReceiptData {
   total: number;
   payments: { label: string; amount: number }[];
   remaining: number;
+  /** Pix copia e cola do saldo a pagar (quando o Pix está configurado). */
+  pix?: BillPixData | null;
+}
+
+export interface BillPixData {
+  /** Pix copia e cola (BR Code) — o mesmo texto vai no QR Code. */
+  payload: string;
+  amount: number;
+  merchantName: string;
+  /** Chave em texto, para impressoras sem QR Code. */
+  keyLabel: string;
+  key: string;
+}
+
+/** Bloco "Pague com Pix": QR Code do valor a pagar ou, sem QR, a chave em texto. */
+function pixBlock(p: EscPosBuilder, pix: BillPixData, opts: PrintOptions): void {
+  p.separator();
+  p.align('center').bold(true).size(1, 2).line('Pague com Pix').size(1, 1).bold(false);
+  if (opts.qr !== false) {
+    p.feed(1).qr(pix.payload, { moduleSize: opts.paper === 58 ? 6 : 7, ec: 'M' }).line();
+  } else {
+    p.wrapped(`Chave Pix (${pix.keyLabel}):`).bold(true).wrapped(pix.key).bold(false);
+  }
+  p.bold(true).size(1, 2).line(formatBRL(pix.amount)).size(1, 1).bold(false);
+  p.wrapped(pix.merchantName);
+  p.align('left');
 }
 
 /** Conferência de conta (não fiscal). */
@@ -285,6 +338,7 @@ export function renderBillReceipt(data: BillReceiptData, opts: PrintOptions): Ui
     for (const pay of data.payments) p.pair(pay.label, formatBRL(pay.amount));
     p.bold(true).pair('A pagar', formatBRL(Math.max(0, data.remaining))).bold(false);
   }
+  if (data.pix && data.pix.amount > 0) pixBlock(p, data.pix, opts);
   p.separator();
   p.align('center').line(fmtDateTime(data.printedAt)).line('RupBar by Ruptix');
   return p.cut().build();

@@ -1,0 +1,150 @@
+/*
+ * Pix copia e cola: QR Code grande e nítido com o anel na cor do bar.
+ * O quadro do QR é sempre branco (leitura pela câmera), mesmo no tema escuro.
+ */
+
+.pix-qr {
+  --pix-qr-size: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  min-width: 0;
+}
+
+.pix-qr-frame {
+  position: relative;
+  padding: 14px;
+  background: #fff;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 3px var(--accent),
+    0 0 0 9px var(--accent-soft),
+    var(--shadow);
+  line-height: 0;
+}
+
+.pix-qr-frame img,
+.pix-qr-placeholder {
+  display: block;
+  width: min(var(--pix-qr-size), 62vw);
+  height: min(var(--pix-qr-size), 62vw);
+}
+
+.pix-qr-frame img {
+  image-rendering: pixelated;
+}
+
+.pix-qr-placeholder {
+  border-radius: var(--radius);
+  background: repeating-linear-gradient(45deg, #f2f2f7, #f2f2f7 10px, #e5e5ea 10px, #e5e5ea 20px);
+  display: grid;
+  place-items: center;
+}
+
+.pix-qr-badge {
+  position: absolute;
+  left: 50%;
+  bottom: -13px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.pix-qr-amount {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pix-qr-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(100%, 320px);
+}
+
+.pix-qr-actions .btn.copied {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.pix-qr-details {
+  width: 100%;
+  text-align: left;
+}
+
+.pix-qr-details summary {
+  cursor: pointer;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.pix-qr-code {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--fill);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  word-break: break-all;
+  user-select: all;
+  max-height: 96px;
+  overflow: auto;
+}
+
+.pix-qr-note {
+  max-width: 360px;
+}
+
+/* Tela de configuração: formulário + pré-visualização ao lado. */
+.pix-settings {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.pix-settings .pix-preview {
+  position: sticky;
+  top: 16px;
+}
+
+.pix-key-types {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+}
+
+.pix-key-types .chip {
+  justify-content: center;
+  height: 40px;
+}
+
+@media (max-width: 900px) {
+  .pix-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pix-settings .pix-preview {
+    position: static;
+  }
+}

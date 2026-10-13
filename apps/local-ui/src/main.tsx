@@ -31,6 +31,7 @@ const SyncSettings = lazy(() => import('./pages/settings/Cloud').then((m) => ({ 
 const DevicesSettings = lazy(() => import('./pages/settings/Connect').then((m) => ({ default: m.DevicesSettings })));
 const TvSettings = lazy(() => import('./pages/settings/Connect').then((m) => ({ default: m.TvSettings })));
 const PrintersSettings = lazy(() => import('./pages/settings/Printers').then((m) => ({ default: m.PrintersSettings })));
+const PixSettings = lazy(() => import('./pages/settings/Pix').then((m) => ({ default: m.PixSettings })));
 const BackupSettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.BackupSettings })));
 const IdentitySettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.IdentitySettings })));
 const OperationSettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.OperationSettings })));
@@ -125,6 +126,7 @@ function App() {
           <Route path="configuracoes/dispositivos" element={<Guard perm="devices.manage"><DevicesSettings /></Guard>} />
           <Route path="configuracoes/tv" element={<Guard perm="devices.manage"><TvSettings /></Guard>} />
           <Route path="configuracoes/impressoras" element={<Guard perm="printers.manage"><PrintersSettings /></Guard>} />
+          <Route path="configuracoes/pix" element={<Guard perm="settings.manage"><PixSettings /></Guard>} />
           <Route path="configuracoes/sincronizacao" element={<Guard perm="settings.manage"><SyncSettings /></Guard>} />
           <Route path="configuracoes/notificacoes" element={<Guard perm="settings.manage"><NotificationSettings /></Guard>} />
           <Route path="configuracoes/backup" element={<Guard perm="settings.manage"><BackupSettings /></Guard>} />

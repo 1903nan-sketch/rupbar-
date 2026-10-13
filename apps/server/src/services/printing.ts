@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { backoffMs, firstName, PAYMENT_METHODS, STATIONS, type PaymentMethod, type Station } from '@rupbar/core';
+import { backoffMs, comandaPixTxid, firstName, PAYMENT_METHODS, STATIONS, type PaymentMethod, type Station } from '@rupbar/core';
 import {
   renderBillReceipt, renderCashClose, renderOrderTicket, renderTestPage, type CodePage, type PaperWidth, type PrintOptions,
 } from '@rupbar/core/escpos';
@@ -13,9 +13,11 @@ import { badRequest, notFound } from '../lib/errors';
 import { addMs } from '../lib/time';
 import type { ComandasService } from './comandas';
 import { requirePerm, type Actor, type Ctx } from './context';
-import type { SettingsService } from './settings';
+import type { PixCharge, SettingsService } from './settings';
 
 const MAX_ATTEMPTS = 8;
+/** Impressoras com o QR Code desligado (guardado nas configurações; padrão: QR ligado). */
+const QR_OFF_KEY = 'printers_qr_off';
 
 export interface PrinterTransport {
   send(printer: Row, data: Uint8Array): Promise<void>;
@@ -150,8 +152,22 @@ export class PrintingService {
     return {
       id: p.id, name: p.name, transport: p.transport, host: p.host, port: p.port, windowsName: p.windows_name, filePath: p.file_path,
       paper: p.paper, codepage: p.codepage, stations: json<Station[]>(p.stations_json, []), printReceipts: bool(p.print_receipts),
-      autoPrint: bool(p.auto_print), beep: bool(p.beep), active: bool(p.active), lastStatus: p.last_status, lastError: p.last_error,
+      autoPrint: bool(p.auto_print), beep: bool(p.beep), printQr: !this.qrOff().has(String(p.id)), active: bool(p.active),
+      lastStatus: p.last_status, lastError: p.last_error,
     };
+  }
+
+  /** Impressoras que não imprimem QR Code nativo (modelos antigos ou genéricos). */
+  private qrOff(): Set<string> {
+    return new Set(this.settings.getJson<string[]>(QR_OFF_KEY, []));
+  }
+
+  private setPrintQr(printerId: string, on: boolean): void {
+    const off = this.qrOff();
+    if (on === !off.has(printerId)) return;
+    if (on) off.delete(printerId);
+    else off.add(printerId);
+    this.settings.setJson(QR_OFF_KEY, [...off]);
   }
 
   list(actor: Actor) {
@@ -184,6 +200,7 @@ export class PrintingService {
           JSON.stringify(input.stations), input.printReceipts, input.autoPrint, input.beep, input.active, now, now,
         );
       }
+      this.setPrintQr(printerId, input.printQr);
       this.ctx.audit(actor, id ? 'printers.updated' : 'printers.created', 'printer', printerId, { name: input.name, transport: input.transport });
     });
     return { id: printerId };
@@ -199,7 +216,7 @@ export class PrintingService {
   }
 
   private opts(p: Row): PrintOptions {
-    return { paper: Number(p.paper) as PaperWidth, codepage: p.codepage as CodePage, beep: bool(p.beep) };
+    return { paper: Number(p.paper) as PaperWidth, codepage: p.codepage as CodePage, beep: bool(p.beep), qr: !this.qrOff().has(String(p.id)) };
   }
 
   enqueue(printerId: string, kind: string, title: string, payload: Uint8Array, ref: { type?: string; id?: string } = {}, createdBy: string | null = null, reprintOf: string | null = null): string {
@@ -269,6 +286,18 @@ export class PrintingService {
     const printers = this.ctx.db.all('SELECT * FROM printers WHERE active = 1 AND print_receipts = 1');
     if (!printers.length) throw badRequest('Nenhuma impressora configurada para contas. Ative "Imprimir contas" em uma impressora.', 'NO_RECEIPT_PRINTER');
     const b = this.settings.branding();
+    // Pix ativo e saldo em aberto: a conta sai com o QR do valor a pagar.
+    const remaining = Math.max(0, d.remaining);
+    let charge: PixCharge | null = null;
+    try {
+      charge = remaining > 0 ? this.settings.pixCharge(remaining, comandaPixTxid(Number(d.number))) : null;
+    } catch (err) {
+      // Um Pix mal configurado nunca impede a conta de sair.
+      this.ctx.log.warn('pix indisponível na conta', { comanda: d.number, error: err instanceof Error ? err.message : String(err) });
+    }
+    const pix = charge
+      ? { payload: charge.payload, amount: remaining, merchantName: charge.merchantName, keyLabel: charge.keyLabel, key: charge.key }
+      : null;
     return this.ctx.tx(() =>
       printers.map((p) =>
         this.enqueue(
@@ -287,6 +316,7 @@ export class PrintingService {
               subtotal: d.subtotal, discount: d.discount, serviceFee: d.serviceFee, total: d.total,
               payments: d.payments.filter((x) => x.status === 'active').map((x) => ({ label: PAYMENT_METHODS[x.method as PaymentMethod] ?? String(x.method), amount: Number(x.amount_cents) })),
               remaining: d.remaining,
+              pix,
             },
             this.opts(p),
           ),

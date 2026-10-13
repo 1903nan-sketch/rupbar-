@@ -1,4 +1,4 @@
-import { Bell, Building2, Cloud, Database, Printer, SlidersHorizontal, Smartphone, Trash2, Tv, Upload } from 'lucide-react';
+import { Bell, Building2, Cloud, Database, Printer, QrCode, SlidersHorizontal, Smartphone, Trash2, Tv, Upload } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../../components/brand';
@@ -12,6 +12,7 @@ export function SettingsHome() {
   const items: { to: string; icon: ReactNode; title: string; text: string; show: boolean }[] = [
     { to: '/configuracoes/identidade', icon: <Building2 size={22} />, title: 'Identidade do estabelecimento', text: 'Nome, logotipo, cores, capa, telefone e redes sociais.', show: can('settings.manage') },
     { to: '/configuracoes/operacao', icon: <SlidersHorizontal size={22} />, title: 'Operação', text: 'Estoque, caixa, taxa de serviço, narguilés e LGPD.', show: can('settings.manage') },
+    { to: '/configuracoes/pix', icon: <QrCode size={22} />, title: 'Pix', text: 'Pix copia e cola: chave, nome e cidade para o QR Code de pagamento.', show: can('settings.manage') },
     { to: '/configuracoes/dispositivos', icon: <Smartphone size={22} />, title: 'Conectar dispositivo', text: 'QR Code para celulares e tablets da equipe.', show: can('devices.manage') },
     { to: '/configuracoes/tv', icon: <Tv size={22} />, title: 'Conectar TV', text: 'Painel de retirada com chamada por voz.', show: can('devices.manage') },
     { to: '/configuracoes/impressoras', icon: <Printer size={22} />, title: 'Impressoras', text: 'Impressoras térmicas ESC/POS, setores e histórico.', show: can('printers.manage') },

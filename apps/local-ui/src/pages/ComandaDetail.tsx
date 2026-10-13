@@ -10,6 +10,7 @@ import { api, requestId } from '../lib/api';
 import { elapsed, fmtDateTime, fmtTime, formatBRL } from '../lib/format';
 import { useLoad, useNow } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
+import { PixQr } from '../components/PixQr';
 import { useSession } from '../lib/session';
 import { STATUS_BADGE, type ComandaSummary } from './Comandas';
 
@@ -308,6 +309,7 @@ export function PaymentModal({ comanda, onClose, onDone, presetAmount, presetLab
           {method === 'cash' && <Field label="Valor recebido (para troco)"><MoneyInput large value={received} onChange={setReceived} /></Field>}
         </div>
         {method === 'cash' && change > 0 && <div className="banner success"><span className="grow">Troco</span><strong className="num" style={{ fontSize: 20 }}>{formatBRL(change)}</strong></div>}
+        {method === 'pix' && <PixQr amountCents={amount ?? 0} comandaId={comanda.id} />}
         <Field label="Identificação (opcional)" hint="Útil em contas divididas: ex. “Pessoa 2”."><Input value={label} onChange={(e) => setLabel(e.target.value)} /></Field>
       </div>
     </Modal>
