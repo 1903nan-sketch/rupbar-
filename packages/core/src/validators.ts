@@ -101,6 +101,15 @@ export function firstName(fullName: string | null | undefined): string {
   return n.slice(0, 24);
 }
 
+/** Nome para chamar na TV/produção: "Carlos Alberto Silva" → "Carlos S." (sem expor o nome completo). */
+export function displayName(fullName: string | null | undefined): string {
+  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '';
+  const first = parts[0]!.slice(0, 18);
+  const lastWord = parts.length > 1 ? parts[parts.length - 1]! : '';
+  return lastWord && !['de', 'da', 'do', 'das', 'dos'].includes(lastWord.toLowerCase()) ? `${first} ${lastWord[0]!.toUpperCase()}.` : first;
+}
+
 /** Iniciais para o placeholder de logotipo: "Bar do Zé" → "BZ". */
 export function initials(name: string): string {
   const stop = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'the', '&']);

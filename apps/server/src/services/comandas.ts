@@ -1,6 +1,6 @@
-import { billTotals, firstName, maskCpf, maskPhone, splitEqually, type Station } from '@rupbar/core';
+import { billTotals, comandaDisplayNumber, comandaLabel, displayName, firstName, maskCpf, maskPhone, splitEqually, type Station } from '@rupbar/core';
 import {
-  cancelComandaSchema, cancelItemSchema, closeComandaSchema, comandaOpenSchema, discountSchema, moveItemsSchema, orderCreateSchema,
+  cancelComandaSchema, cancelItemSchema, closeComandaSchema, comandaEditSchema, comandaOpenSchema, discountSchema, moveItemsSchema, orderCreateSchema,
   serviceFeeSchema, transferSchema,
 } from '@rupbar/core/schemas';
 import type { Row } from '../db/db';
@@ -63,9 +63,14 @@ export class ComandasService {
 
   private summary(c: Row) {
     const t = this.totals(String(c.id));
+    const ref = { number: Number(c.number), cardNumber: c.card_number === null || c.card_number === undefined ? null : Number(c.card_number), kind: String(c.kind ?? 'regular') };
     return {
       id: c.id,
       number: c.number,
+      cardNumber: ref.cardNumber,
+      kind: ref.kind,
+      displayNumber: comandaDisplayNumber(ref),
+      label: comandaLabel(ref),
       customerName: c.customer_name,
       customerPhoneMasked: maskPhone(c.customer_phone as string | null),
       customerCpfMasked: maskCpf(c.customer_cpf as string | null),
@@ -89,16 +94,18 @@ export class ComandasService {
     const status = filter.status ?? 'open';
     if (status !== 'all') where.push('c.status = ?'), params.push(status);
     if (filter.q) {
-      where.push('(c.customer_name LIKE ? OR c.table_label = ? OR CAST(c.number AS TEXT) = ?)');
-      params.push(`%${filter.q}%`, filter.q, filter.q);
+      where.push('(c.customer_name LIKE ? OR c.table_label = ? OR CAST(c.number AS TEXT) = ? OR CAST(c.card_number AS TEXT) = ?)');
+      params.push(`%${filter.q}%`, filter.q, filter.q, filter.q);
     }
+    // Vendas rápidas já nascem pagas: só aparecem quando pedidas (histórico).
+    if (status === 'open') where.push("c.kind = 'regular'");
     if (filter.from) where.push('c.opened_at >= ?'), params.push(filter.from);
     if (filter.to) where.push('c.opened_at < ?'), params.push(filter.to);
     params.push(Math.min(filter.limit ?? 300, 1000));
     return this.ctx.db
       .all(
         `SELECT c.*, u.name AS responsible_name FROM comandas c LEFT JOIN users u ON u.id = c.responsible_user_id
-         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY c.status = 'open' DESC, c.number DESC LIMIT ?`,
+         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY c.status = 'open' DESC, COALESCE(c.card_number, c.number) ASC, c.number DESC LIMIT ?`,
         ...params,
       )
       .map((c) => this.summary(c));
@@ -163,6 +170,7 @@ export class ComandasService {
         // Mesa com outra comanda aberta é permitido (grupos), mas avisamos a interface.
         if (busy) this.ctx.emit({ channel: 'comandas', type: 'table.shared', data: { table: input.table } });
       }
+      if (input.cardNumber !== null) this.assertCardFree(input.cardNumber);
       const responsible = input.responsibleUserId ?? actor.userId;
       if (responsible && !this.ctx.db.get("SELECT id FROM users WHERE id = ? AND status = 'active'", responsible)) {
         throw notFound('Funcionário responsável');
@@ -171,14 +179,59 @@ export class ComandasService {
       const number = this.ctx.nextSeq('comanda');
       const now = this.ctx.nowIso();
       this.ctx.db.run(
-        `INSERT INTO comandas (id, number, customer_name, customer_phone, customer_cpf, table_label, responsible_user_id, status,
+        `INSERT INTO comandas (id, number, card_number, kind, customer_name, customer_phone, customer_cpf, table_label, responsible_user_id, status,
            service_fee_bp, notes, opened_by, opened_at, client_request_id, updated_at)
-         VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?)`,
-        id, number, input.customerName, input.customerPhone, input.customerCpf, input.table, responsible, op.serviceFeeBp,
+         VALUES (?,?,?,'regular',?,?,?,?,?,'open',?,?,?,?,?,?)`,
+        id, number, input.cardNumber, input.customerName, input.customerPhone, input.customerCpf, input.table, responsible, op.serviceFeeBp,
         input.notes, actor.userId ?? 'system', now, input.clientRequestId ?? null, now,
       );
-      this.ctx.audit(actor, 'comandas.opened', 'comanda', id, { number, table: input.table });
+      this.ctx.audit(actor, 'comandas.opened', 'comanda', id, { number, card: input.cardNumber, table: input.table });
       this.ctx.emit({ channel: 'comandas', type: 'comanda.opened', data: { comandaId: id, number } });
+      return this.summary(this.row(id));
+    });
+  }
+
+  /** Um cartão físico só pode estar em uma comanda aberta por vez. */
+  private assertCardFree(cardNumber: number, exceptId: string | null = null) {
+    const busy = this.ctx.db.get(
+      "SELECT id, customer_name FROM comandas WHERE status = 'open' AND card_number = ? AND id <> COALESCE(?, '')",
+      cardNumber, exceptId,
+    );
+    if (busy) {
+      const who = busy.customer_name ? ` (${String(busy.customer_name)})` : '';
+      throw conflict(`O cartão ${cardNumber} já está em uma comanda aberta${who}.`, 'CARD_IN_USE', { comandaId: busy.id });
+    }
+  }
+
+  /** Comanda aberta pelo número do cartão (ou, sem cartão, pelo número do sistema). */
+  findOpenByNumber(actor: Actor, n: number) {
+    requirePerm(actor, 'comandas.view');
+    const c =
+      this.ctx.db.get("SELECT * FROM comandas WHERE status = 'open' AND card_number = ?", n) ??
+      this.ctx.db.get("SELECT * FROM comandas WHERE status = 'open' AND card_number IS NULL AND number = ? AND kind = 'regular'", n);
+    return c ? this.summary(c) : null;
+  }
+
+  /** Corrige nome, cartão, mesa e observações de uma comanda aberta. */
+  edit(actor: Actor, id: string, raw: unknown) {
+    requirePerm(actor, 'comandas.edit');
+    const input = comandaEditSchema.parse(raw);
+    return this.ctx.tx(() => {
+      const c = this.row(id);
+      if (c.status !== 'open' && !hasPerm(actor, 'admin.override')) this.requireOpen(c);
+      this.checkVersion(c, input.expectedVersion);
+      if (input.cardNumber !== null && c.status === 'open') this.assertCardFree(input.cardNumber, id);
+      this.ctx.db.run(
+        'UPDATE comandas SET customer_name = ?, card_number = ?, table_label = ?, notes = ? WHERE id = ?',
+        input.customerName, input.cardNumber, input.table, input.notes, id,
+      );
+      this.touch(id, 'edited');
+      this.ctx.emit({ channel: 'kitchen', type: 'order.changed', data: { comandaId: id } });
+      this.ctx.emit({ channel: 'tv', type: 'board.changed' });
+      this.ctx.audit(actor, 'comandas.edited', 'comanda', id, {
+        from: { name: c.customer_name, card: c.card_number, table: c.table_label },
+        to: { name: input.customerName, card: input.cardNumber, table: input.table },
+      });
       return this.summary(this.row(id));
     });
   }
@@ -244,7 +297,7 @@ export class ComandasService {
 
   orderView(orderId: string) {
     const o = this.ctx.db.get(
-      'SELECT o.*, c.number AS comanda_number, c.table_label, c.customer_name FROM orders o JOIN comandas c ON c.id = o.comanda_id WHERE o.id = ?',
+      'SELECT o.*, c.number AS comanda_number, c.card_number, c.kind AS comanda_kind, c.table_label, c.customer_name FROM orders o JOIN comandas c ON c.id = o.comanda_id WHERE o.id = ?',
       orderId,
     );
     if (!o) throw notFound('Pedido');
@@ -253,8 +306,10 @@ export class ComandasService {
       number: o.number,
       comandaId: o.comanda_id,
       comandaNumber: o.comanda_number,
+      comandaDisplayNumber: comandaDisplayNumber({ number: Number(o.comanda_number), cardNumber: o.card_number as number | null, kind: String(o.comanda_kind) }),
       table: o.table_label,
       customerFirstName: firstName(o.customer_name as string),
+      customerDisplayName: displayName(o.customer_name as string),
       createdAt: o.created_at,
       tickets: this.ctx.db.all('SELECT id, station, status, ready_at, delivered_at FROM order_tickets WHERE order_id = ?', orderId),
       items: this.ctx.db.all(

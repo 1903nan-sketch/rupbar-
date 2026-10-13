@@ -242,7 +242,9 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
     s.comandas.list(a, { status: q(req).status, q: q(req).q, from: q(req).from, to: q(req).to, limit: Number(q(req).limit) || undefined }),
   );
   r('POST', '/api/comandas', (req, a) => s.comandas.open(a, req.body));
+  r('GET', '/api/comandas/by-number/:n', (req, a) => s.comandas.findOpenByNumber(a, Number((req.params as { n: string }).n)));
   r('GET', '/api/comandas/:id', (req, a) => s.comandas.detail(a, id(req)));
+  r('PATCH', '/api/comandas/:id', (req, a) => s.comandas.edit(a, id(req), req.body));
   r('GET', '/api/comandas/:id/contact', (req, a) => s.comandas.contact(a, id(req)));
   r('POST', '/api/comandas/:id/transfer', (req, a) => s.comandas.transfer(a, id(req), req.body));
   r('POST', '/api/comandas/:id/move-items', (req, a) => s.comandas.moveItems(a, id(req), req.body));

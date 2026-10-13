@@ -124,3 +124,22 @@ export const PRINT_JOB_KINDS = {
   test: 'Teste de impressão',
 } as const;
 export type PrintJobKind = keyof typeof PRINT_JOB_KINDS;
+
+// ------------------------------------------------------------- comandas
+
+export type ComandaKind = 'regular' | 'quick';
+
+/**
+ * Número que o cliente/garçom enxerga: o do cartão físico quando houver,
+ * senão o número sequencial do sistema. Venda rápida não tem comanda visível.
+ */
+export function comandaDisplayNumber(c: { number: number; cardNumber?: number | null; kind?: ComandaKind | string | null }): number | null {
+  if (c.kind === 'quick') return null;
+  return c.cardNumber ?? c.number;
+}
+
+/** "Comanda 23" / "Venda rápida 105" (para listas e cupons). */
+export function comandaLabel(c: { number: number; cardNumber?: number | null; kind?: ComandaKind | string | null }): string {
+  if (c.kind === 'quick') return `Venda rápida ${c.number}`;
+  return `Comanda ${c.cardNumber ?? c.number}`;
+}

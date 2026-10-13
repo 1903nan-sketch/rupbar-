@@ -191,14 +191,14 @@ describe('estoque por mililitro e pedidos', () => {
     await kitchenUser.ok('POST', `/api/kitchen/tickets/${t.id}/status`, { status: 'preparing' });
     expect((await kitchenUser.fail('POST', `/api/kitchen/tickets/${t.id}/status`, { status: 'delivered' })).code).toBe('INVALID_TRANSITION');
     let tv = env.s.tv.board();
-    expect(tv.preparing).toEqual([{ number: 1, name: 'Carlos' }]);
+    expect(tv.preparing).toEqual([{ number: 1, name: 'Carlos', displayName: 'Carlos L.', comandaDisplayNumber: c.number }]);
     const events: { type: string; data?: Record<string, unknown> }[] = [];
     env.s.ctx.bus.subscribe((e) => e.channel === 'tv' && events.push(e));
     const called = await kitchenUser.ok('POST', `/api/kitchen/tickets/${t.id}/call`);
-    expect(called.text).toBe('Pedido número um. Carlos, retirar no balcão.');
+    expect(called.text).toBe(`Carlos, comanda ${c.number === 1 ? 'um' : c.number}. Seu pedido está pronto, retirar no balcão.`);
     expect(called.status).toBe('ready');
     const call = events.find((e) => e.type === 'pickup.call')!;
-    expect(call.data).toMatchObject({ number: 1, customerFirstName: 'Carlos' });
+    expect(call.data).toMatchObject({ number: 1, customerFirstName: 'Carlos', customerDisplayName: 'Carlos L.', comandaDisplayNumber: c.number });
     tv = env.s.tv.board();
     expect(tv.ready[0]).toMatchObject({ number: 1, name: 'Carlos' });
     // A TV nunca recebe CPF, telefone ou valores

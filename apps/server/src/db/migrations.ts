@@ -666,6 +666,25 @@ CREATE TABLE notifications (
 CREATE INDEX notifications_queue ON notifications(status, next_attempt_at);
 `;
 
+/**
+ * 0.2: cartões numerados, venda rápida e novo modelo de narguilé.
+ *  - comandas.card_number: número do cartão físico (único entre as abertas).
+ *  - comandas.kind: 'regular' | 'quick' (venda rápida, paga na hora).
+ *  - hookahs.owner: 'house' (aparelho do bar) | 'customer' (narguilé próprio do cliente).
+ *  - hookah_sessions.mode: 'legacy' (cobrança na devolução) | 'house' | 'own' (cobrança por item na hora).
+ *  - comanda_items.hookah_session_id: itens lançados por uma locação (aluguel, trocas de rosh).
+ */
+const M003 = /* sql */ `
+ALTER TABLE comandas ADD COLUMN card_number INTEGER;
+ALTER TABLE comandas ADD COLUMN kind TEXT NOT NULL DEFAULT 'regular';
+CREATE UNIQUE INDEX comandas_card_open ON comandas(card_number) WHERE status = 'open' AND card_number IS NOT NULL;
+CREATE INDEX comandas_card ON comandas(card_number);
+ALTER TABLE hookahs ADD COLUMN owner TEXT NOT NULL DEFAULT 'house';
+ALTER TABLE hookah_sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE comanda_items ADD COLUMN hookah_session_id TEXT;
+CREATE INDEX comanda_items_hookah ON comanda_items(hookah_session_id);
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -675,6 +694,7 @@ export interface Migration {
 export const MIGRATIONS: Migration[] = [
   { id: 1, name: 'schema inicial', sql: M001 },
   { id: 2, name: 'gatilhos de sincronização', sql: syncTriggersSql() },
+  { id: 3, name: 'cartões, venda rápida e narguilé por item', sql: M003 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

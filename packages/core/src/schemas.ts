@@ -261,15 +261,31 @@ export const inventorySchema = z.object({
   items: z.array(z.object({ productId: zUuid, countedQty: zMilli.min(0) })).min(1),
 });
 
-export const comandaOpenSchema = z.object({
-  customerName: trimmed(80).min(1, 'Informe o nome do responsável'),
-  customerPhone: zOptionalPhone,
-  customerCpf: zOptionalCpf,
-  table: optionalText(20),
-  responsibleUserId: zUuid.optional(),
-  notes: optionalText(200),
-  clientRequestId: zUuid.optional(),
-});
+export const zCardNumber = z.number().int('Número do cartão inválido').min(1, 'Número do cartão inválido').max(99_999, 'Número do cartão inválido');
+
+export const comandaOpenSchema = z
+  .object({
+    customerName: trimmed(80).default(''),
+    /** Número do cartão/comanda física (opcional). Único entre as comandas abertas. */
+    cardNumber: zCardNumber.nullable().optional().transform((v) => v ?? null),
+    customerPhone: zOptionalPhone,
+    customerCpf: zOptionalCpf,
+    table: optionalText(20),
+    responsibleUserId: zUuid.optional(),
+    notes: optionalText(200),
+    clientRequestId: zUuid.optional(),
+  })
+  .refine((v) => v.customerName.length > 0 || v.cardNumber !== null, { message: 'Informe o nome do cliente ou o número do cartão', path: ['customerName'] });
+
+export const comandaEditSchema = z
+  .object({
+    customerName: trimmed(80).default(''),
+    cardNumber: zCardNumber.nullable().optional().transform((v) => v ?? null),
+    table: optionalText(20),
+    notes: optionalText(200),
+    expectedVersion: z.number().int(),
+  })
+  .refine((v) => v.customerName.length > 0 || v.cardNumber !== null, { message: 'Informe o nome do cliente ou o número do cartão', path: ['customerName'] });
 
 export const orderItemSchema = z.object({
   presentationId: zUuid,

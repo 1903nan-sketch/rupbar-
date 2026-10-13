@@ -54,6 +54,7 @@ export const PERMISSIONS = {
   'printers.manage': 'Configurar impressoras',
   'audit.view': 'Ver auditoria',
   'sync.manage': 'Configurar sincronização',
+  'admin.override': 'Editar e excluir qualquer lançamento (conta mestre)',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -64,7 +65,7 @@ export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
  * ("Somente o proprietário poderá criar contas, alterar permissões, redefinir
  * credenciais e confirmar perdas.")
  */
-export const OWNER_ONLY: readonly Permission[] = ['users.manage', 'roles.manage', 'losses.confirm', 'sync.manage'];
+export const OWNER_ONLY: readonly Permission[] = ['users.manage', 'roles.manage', 'losses.confirm', 'sync.manage', 'admin.override'];
 
 /** Permissões sensíveis: podem ser concedidas, mas a interface exige confirmação. */
 export const SENSITIVE: readonly Permission[] = ['reports.financial', 'cash.payment_reverse', 'comandas.cancel', 'stock.adjust'];

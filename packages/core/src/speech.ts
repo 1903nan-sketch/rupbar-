@@ -39,9 +39,21 @@ export function numberToWordsPtBR(n: number): string {
   return parts.join(' ');
 }
 
-/** "Pedido número quarenta e dois. Carlos, retirar no balcão." */
-export function pickupAnnouncement(orderNumber: number, customerFirstName: string | null, place = 'no balcão'): string {
-  const who = customerFirstName?.trim() ? `${customerFirstName.trim()}, ` : '';
-  const action = who ? 'retirar' : 'Retirar';
-  return `Pedido número ${numberToWordsPtBR(orderNumber)}. ${who}${action} ${place}.`;
+/**
+ * Texto falado na TV quando o pedido fica pronto.
+ *  - com nome e comanda: "Carlos, comanda vinte e três. Seu pedido está pronto, retirar no balcão."
+ *  - só nome (venda rápida): "Carlos, seu pedido está pronto. Retirar no balcão."
+ *  - sem nome: "Pedido número quarenta e dois. Retirar no balcão."
+ */
+export function pickupAnnouncement(
+  orderNumber: number,
+  customerFirstName: string | null,
+  place = 'no balcão',
+  comandaNumber: number | null = null,
+): string {
+  const name = customerFirstName?.trim();
+  if (name && comandaNumber) return `${name}, comanda ${numberToWordsPtBR(comandaNumber)}. Seu pedido está pronto, retirar ${place}.`;
+  if (name) return `${name}, seu pedido está pronto. Retirar ${place}.`;
+  if (comandaNumber) return `Comanda ${numberToWordsPtBR(comandaNumber)}, seu pedido está pronto. Retirar ${place}.`;
+  return `Pedido número ${numberToWordsPtBR(orderNumber)}. Retirar ${place}.`;
 }

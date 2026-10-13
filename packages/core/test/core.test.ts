@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  comandaDisplayNumber, comandaLabel, displayName,
   applyBasisPoints, billTotals, cashClosing, changeFor, consumptionFor, costOf, countedFromPackages, divergence,
   effectivePermissions, formatBRL, formatQty, hookahCharge, initials, isStale, isValidCnpj, isValidCpf, isUuid,
   maskCpf, maskPhone, normalizePhoneBR, numberToWordsPtBR, packageBreakdown, parseBRL, parseQty, pickupAnnouncement,
@@ -190,7 +191,9 @@ describe('voz da TV', () => {
     expect(numberToWordsPtBR(2500)).toBe('dois mil e quinhentos');
   });
   it('anúncio', () => {
-    expect(pickupAnnouncement(42, 'Carlos')).toBe('Pedido número quarenta e dois. Carlos, retirar no balcão.');
+    expect(pickupAnnouncement(42, 'Carlos')).toBe('Carlos, seu pedido está pronto. Retirar no balcão.');
+    expect(pickupAnnouncement(42, 'Carlos', 'no balcão', 23)).toBe('Carlos, comanda vinte e três. Seu pedido está pronto, retirar no balcão.');
+    expect(pickupAnnouncement(9, null, 'no balcão', 5)).toBe('Comanda cinco, seu pedido está pronto. Retirar no balcão.');
     expect(pickupAnnouncement(7, null)).toBe('Pedido número sete. Retirar no balcão.');
   });
 });
@@ -217,5 +220,21 @@ describe('identificadores e sincronização', () => {
   it('transições do painel de produção', () => {
     expect(canTransition('received', 'preparing')).toBe(true);
     expect(canTransition('canceled', 'ready')).toBe(false);
+  });
+});
+
+describe('comandas e nomes de chamada', () => {
+  it('mostra o número do cartão quando houver', () => {
+    expect(comandaLabel({ number: 105, cardNumber: 23 })).toBe('Comanda 23');
+    expect(comandaLabel({ number: 105, cardNumber: null })).toBe('Comanda 105');
+    expect(comandaLabel({ number: 106, kind: 'quick' })).toBe('Venda rápida 106');
+    expect(comandaDisplayNumber({ number: 106, kind: 'quick' })).toBeNull();
+    expect(comandaDisplayNumber({ number: 105, cardNumber: 7, kind: 'regular' })).toBe(7);
+  });
+  it('nome de chamada com inicial do sobrenome', () => {
+    expect(displayName('Carlos Alberto Silva')).toBe('Carlos S.');
+    expect(displayName('ana')).toBe('ana');
+    expect(displayName('Maria da')).toBe('Maria');
+    expect(displayName('  ')).toBe('');
   });
 });

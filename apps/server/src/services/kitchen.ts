@@ -1,4 +1,4 @@
-import { canTransition, firstName, pickupAnnouncement, TICKET_STATUS, type TicketStatus } from '@rupbar/core';
+import { canTransition, comandaDisplayNumber, displayName, firstName, pickupAnnouncement, TICKET_STATUS, type TicketStatus } from '@rupbar/core';
 import { ticketStatusSchema } from '@rupbar/core/schemas';
 import type { Row } from '../db/db';
 import { conflict, notFound } from '../lib/errors';
@@ -42,7 +42,11 @@ export class KitchenService {
       statusLabel: TICKET_STATUS[t.status as TicketStatus],
       table: t.table_label,
       comandaNumber: t.comanda_number,
+      comandaKind: t.comanda_kind,
+      /** Número que o cliente conhece (cartão) — null em venda rápida. */
+      comandaDisplayNumber: comandaDisplayNumber({ number: Number(t.comanda_number), cardNumber: t.card_number as number | null, kind: String(t.comanda_kind) }),
       customerFirstName: firstName(t.customer_name as string),
+      customerDisplayName: displayName(t.customer_name as string),
       waiterName: t.waiter_name,
       notes: t.order_notes,
       createdAt: t.created_at,
@@ -59,7 +63,7 @@ export class KitchenService {
     };
   }
 
-  private baseQuery = `SELECT t.*, o.number, o.notes AS order_notes, c.table_label, c.number AS comanda_number, c.customer_name, u.name AS waiter_name
+  private baseQuery = `SELECT t.*, o.number, o.notes AS order_notes, c.table_label, c.number AS comanda_number, c.card_number, c.kind AS comanda_kind, c.customer_name, u.name AS waiter_name
     FROM order_tickets t JOIN orders o ON o.id = t.order_id JOIN comandas c ON c.id = o.comanda_id LEFT JOIN users u ON u.id = o.created_by`;
 
   /**
@@ -143,7 +147,9 @@ export class KitchenService {
         now, actor.userId, now, id,
       );
       const name = firstName(t.customer_name as string);
-      const text = pickupAnnouncement(Number(t.number), name || null, this.settings.operation().pickupPlace);
+      const shown = displayName(t.customer_name as string);
+      const comandaNo = comandaDisplayNumber({ number: Number(t.comanda_number), cardNumber: t.card_number as number | null, kind: String(t.comanda_kind) });
+      const text = pickupAnnouncement(Number(t.number), name || null, this.settings.operation().pickupPlace, comandaNo);
       const callId = this.ctx.id();
       this.ctx.db.run(
         'INSERT INTO pickup_calls (id, ticket_id, order_number, customer_first_name, text, called_by, created_at) VALUES (?,?,?,?,?,?,?)',
@@ -153,7 +159,10 @@ export class KitchenService {
       this.ctx.emit({
         channel: 'tv',
         type: 'pickup.call',
-        data: { callId, ticketId: id, number: t.number, customerFirstName: name, text, voice: this.settings.operation().tvVoiceEnabled },
+        data: {
+          callId, ticketId: id, number: t.number, customerFirstName: name, customerDisplayName: shown, comandaDisplayNumber: comandaNo, text,
+          voice: this.settings.operation().tvVoiceEnabled,
+        },
       });
       this.ctx.emit({ channel: 'kitchen', type: 'ticket.updated', data: { ticketId: id } });
       return { ...this.ticket(actor, id), callId, text };
@@ -178,30 +187,49 @@ export class KitchenService {
     const day = businessDay(this.ctx.clock.now());
     const since = new Date(this.ctx.clock.now().getTime() - 4 * 3_600_000).toISOString();
     const rows = this.ctx.db.all<{
-      order_id: string; number: number; customer_name: string; statuses: string; last_ready: string | null; last_call: string | null;
+      order_id: string; number: number; customer_name: string; comanda_number: number; card_number: number | null; comanda_kind: string;
+      statuses: string; last_ready: string | null; last_call: string | null;
     }>(
-      `SELECT o.id AS order_id, o.number, c.customer_name, GROUP_CONCAT(t.status) AS statuses,
-              MAX(t.ready_at) AS last_ready, MAX(t.called_at) AS last_call
+      `SELECT o.id AS order_id, o.number, c.customer_name, c.number AS comanda_number, c.card_number, c.kind AS comanda_kind,
+              GROUP_CONCAT(t.status) AS statuses, MAX(t.ready_at) AS last_ready, MAX(t.called_at) AS last_call
        FROM orders o JOIN comandas c ON c.id = o.comanda_id JOIN order_tickets t ON t.order_id = o.id
        WHERE o.business_day = ? AND o.created_at >= ?
        GROUP BY o.id ORDER BY o.number`,
       day, since,
     );
-    const preparing: { number: number; name: string }[] = [];
-    const ready: { number: number; name: string; readyAt: string | null; calledAt: string | null }[] = [];
+    type Entry = { number: number; name: string; displayName: string; comandaDisplayNumber: number | null };
+    const preparing: Entry[] = [];
+    const ready: (Entry & { readyAt: string | null; calledAt: string | null })[] = [];
     for (const r of rows) {
       const st = r.statuses.split(',').filter((s) => s !== 'canceled');
       if (st.length === 0 || st.every((s) => s === 'delivered')) continue;
-      const name = firstName(r.customer_name);
+      const entry: Entry = {
+        number: r.number,
+        name: firstName(r.customer_name),
+        displayName: displayName(r.customer_name),
+        comandaDisplayNumber: comandaDisplayNumber({ number: r.comanda_number, cardNumber: r.card_number, kind: r.comanda_kind }),
+      };
       // Qualquer parte pronta (ou chamada) já aparece em "Prontos" para retirada.
-      if (st.some((s) => s === 'ready')) ready.push({ number: r.number, name, readyAt: r.last_ready, calledAt: r.last_call });
-      else if (st.some((s) => s === 'received' || s === 'preparing')) preparing.push({ number: r.number, name });
+      if (st.some((s) => s === 'ready')) ready.push({ ...entry, readyAt: r.last_ready, calledAt: r.last_call });
+      else if (st.some((s) => s === 'received' || s === 'preparing')) preparing.push(entry);
     }
     ready.sort((a, b) => String(b.calledAt ?? b.readyAt).localeCompare(String(a.calledAt ?? a.readyAt)));
     return { preparing, ready };
   }
 
   recentCalls(limit = 10) {
-    return this.ctx.db.all('SELECT id, order_number, customer_first_name, text, created_at FROM pickup_calls ORDER BY created_at DESC LIMIT ?', limit);
+    return this.ctx.db
+      .all(
+        `SELECT p.id, p.order_number, p.customer_first_name, p.text, p.created_at, c.customer_name, c.number AS comanda_number, c.card_number,
+                c.kind AS comanda_kind
+         FROM pickup_calls p JOIN order_tickets t ON t.id = p.ticket_id JOIN orders o ON o.id = t.order_id JOIN comandas c ON c.id = o.comanda_id
+         ORDER BY p.created_at DESC LIMIT ?`,
+        limit,
+      )
+      .map((r) => ({
+        id: r.id, order_number: r.order_number, customer_first_name: r.customer_first_name, text: r.text, created_at: r.created_at,
+        customer_display_name: displayName(r.customer_name as string),
+        comanda_display_number: comandaDisplayNumber({ number: Number(r.comanda_number), cardNumber: r.card_number as number | null, kind: String(r.comanda_kind) }),
+      }));
   }
 }
