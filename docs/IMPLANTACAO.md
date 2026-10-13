@@ -95,13 +95,14 @@ No RupBar do bar: Configurações → Sincronização → informe URL e chave p�
 
 ## 6. WhatsApp (opcional)
 
-Configurações → Notificações:
+Configurações → Notificações (assistente em 4 passos):
 
+- **Evolution API (recomendado)**: endereço do servidor (pode colar o link do painel `/manager`), chave da API (`AUTHENTICATION_API_KEY`, guardada cifrada) e nome da instância. “Testar conexão” mostra o estado (Conectado / Aguardando QR / Desconectado); se a instância não existir, “Criar instância”. Depois é só ler o QR Code no WhatsApp do celular (Aparelhos conectados → Conectar um aparelho). Compatível com Evolution v2 e v1.
 - **WhatsApp Cloud API (Meta)**: Phone Number ID, token e um **modelo aprovado** com um parâmetro `{{1}}` (mensagens iniciadas pela empresa exigem modelo).
 - **Twilio**: Account SID, Auth Token e número remetente habilitado para WhatsApp.
-- **Webhook**: qualquer provedor que aceite `POST {to, text}` (Z-API, Evolution API, n8n…).
+- **Webhook**: qualquer provedor que aceite `POST {to, text}` (Z-API, n8n…).
 
-Os avisos aguardam na fila sem internet e são enviados depois, se o produto ainda estiver abaixo do mínimo. Um aviso por produto até ele ser reposto.
+Avisos disponíveis: estoque baixo (padrão) e resumo do fechamento de caixa. Os avisos aguardam na fila sem internet e são enviados depois, se ainda forem pertinentes (estoque ainda abaixo do mínimo). Um aviso por produto até ele ser reposto.
 
 ## 7. Backups e recuperação
 

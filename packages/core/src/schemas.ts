@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { LOSS_REASONS, PAYMENT_METHODS, STATIONS, TICKET_STATUS, HOOKAH_STATUS, CASH_MOVEMENT_TYPES } from './domain';
 import { isValidCnpj, isValidCpf, isHexColor, normalizePhoneBR, onlyDigits } from './validators';
 import { normalizePixKey, PIX_CITY_MAX, PIX_KEY_TYPES, PIX_NAME_MAX, sanitizePixText } from './pix';
+import { EVOLUTION_INSTANCE_RE, normalizeEvolutionUrl } from './whatsapp';
 
 const keys = <T extends Record<string, unknown>>(o: T) => Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
 
@@ -551,8 +552,36 @@ export const cloudConnectSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+/** Texto vazio vira "não informado" (mantém o valor já salvo). */
+const blankAsUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+
+/**
+ * Dados da Evolution API. Todos opcionais: o que não vier mantém o valor salvo
+ * (a chave nunca volta para a tela, então "em branco" = manter).
+ */
+export const evolutionCredentialsSchema = z.object({
+  baseUrl: z.preprocess(
+    (v) => blankAsUndefined(typeof v === 'string' ? normalizeEvolutionUrl(v) : v),
+    z
+      .string()
+      .max(300)
+      .url('Endereço da Evolution inválido (ex.: https://evo.seudominio.com.br)')
+      .refine((v) => /^https?:\/\//i.test(v), 'O endereço deve começar com http:// ou https://')
+      .optional(),
+  ),
+  apiKey: z.preprocess((v) => blankAsUndefined(asciiOnly(v)), z.string().max(400, 'Chave da API muito longa').optional()),
+  instance: z.preprocess(
+    blankAsUndefined,
+    z.string().trim().regex(EVOLUTION_INSTANCE_RE, 'Nome da instância: use letras, números, "-" ou "_", sem espaços (ex.: rupbar)').optional(),
+  ),
+});
+export type EvolutionCredentialsInput = z.infer<typeof evolutionCredentialsSchema>;
+
+/** Quais avisos o proprietário quer receber. */
+export const whatsappAlertsSchema = z.object({ stockLow: z.boolean(), cashClosed: z.boolean() }).partial();
+
 export const whatsappSchema = z.object({
-  provider: z.enum(['disabled', 'meta', 'twilio', 'webhook']),
+  provider: z.enum(['disabled', 'meta', 'twilio', 'webhook', 'evolution']),
   ownerPhone: zOptionalPhone,
   meta: z
     .object({
@@ -566,5 +595,10 @@ export const whatsappSchema = z.object({
     .optional(),
   twilio: z.object({ accountSid: trimmed(64), authToken: z.string().max(128), from: trimmed(32) }).partial().optional(),
   webhook: z.object({ url: z.string().trim().url(), token: z.string().max(400) }).partial().optional(),
+  evolution: evolutionCredentialsSchema.optional(),
+  alerts: whatsappAlertsSchema.optional(),
 });
 export type WhatsAppInput = z.infer<typeof whatsappSchema>;
+
+/** Mensagem de teste: telefone digitado na tela ou, em branco, o do proprietário. */
+export const whatsappSendTestSchema = z.object({ phone: zOptionalPhone }).partial();

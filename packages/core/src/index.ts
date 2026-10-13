@@ -11,3 +11,4 @@ export * from './speech';
 export * from './sync';
 export * from './cloud';
 export * from './pix';
+export * from './whatsapp';

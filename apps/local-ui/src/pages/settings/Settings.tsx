@@ -17,7 +17,7 @@ export function SettingsHome() {
     { to: '/configuracoes/tv', icon: <Tv size={22} />, title: 'Conectar TV', text: 'Painel de retirada com chamada por voz.', show: can('devices.manage') },
     { to: '/configuracoes/impressoras', icon: <Printer size={22} />, title: 'Impressoras', text: 'Impressoras térmicas ESC/POS, setores e histórico.', show: can('printers.manage') },
     { to: '/configuracoes/sincronizacao', icon: <Cloud size={22} />, title: 'Sincronização', text: 'Conexão com o painel online do proprietário.', show: can('settings.manage') },
-    { to: '/configuracoes/notificacoes', icon: <Bell size={22} />, title: 'Notificações', text: 'Alertas de estoque pelo WhatsApp.', show: can('settings.manage') },
+    { to: '/configuracoes/notificacoes', icon: <Bell size={22} />, title: 'Notificações', text: 'Alertas no WhatsApp: estoque baixo e fechamento de caixa.', show: can('settings.manage') },
     { to: '/configuracoes/backup', icon: <Database size={22} />, title: 'Backup', text: 'Cópias de segurança do banco de dados local.', show: can('settings.manage') },
   ];
   return (
