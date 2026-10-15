@@ -390,4 +390,24 @@ describe('cartões numerados e venda rápida', () => {
     const cash = await owner.ok('GET', '/api/cash/current');
     expect(cash.summary.expectedCash).toBe(16_000);
   });
+
+  it('TV: pedido pronto some sozinho depois do tempo configurado', async () => {
+    const porcoes = await category(owner, 'Porções');
+    const fritas = await owner.ok('POST', '/api/products', {
+      name: 'Batata frita', categoryId: porcoes, measure: 'unit', stockTracked: false, presentations: [{ name: 'Porção', priceCents: 3000 }],
+    });
+    const fp = (await owner.ok('GET', `/api/products/${fritas.id}`)).presentations[0].id;
+    const c = await owner.ok('POST', '/api/comandas', { cardNumber: 5, customerName: 'Rui' });
+    await owner.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: fp, quantity: 1 }] });
+    const [t] = await owner.ok('GET', '/api/kitchen/board?station=kitchen');
+    await owner.ok('POST', `/api/kitchen/tickets/${t.id}/call`);
+    expect(env.s.tv.board().ready).toHaveLength(1);
+    env.clock.advance(9 * 60_000);
+    expect(env.s.tv.board().ready).toHaveLength(1);
+    env.clock.advance(2 * 60_000); // 11 min > 10 min (padrão)
+    expect(env.s.tv.board().ready).toHaveLength(0);
+    // "Nunca": só sai ao marcar entregue
+    await owner.ok('PUT', '/api/tv/display', { readyMinutes: 0 });
+    expect(env.s.tv.board().ready).toHaveLength(1);
+  });
 });

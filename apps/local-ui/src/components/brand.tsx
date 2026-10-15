@@ -1,5 +1,5 @@
 import { Cloud, CloudOff, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import { useInterval, useLoad } from '../lib/hooks';
@@ -32,31 +32,46 @@ interface SyncStatus {
   error: string | null;
 }
 
-const SYNC_UI: Record<SyncStatus['status'], { label: string; dot: string; icon: typeof Cloud }> = {
-  synced: { label: 'Sincronizado', dot: 'green', icon: Cloud },
-  syncing: { label: 'Sincronizando', dot: 'blue pulse', icon: RefreshCw },
-  offline: { label: 'Sem internet', dot: 'orange', icon: CloudOff },
-  pending: { label: 'Pendências', dot: 'orange', icon: Cloud },
-  error: { label: 'Erro de sincronização', dot: 'red', icon: TriangleAlert },
-  disabled: { label: 'Nuvem não configurada', dot: '', icon: CloudOff },
+/**
+ * Indicador de sincronização com a nuvem (barra superior). Fica calmo:
+ *  - verde fixo enquanto a nuvem está em dia (envios rotineiros não piscam);
+ *  - vermelho quando cai (sem internet ou erro);
+ *  - azul só ao voltar de uma queda, enquanto envia o que ficou pendente.
+ */
+type SyncLook = 'ok' | 'recovering' | 'down' | 'off';
+
+const LOOK: Record<SyncLook, { label: string; dot: string; icon: typeof Cloud }> = {
+  ok: { label: 'Sincronizado', dot: 'green', icon: Cloud },
+  recovering: { label: 'Sincronizando', dot: 'blue', icon: RefreshCw },
+  down: { label: 'Sem conexão com a nuvem', dot: 'red', icon: CloudOff },
+  off: { label: 'Nuvem não configurada', dot: '', icon: CloudOff },
 };
 
-/** Indicador de sincronização com a nuvem (barra superior). */
 export function SyncIndicator() {
   const { data, reload } = useLoad(() => api.get<SyncStatus>('/api/sync/status'));
   useRealtime('sync.status', () => void reload());
   useInterval(() => void reload(), 30_000);
+  const recovering = useRef(false);
   if (!data) return null;
-  const ui = SYNC_UI[data.status];
-  const Icon = ui.icon;
-  const title = [ui.label, data.pending ? `${data.pending} pendente(s)` : '', data.lastSuccessAt ? `Última: ${fmtDateTime(data.lastSuccessAt)}` : '', data.error ?? '']
+  let look: SyncLook;
+  if (data.status === 'disabled') look = 'off';
+  else if (data.status === 'offline' || data.status === 'error') {
+    recovering.current = true;
+    look = 'down';
+  } else if (data.status === 'synced') {
+    recovering.current = false;
+    look = 'ok';
+  } else look = recovering.current ? 'recovering' : 'ok';
+  const ui = LOOK[look];
+  const Icon = data.status === 'error' ? TriangleAlert : ui.icon;
+  const title = [ui.label, data.pending ? `${data.pending} na fila` : '', data.lastSuccessAt ? `Última: ${fmtDateTime(data.lastSuccessAt)}` : '', data.error ?? '']
     .filter(Boolean)
     .join(' · ');
   return (
-    <div className="row small muted" title={title} style={{ gap: 6 }}>
+    <div className={`row small sync-indicator ${look}`} title={title} style={{ gap: 6 }}>
       <span className={`dot ${ui.dot}`} />
-      <Icon size={15} />
-      <span className="hide-mobile">{ui.label}{data.status === 'pending' ? ` (${data.pending})` : ''}</span>
+      <Icon size={15} className={look === 'recovering' ? 'spin-slow' : undefined} />
+      <span className="hide-mobile">{ui.label}</span>
     </div>
   );
 }

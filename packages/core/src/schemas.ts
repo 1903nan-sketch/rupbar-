@@ -588,6 +588,8 @@ export const tvDisplaySettingsSchema = z.object({
   /** Som dos vídeos (desligado por padrão). */
   videoSound: z.boolean().default(false),
   videoVolume: z.number().int().min(0, 'Volume entre 0 e 100%').max(100, 'Volume entre 0 e 100%').default(60),
+  /** Minutos que um pedido pronto fica na TV depois de ficar pronto/ser chamado (0 = até marcar entregue). */
+  readyMinutes: z.number().int().min(0, 'Entre 0 e 120 minutos').max(120, 'Entre 0 e 120 minutos').default(10),
 });
 export type TvDisplaySettings = z.infer<typeof tvDisplaySettingsSchema>;
 

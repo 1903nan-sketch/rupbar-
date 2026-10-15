@@ -62,4 +62,5 @@ export const DEFAULT_DISPLAY: TvDisplaySettings = {
   readyTicker: true,
   videoSound: false,
   videoVolume: 60,
+  readyMinutes: 10,
 };

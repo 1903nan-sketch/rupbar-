@@ -183,7 +183,8 @@ export class KitchenService {
    * Painel público da TV: somente número do pedido, primeiro nome e status.
    * Nunca inclui CPF, telefone, valores ou forma de pagamento.
    */
-  tvBoard() {
+  tvBoard(readyMinutes = 0) {
+    const nowMs = this.ctx.clock.now().getTime();
     const day = businessDay(this.ctx.clock.now());
     const since = new Date(this.ctx.clock.now().getTime() - 4 * 3_600_000).toISOString();
     const rows = this.ctx.db.all<{
@@ -209,8 +210,13 @@ export class KitchenService {
         displayName: displayName(r.customer_name),
         comandaDisplayNumber: comandaDisplayNumber({ number: r.comanda_number, cardNumber: r.card_number, kind: r.comanda_kind }),
       };
-      // Qualquer parte pronta (ou chamada) já aparece em "Prontos" para retirada.
-      if (st.some((s) => s === 'ready')) ready.push({ ...entry, readyAt: r.last_ready, calledAt: r.last_call });
+      // Qualquer parte pronta (ou chamada) já aparece em "Prontos" para retirada,
+      // e some sozinha depois de `readyMinutes` (contados do pronto ou da última chamada).
+      if (st.some((s) => s === 'ready')) {
+        const since = Math.max(r.last_ready ? Date.parse(r.last_ready) : 0, r.last_call ? Date.parse(r.last_call) : 0);
+        if (readyMinutes > 0 && since && nowMs - since > readyMinutes * 60_000) continue;
+        ready.push({ ...entry, readyAt: r.last_ready, calledAt: r.last_call });
+      }
       else if (st.some((s) => s === 'received' || s === 'preparing')) preparing.push(entry);
     }
     ready.sort((a, b) => String(b.calledAt ?? b.readyAt).localeCompare(String(a.calledAt ?? a.readyAt)));

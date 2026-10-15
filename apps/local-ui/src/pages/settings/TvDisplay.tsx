@@ -191,6 +191,13 @@ export function TvDisplayPanel() {
             <Field label="Repetir chamada" hint="Quantas vezes o toque e o anúncio por voz são feitos para cada pedido.">
               <Segmented value={String(d.callRepeat)} options={[1, 2, 3].map((n) => ({ value: String(n), label: n === 1 ? '1 vez' : `${n} vezes` }))} onChange={(v) => save({ callRepeat: Number(v) })} />
             </Field>
+            <Field label="Pedido pronto some da TV depois de" hint="Contado de quando ficou pronto ou da última chamada. “Nunca” = só sai ao marcar entregue.">
+              <Segmented
+                value={String(d.readyMinutes)}
+                options={[5, 10, 15, 30, 0].map((n) => ({ value: String(n), label: n === 0 ? 'Nunca' : `${n} min` }))}
+                onChange={(v) => save({ readyMinutes: Number(v) })}
+              />
+            </Field>
             <div className="row wrap">
               <Button icon={<Send size={16} />} onClick={async () => { try { await api.post('/api/tv/test-call'); toast.success('Chamada de teste enviada às TVs'); } catch (e) { toast.error(e); } }}>Testar som na TV</Button>
               <span className="tiny muted">A voz pode ser ligada ou desligada em Configurações → Operação.</span>

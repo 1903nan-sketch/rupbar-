@@ -495,3 +495,14 @@ body::after {
     gap: 0;
   }
 }
+
+/* indicador de sincronização: sem piscar; azul gira devagar só ao se recuperar */
+.sync-indicator {
+  color: var(--text-2);
+}
+.sync-indicator.down {
+  color: var(--red);
+}
+.spin-slow {
+  animation: spin 2.4s linear infinite;
+}

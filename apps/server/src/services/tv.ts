@@ -162,7 +162,7 @@ export class TvService {
     const b = this.settings.branding();
     return {
       branding: { tradeName: b.tradeName, initials: b.initials, primaryColor: b.primaryColor, secondaryColor: b.secondaryColor, logoUrl: b.logoUrl, coverUrl: b.coverUrl },
-      ...this.kitchen.tvBoard(),
+      ...this.kitchen.tvBoard(this.display().readyMinutes),
       recentCalls: this.kitchen.recentCalls(5),
       voice: this.settings.operation().tvVoiceEnabled,
       serverTts: this.ttsAvailable === true,
