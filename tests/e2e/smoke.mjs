@@ -96,7 +96,15 @@ try {
   await api('POST', '/api/products', { name: 'Batata frita', categoryId: cat('Porções'), measure: 'unit', stockTracked: false, presentations: [{ name: 'Porção', priceCents: 3890 }] });
   await api('POST', '/api/stock/purchases', { items: [{ productId: whisky.id, packages: 2, packageQty: 1_000_000, totalCostCents: 30_000 }] });
   await api('POST', '/api/cash/open', { openingBalanceCents: 10_000 });
-  await api('PUT', '/api/settings/pix', { enabled: true, keyType: 'random', key: '123e4567-e12b-12d1-a456-426655440000', merchantName: 'Adega Lua Cheia', merchantCity: 'Sao Paulo' });
+  // Pix pela tela de configurações: na primeira vez já vem ligado.
+  await page.goto(B + '/configuracoes/pix');
+  await page.getByRole('radio', { name: 'Chave aleatória' }).click();
+  await page.getByPlaceholder('123e4567-e89b-12d3-a456-426614174000').fill('123e4567-e12b-12d1-a456-426655440000');
+  await page.getByPlaceholder('Bar da Marina').fill('Adega Lua Cheia');
+  await page.getByPlaceholder('São Paulo').fill('São Paulo');
+  await page.getByRole('button', { name: 'Salvar', exact: true }).click();
+  await page.getByText('Pix ligado').waitFor();
+  assert((await api('GET', '/api/settings/pix')).enabled === true, 'o Pix deveria ficar ligado ao salvar a chave pela primeira vez');
 
   // 3. Comanda e pedido pela interface
   await page.goto(B + '/comandas');

@@ -214,8 +214,9 @@ export class SettingsService {
       txid = comandaPixTxid(Number(n));
     }
     const charge = this.pixCharge(q.amountCents, txid);
-    if (!charge) throw conflict('O Pix copia e cola ainda não foi configurado. Configure em Configurações → Pix.', 'PIX_NOT_CONFIGURED');
-    return charge;
+    if (charge) return charge;
+    if (this.pix().key) throw conflict('O Pix copia e cola está desligado. Ative em Configurações → Pix.', 'PIX_DISABLED');
+    throw conflict('O Pix copia e cola ainda não foi configurado. Configure em Configurações → Pix.', 'PIX_NOT_CONFIGURED');
   }
 
   /** Configurações genéricas guardadas como JSON (impressão, WhatsApp, rede...). */

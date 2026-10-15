@@ -28,10 +28,18 @@ const KEY_INPUT: Record<PixKeyType, { placeholder: string; hint: string; inputMo
   random: { placeholder: '123e4567-e89b-12d3-a456-426614174000', hint: 'Copie do app do banco, em “Minhas chaves Pix”.', inputMode: 'text' },
 };
 
-/** Primeira configuração: sugere nome e cidade a partir da identidade do bar. */
+/**
+ * Primeira configuração: já deixa o Pix ligado (quem cadastra a chave quer usar)
+ * e sugere nome e cidade a partir da identidade do bar.
+ */
 function initialForm(pix: PixForm, identity: IdentityHint | null): PixForm {
-  if (pix.key || pix.merchantName || pix.merchantCity || !identity) return pix;
-  return { ...pix, merchantName: identity.legalName || identity.tradeName || '', merchantCity: identity.address?.city ?? '' };
+  if (pix.key) return pix;
+  return {
+    ...pix,
+    enabled: true,
+    merchantName: pix.merchantName || identity?.legalName || identity?.tradeName || '',
+    merchantCity: pix.merchantCity || identity?.address?.city || '',
+  };
 }
 
 export function PixSettings() {
@@ -77,16 +85,21 @@ export function PixSettings() {
   const set = <K extends keyof PixForm>(k: K, v: PixForm[K]) => setF({ ...f, [k]: v });
   const input = KEY_INPUT[f.keyType];
 
-  const save = async () => {
+  const save = async (form: PixForm = f) => {
+    setF(form);
     setSubmitted(true);
-    const blocking = f.enabled ? !keyCheck?.ok || !nameOut || !cityOut : !!(keyCheck && !keyCheck.ok);
+    const check = form.key.trim() ? normalizePixKey(form.keyType, form.key) : null;
+    const complete = !!check?.ok && !!sanitizePixText(form.merchantName, PIX_NAME_MAX) && !!sanitizePixText(form.merchantCity, PIX_CITY_MAX);
+    const blocking = form.enabled ? !complete : !!(check && !check.ok);
     if (blocking) return toast.error('Corrija os campos destacados antes de salvar.');
     setBusy(true);
     try {
-      const saved = await api.put<PixForm>('/api/settings/pix', f);
+      const saved = await api.put<PixForm>('/api/settings/pix', form);
       setF(saved);
       setSubmitted(false);
-      toast.success(saved.enabled ? 'Pix ativado: o QR Code já aparece no pagamento e na conta impressa' : 'Configuração do Pix salva');
+      if (saved.enabled) toast.success('Pix ligado: o QR Code já aparece no pagamento e na conta impressa');
+      else if (saved.key) toast.info('Chave salva, mas o Pix está desligado: o QR Code não aparece no pagamento. Ligue “Gerar Pix copia e cola” para usar.');
+      else toast.success('Configuração do Pix salva');
     } catch (e) {
       toast.error(e);
     } finally {
@@ -99,8 +112,17 @@ export function PixSettings() {
       <PageHeader
         title="Pix copia e cola"
         subtitle="QR Code Pix na tela de pagamento e na conta impressa, direto na chave do bar — sem maquininha e sem taxa."
-        actions={<Button variant="primary" loading={busy} onClick={save}>Salvar</Button>}
+        actions={<Button variant="primary" loading={busy} onClick={() => void save()}>Salvar</Button>}
       />
+      {!f.enabled && keyCheck?.ok && (
+        <div className="banner warning">
+          <Info size={18} style={{ flex: 'none', marginTop: 2, color: 'var(--orange)' }} />
+          <div className="grow">
+            <strong>O Pix está desligado.</strong> A chave está preenchida, mas o QR Code não aparece no pagamento, na venda rápida nem na conta impressa.
+          </div>
+          <Button size="small" variant="primary" loading={busy} onClick={() => void save({ ...f, enabled: true })}>Ligar e salvar</Button>
+        </div>
+      )}
       <div className="pix-settings">
         <div className="stack">
           <Card>
@@ -172,7 +194,6 @@ export function PixSettings() {
             ) : (
               <Empty icon={<QrCode size={36} />} title="Preencha a chave, o nome e a cidade">O QR Code de teste aparece aqui.</Empty>
             )}
-            {preview && !f.enabled && <div className="banner small">O Pix está desligado: ative a opção e salve para usar no caixa e na conta impressa.</div>}
           </div>
         </Card>
       </div>

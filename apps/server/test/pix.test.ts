@@ -89,11 +89,11 @@ describe('configuração do Pix', () => {
 });
 
 describe('Pix copia e cola', () => {
-  it('sem configuração, responde PIX_NOT_CONFIGURED', async () => {
+  it('sem configuração responde PIX_NOT_CONFIGURED; com chave desligada, PIX_DISABLED', async () => {
     const r = await owner.fail('GET', '/api/pix/payload?amountCents=1000');
     expect(r).toMatchObject({ status: 409, code: 'PIX_NOT_CONFIGURED' });
     await owner.ok('PUT', '/api/settings/pix', { ...PIX, enabled: false });
-    expect((await owner.fail('GET', '/api/pix/payload?amountCents=1000')).code).toBe('PIX_NOT_CONFIGURED');
+    expect((await owner.fail('GET', '/api/pix/payload?amountCents=1000')).code).toBe('PIX_DISABLED');
   });
 
   it('gera o BR Code do valor com o txid da comanda', async () => {

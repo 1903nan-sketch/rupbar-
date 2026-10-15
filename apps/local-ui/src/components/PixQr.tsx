@@ -7,7 +7,7 @@ import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
 import '../styles/pix.css';
-import { Button, ErrorBox, Spinner } from './ui';
+import { Button, ErrorBox, Spinner, useToast } from './ui';
 
 /** Resposta de GET /api/pix/payload. */
 export interface PixCharge {
@@ -124,6 +124,40 @@ export function PixQrView({ payload, amountCents, merchantName, size = 240, note
   );
 }
 
+/**
+ * A chave está salva, mas o interruptor "Gerar Pix copia e cola" ficou
+ * desligado. Quem gerencia as configurações liga ali mesmo, sem sair do caixa.
+ */
+function PixDisabled({ onEnabled }: { onEnabled: () => void }) {
+  const { can } = useSession();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const manage = can('settings.manage');
+  const enable = async () => {
+    setBusy(true);
+    try {
+      const cfg = await api.get<Record<string, unknown>>('/api/settings/pix');
+      await api.put('/api/settings/pix', { ...cfg, enabled: true });
+      toast.success('Pix ligado: o QR Code já aparece no pagamento e na conta impressa');
+      onEnabled();
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="banner warning">
+      <QrCode size={18} style={{ flex: 'none', marginTop: 2 }} />
+      <div className="grow">
+        <strong>O Pix copia e cola está desligado.</strong>{' '}
+        {manage ? 'A chave está salva, falta ligar para o QR Code aparecer aqui.' : 'Peça ao proprietário para ligar em Configurações → Pix.'}
+      </div>
+      {manage && <Button size="small" variant="primary" loading={busy} onClick={enable}>Ligar Pix</Button>}
+    </div>
+  );
+}
+
 /** Evita uma requisição a cada tecla enquanto o valor é digitado. */
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -148,6 +182,7 @@ export function PixQr({ amountCents, comandaId, size }: { amountCents: number; c
   );
   useRealtime('pix.updated', () => void reload());
 
+  if (error?.code === 'PIX_DISABLED') return <PixDisabled onEnabled={reload} />;
   if (error?.code === 'PIX_NOT_CONFIGURED') {
     return (
       <div className="banner warning">
