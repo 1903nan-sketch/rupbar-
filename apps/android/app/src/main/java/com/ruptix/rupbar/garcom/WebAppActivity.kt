@@ -39,7 +39,8 @@ import android.window.OnBackInvokedDispatcher
 import kotlin.concurrent.thread
 
 /**
- * Interface do garçom (http://<ip>:<porta>/m) em tela cheia.
+ * Interface do garçom (http://<ip>:<porta>/m, vertical) ou TV de retirada
+ * (http://<ip>:<porta>/tv, horizontal) em tela cheia — ver [AppMode].
  *
  * Se o PC deixar de responder (IP mudou, PC desligado), volta sozinho para a
  * busca ([ConnectActivity]). Voltar navega no histórico; no início do histórico
@@ -70,6 +71,9 @@ class WebAppActivity : Activity() {
     @Volatile
     private var healthGeneration = 0
 
+    /** Garçom (/m, vertical) ou TV de retirada (/tv, horizontal). */
+    private lateinit var mode: AppMode
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         cm = getSystemService(ConnectivityManager::class.java)!!
@@ -86,6 +90,8 @@ class WebAppActivity : Activity() {
             name = intent.getStringExtra(EXTRA_NAME),
         )
         trustedOrigin = server.origin
+        mode = AppMode.current(this)
+        requestedOrientation = mode.orientation
 
         // Wi-Fi do bar sem internet + dados móveis ligados: o WebView precisa sair pelo Wi-Fi.
         Lan.bindProcessFor(cm, server.host)
@@ -101,6 +107,7 @@ class WebAppActivity : Activity() {
         setContentView(root)
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         SystemBars.setup(this, root, getColor(R.color.web_bg), lightBars = !night)
+        if (mode == AppMode.TV) SystemBars.immersive(this)
 
         val web = try {
             WebView(this)
@@ -119,7 +126,7 @@ class WebAppActivity : Activity() {
         setupBack()
 
         if (savedInstanceState != null && web.restoreState(savedInstanceState) != null) return
-        migrateSession { webView?.loadUrl("${server.origin}/m") }
+        migrateSession { webView?.loadUrl("${server.origin}${mode.path}") }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -259,17 +266,33 @@ class WebAppActivity : Activity() {
 
     private fun showMenu() {
         if (isFinishing) return
-        val items = arrayOf(getString(R.string.menu_reload), getString(R.string.menu_switch), getString(R.string.menu_exit))
+        val other = if (mode == AppMode.TV) AppMode.WAITER else AppMode.TV
+        val items = arrayOf(
+            getString(R.string.menu_reload),
+            getString(if (other == AppMode.TV) R.string.menu_use_tv else R.string.menu_use_waiter),
+            getString(R.string.menu_switch),
+            getString(R.string.menu_exit),
+        )
         AlertDialog.Builder(this)
             .setTitle(server.name ?: getString(R.string.app_name))
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> webView?.reload()
-                    1 -> leaveTo(ConnectActivity.switchIntent(this))
+                    1 -> switchMode(other)
+                    2 -> leaveTo(ConnectActivity.switchIntent(this))
                     else -> finish()
                 }
             }
             .show()
+    }
+
+    /** Troca entre celular do garçom e TV de retirada (fica salvo neste aparelho). */
+    private fun switchMode(next: AppMode) {
+        AppMode.save(this, next)
+        mode = next
+        requestedOrientation = next.orientation
+        if (next == AppMode.TV) SystemBars.immersive(this)
+        webView?.loadUrl("${server.origin}${next.path}")
     }
 
     /** O PC não respondeu: volta para a busca (testando antes o [hint], se houver). */

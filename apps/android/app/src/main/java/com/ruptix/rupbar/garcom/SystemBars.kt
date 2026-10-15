@@ -65,6 +65,22 @@ object SystemBars {
         }
     }
 
+    /** Modo TV: esconde as barras do sistema (voltam com um gesto e somem de novo). */
+    fun immersive(activity: Activity) {
+        val window = activity.window
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let {
+                it.hide(WindowInsets.Type.systemBars())
+                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        }
+    }
+
     /** Com o teclado aberto, rola até o campo em edição (o ScrollView não faz isso sozinho). */
     private fun revealFocused(root: View) {
         val focused = root.findFocus() ?: return

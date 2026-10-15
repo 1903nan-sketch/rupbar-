@@ -1,9 +1,15 @@
+import legacy from '@vitejs/plugin-legacy';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 // Em desenvolvimento, a API do servidor local roda em :7420.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // TV box e celulares antigos (WebView/Chrome desatualizado): versão
+    // alternativa com polyfills, carregada só quando o navegador precisa.
+    legacy({ targets: ['defaults', 'chrome >= 49', 'android >= 5', 'safari >= 10'], modernPolyfills: true }),
+  ],
   server: {
     port: 5173,
     proxy: {

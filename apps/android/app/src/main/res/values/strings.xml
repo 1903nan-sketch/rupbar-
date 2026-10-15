@@ -36,6 +36,8 @@
     <!-- Tela do garçom -->
     <string name="menu_reload">Recarregar a página</string>
     <string name="menu_switch">Trocar PC / Reconectar</string>
+    <string name="menu_use_tv">Usar como TV de retirada</string>
+    <string name="menu_use_waiter">Usar como celular do garçom</string>
     <string name="menu_exit">Fechar o app</string>
     <string name="no_app_for_link">Nenhum app encontrado para abrir este link.</string>
     <string name="file_chooser_failed">Não foi possível abrir a seleção de arquivos.</string>

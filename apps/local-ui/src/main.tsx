@@ -1,3 +1,4 @@
+import './lib/polyfills';
 import { ShieldOff, WifiOff } from 'lucide-react';
 import { lazy, StrictMode, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -71,6 +72,9 @@ function ServerGate({ children }: { children: ReactNode }) {
   );
 }
 
+/** Aberto pelo app Android "RupBar Garçom" (o app identifica-se no user-agent). */
+const IN_WAITER_APP = /RupBarGarcom\//.test(navigator.userAgent);
+
 function RequireAuth() {
   const { user, loading, branding } = useSession();
   const loc = useLocation();
@@ -78,6 +82,8 @@ function RequireAuth() {
   if (!branding.configured) return <Navigate to="/setup" replace />;
   if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
   if (user.mustChangePassword && loc.pathname !== '/minha-senha') return <Navigate to="/minha-senha" replace />;
+  // No app do garçom só existe a tela do celular (lançar e cobrar).
+  if (IN_WAITER_APP && !loc.pathname.startsWith('/m') && loc.pathname !== '/minha-senha') return <Navigate to="/m" replace />;
   return <Outlet />;
 }
 

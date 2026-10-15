@@ -23,7 +23,9 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-legacy": "^6.1.1",
     "@vitejs/plugin-react": "^4.7.0",
+    "terser": "^5.51.2",
     "typescript": "~5.9.3",
     "vite": "^6.4.4",
     "vitest": "^3.2.7"

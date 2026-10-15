@@ -1,15 +1,16 @@
-import { ArrowLeft, ArrowRight, ClipboardList, Delete, ListChecks, LogOut, Plus, Search, UserRound, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, ClipboardList, Delete, ListChecks, LogOut, Plus, Search, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { ConnectionBanner, Logo } from '../../components/brand';
 import { OrderComposer } from '../../components/OrderComposer';
 import { Badge, Button, Empty, ErrorBox, Input, Loading, useToast } from '../../components/ui';
 import { api, requestId } from '../../lib/api';
-import { elapsed, fmtTime, formatBRL } from '../../lib/format';
+import { elapsed, formatBRL } from '../../lib/format';
 import { useLoad, useNow } from '../../lib/hooks';
 import { useRealtime } from '../../lib/realtime';
 import { useSession } from '../../lib/session';
 import '../../styles/mobile.css';
+import { MobileCharge } from './MobileCharge';
 import { OpenComandaModal, type ComandaSummary } from '../Comandas';
 import type { ComandaDetail } from '../ComandaDetail';
 
@@ -30,7 +31,7 @@ export function MobileShell() {
       <Outlet />
       <nav className="tabbar glass" style={{ ['--tabs' as string]: 2 }}>
         <NavLink to="/m" end className={({ isActive }) => (isActive ? 'active' : '')}><ClipboardList size={22} />Comandas</NavLink>
-        <NavLink to="/m/pedidos" className={({ isActive }) => (isActive ? 'active' : '')}><ListChecks size={22} />Meus pedidos</NavLink>
+        <NavLink to="/m/pedidos" className={({ isActive }) => (isActive ? 'active' : '')}><ListChecks size={22} />Pedidos</NavLink>
       </nav>
     </div>
   );
@@ -48,6 +49,7 @@ export function MobileComandas() {
   const [digits, setDigits] = useState('');
   const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
+  const [showList, setShowList] = useState(false);
   const [opening, setOpening] = useState(false);
   const [free, setFree] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -108,15 +110,19 @@ export function MobileComandas() {
       </section>
 
       <div className="row between">
-        <div className="section-label" style={{ margin: 0 }}>Abertas ({data?.length ?? 0})</div>
-        <div className="row" style={{ gap: 4 }}>
-          <Button size="small" variant="plain" icon={searching ? <X size={18} /> : <Search size={18} />} aria-label="Buscar" onClick={() => { setSearching(!searching); setQ(''); }} />
-          {can('comandas.open') && <Button size="small" icon={<Plus size={16} />} onClick={() => setOpening(true)}>Nova</Button>}
-        </div>
+        <button type="button" className="mlist-toggle" onClick={() => setShowList(!showList)} aria-expanded={showList}>
+          {showList ? <ChevronUp size={18} /> : <ChevronDown size={18} />} Comandas abertas ({data?.length ?? 0})
+        </button>
+        {showList && (
+          <div className="row" style={{ gap: 4 }}>
+            <Button size="small" variant="plain" icon={searching ? <X size={18} /> : <Search size={18} />} aria-label="Buscar" onClick={() => { setSearching(!searching); setQ(''); }} />
+            {can('comandas.open') && <Button size="small" icon={<Plus size={16} />} onClick={() => setOpening(true)}>Nova</Button>}
+          </div>
+        )}
       </div>
-      {searching && <Input autoFocus placeholder="Nome ou mesa" value={q} onChange={(e) => setQ(e.target.value)} />}
+      {showList && searching && <Input autoFocus placeholder="Nome ou mesa" value={q} onChange={(e) => setQ(e.target.value)} />}
       {error && <ErrorBox error={error} onRetry={reload} />}
-      {!data ? <Loading /> : data.length === 0 ? <Empty icon={<ClipboardList size={36} />} title="Nenhuma comanda aberta" /> : (
+      {!showList ? null : !data ? <Loading /> : data.length === 0 ? <Empty icon={<ClipboardList size={36} />} title="Nenhuma comanda aberta" /> : (
         <div className="waiter-grid stagger">
           {data.map((c) => (
             <button key={c.id} type="button" className="waiter-tile" onClick={() => nav(`/m/comanda/${c.id}`)}>
@@ -135,45 +141,35 @@ export function MobileComandas() {
 export function MobileComanda() {
   const { id = '' } = useParams();
   const nav = useNavigate();
-  const [view, setView] = useState<'menu' | 'conta'>('menu');
+  const [view, setView] = useState<'lancar' | 'cobrar'>('lancar');
   const { data: c, error, reload } = useLoad(() => api.get<ComandaDetail>(`/api/comandas/${id}`), [id]);
   useRealtime(['comanda.changed', 'order.status'], () => void reload());
   if (error) return <div className="mobile-body"><ErrorBox error={error} onRetry={reload} /></div>;
   if (!c) return <Loading />;
-  const active = c.items.filter((i) => i.status === 'active');
   return (
-    <div className="mobile-body" style={{ paddingBottom: 110 }}>
+    <div className="mobile-body mcomanda" style={{ paddingBottom: 110 }}>
       <div className="waiter-head">
         <Button variant="plain" icon={<ArrowLeft size={22} />} aria-label="Voltar" onClick={() => nav('/m')} />
         <span className="waiter-tile-no small">{c.displayNumber ?? c.number}</span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="strong ellipsis" style={{ fontSize: 17 }}>{c.customerName || 'Sem nome'}</div>
-          <div className="small muted">{c.table ? `Mesa ${c.table} · ` : ''}{formatBRL(c.total)}</div>
+          <div className="strong ellipsis" style={{ fontSize: 17 }}>{c.customerName || (c.table ? `Mesa ${c.table}` : 'Sem nome')}</div>
+          <div className="small muted">{formatBRL(c.total)}{c.paid > 0 && ` · falta ${formatBRL(c.remaining)}`}</div>
         </div>
-      </div>
-      <div className="segmented" style={{ alignSelf: 'stretch', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-        <button type="button" className={view === 'menu' ? 'active' : ''} onClick={() => setView('menu')}>Cardápio</button>
-        <button type="button" className={view === 'conta' ? 'active' : ''} onClick={() => setView('conta')}>Itens ({active.reduce((a, i) => a + i.quantity, 0)})</button>
       </div>
       {c.status !== 'open' ? (
         <div className="banner warning">Esta comanda foi encerrada.</div>
-      ) : view === 'menu' ? (
-        <OrderComposer comandaId={c.id} compact onSent={() => { void reload(); }} />
       ) : (
-        <div className="col" style={{ gap: 8 }}>
-          {active.length === 0 && <Empty title="Nenhum item ainda" />}
-          {active.map((i) => (
-            <div key={i.id} className="menu-item">
-              <span className="kds-qty-sm">{i.quantity}</span>
-              <div className="grow">
-                <div>{i.name}{i.presentationName !== 'Unidade' && <span className="muted"> · {i.presentationName}</span>}</div>
-                <div className="tiny muted">Pedido {i.orderNumber ?? '—'} · {fmtTime(i.createdAt)}{i.notes && ` · ${i.notes}`}</div>
-              </div>
-              {i.ticketStatus && <TicketBadge status={i.ticketStatus} />}
-            </div>
-          ))}
-          <div className="card tight row between"><span className="muted">Total</span><strong className="num">{formatBRL(c.total)}</strong></div>
-        </div>
+        <>
+          <div className="mtabs" role="tablist">
+            <button type="button" role="tab" aria-selected={view === 'lancar'} className={view === 'lancar' ? 'active' : ''} onClick={() => setView('lancar')}>Lançar pedido</button>
+            <button type="button" role="tab" aria-selected={view === 'cobrar'} className={view === 'cobrar' ? 'active' : ''} onClick={() => setView('cobrar')}>Cobrar</button>
+          </div>
+          {view === 'lancar' ? (
+            <OrderComposer comandaId={c.id} compact onSent={() => { void reload(); }} />
+          ) : (
+            <MobileCharge comanda={c} onChanged={() => void reload()} onClosed={() => nav('/m')} />
+          )}
+        </>
       )}
     </div>
   );

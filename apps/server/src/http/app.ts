@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
@@ -106,6 +107,10 @@ export async function buildApp(services: Services, opts: AppOptions = {}): Promi
     }
   });
 
+  // Scripts embutidos no index.html (detecção da versão para navegadores antigos
+  // de TV box/celular) entram na CSP pelo hash — nenhum outro script inline roda.
+  const inlineHashes = inlineScriptHashes(services.ctx.config.uiDir);
+
   app.addHook('onSend', async (req, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
@@ -114,7 +119,7 @@ export async function buildApp(services: Services, opts: AppOptions = {}): Promi
     if (!req.url.startsWith('/api')) {
       reply.header(
         'Content-Security-Policy',
-        "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; " +
+        `default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'${inlineHashes}; ` +
           `connect-src 'self' ws: http://*:${services.ctx.config.port}; media-src 'self' blob: data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'`,
       );
     } else if (!reply.hasHeader('Cache-Control')) {
@@ -163,4 +168,16 @@ export async function buildApp(services: Services, opts: AppOptions = {}): Promi
   }
 
   return app;
+}
+
+/** Hashes CSP ('sha256-…') dos <script> sem src do index.html da interface. */
+export function inlineScriptHashes(uiDir: string | null | undefined): string {
+  if (!uiDir || !existsSync(join(uiDir, 'index.html'))) return '';
+  const html = readFileSync(join(uiDir, 'index.html'), 'utf8');
+  const hashes = new Set<string>();
+  for (const m of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) {
+    if (!m[1]) continue;
+    hashes.add(`'sha256-${createHash('sha256').update(m[1], 'utf8').digest('base64')}'`);
+  }
+  return hashes.size ? ' ' + [...hashes].join(' ') : '';
 }

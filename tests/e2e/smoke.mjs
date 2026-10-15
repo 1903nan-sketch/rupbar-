@@ -215,6 +215,10 @@ try {
   await m.getByRole('button', { name: 'Enviar' }).click();
   await m.getByText(/Pedido \d+ enviado/).waitFor();
   await m.screenshot({ path: join(out, '05-celular.png') });
+  // Aba "Cobrar": garçom sem permissão de receber só pede a conta impressa.
+  await m.getByRole('tab', { name: 'Cobrar' }).click();
+  await m.getByRole('button', { name: 'Imprimir conta' }).waitFor();
+  await m.screenshot({ path: join(out, '05b-celular-cobrar.png') });
   assert((await api('GET', `/api/products/${whisky.id}`)).stockQty === 1_900_000, 'pedido do celular deveria baixar mais 50 ml');
 
   assert(errors.length === 0, `erros no navegador:\n${errors.join('\n')}`);

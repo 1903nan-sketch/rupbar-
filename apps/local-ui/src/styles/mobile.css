@@ -152,3 +152,102 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* comanda no celular: duas abas grandes (Lançar pedido / Cobrar) */
+.mtabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--fill);
+}
+.mtabs button {
+  height: 46px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mtabs button.active {
+  color: var(--accent-contrast);
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--violet, #7c5cff)));
+  box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+.mlist-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 650;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.mcharge {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mcharge-total {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+}
+.mcharge-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.mcharge-due {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--glass-line);
+  font-size: 18px;
+}
+.mcharge-due strong {
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+.mcharge-methods {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.mcharge-method {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 4px;
+  border-radius: 16px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-strong);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.mcharge-method.active {
+  border-color: transparent;
+  color: var(--accent-contrast);
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--violet, #7c5cff)));
+}
+.mcharge-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* Celular deitado: o app é pensado para a vertical. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .mobile-body {
+    max-width: 520px;
+  }
+}
