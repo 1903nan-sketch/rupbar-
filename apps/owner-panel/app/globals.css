@@ -3299,6 +3299,11 @@ a.banner:hover {
 .auth-note {
   text-align: center;
 }
+.caps-hint {
+  margin: 6px 0 0;
+  color: var(--orange);
+  font-weight: 600;
+}
 .auth-panel .signature {
   justify-content: center;
 }
