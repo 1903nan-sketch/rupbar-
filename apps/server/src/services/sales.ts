@@ -12,8 +12,12 @@ import { requirePerm, type Actor, type Ctx } from './context';
  * caixa e produção funcionam igual às comandas normais.
  */
 export class SalesService {
-  /** Impressão opcional do comprovante (ligada em services/index.ts). */
-  onReceipt: (comandaId: string, actor: Actor) => void = () => {};
+  /**
+   * Depois do pagamento: ticket do pedido no caixa (o cliente leva ao bar) e,
+   * se pedido, o comprovante. Ligado em services/index.ts; devolve quantos
+   * tickets foram para a fila.
+   */
+  onCompleted: (info: { comandaId: string; orderId: string; printReceipt: boolean }, actor: Actor) => number = () => 0;
 
   constructor(
     private readonly ctx: Ctx,
@@ -44,8 +48,8 @@ export class SalesService {
       const version = this.ctx.db.value<number>('SELECT version FROM comandas WHERE id = ?', comandaId)!;
       this.comandas.close(actor, comandaId, { expectedVersion: version });
       this.ctx.audit(actor, 'sales.quick', 'comanda', comandaId, { order: order.number, total, items: input.items.length });
-      if (input.printReceipt) this.onReceipt(comandaId, actor);
-      return { ...this.view(comandaId), changeCents, duplicate: false };
+      const tickets = this.onCompleted({ comandaId, orderId: String(order.id), printReceipt: input.printReceipt }, actor);
+      return { ...this.view(comandaId), changeCents, ticketPrinted: tickets > 0, duplicate: false };
     });
   }
 

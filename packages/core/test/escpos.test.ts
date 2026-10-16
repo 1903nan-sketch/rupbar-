@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { encodeText, renderBillReceipt, renderOrderTicket, twoColumns, wrap, EscPosBuilder, type BillReceiptData } from '../src/escpos';
+import { encodeText, renderBillReceipt, renderOrderTicket, renderPickupTicket, twoColumns, wrap, EscPosBuilder, type BillReceiptData } from '../src/escpos';
+import { parsePickupCode, pickupCode } from '../src/domain';
 import { buildPixPayload } from '../src/pix';
 
 describe('ESC/POS', () => {
@@ -105,5 +106,34 @@ describe('ESC/POS — QR Code (GS ( k, modelo 2)', () => {
     const bytes = renderBillReceipt(bill(null), { paper: 80, codepage: 'cp850' });
     expect(Buffer.from(bytes).toString('latin1')).not.toContain('Pague com Pix');
     expect(indexOfSeq(bytes, [0x1d, 0x28, 0x6b])).toBe(-1);
+  });
+
+  it('código do ticket: dia + número, lido de volta mesmo digitado com espaços', () => {
+    expect(pickupCode('2026-10-16', 42)).toBe('RB2610160042');
+    expect(pickupCode('2026-10-16', 123456)).toBe('RB261016123456');
+    expect(parsePickupCode('rb 261016-0042')).toEqual({ businessDay: '2026-10-16', orderNumber: 42 });
+    expect(parsePickupCode('RB2613160042')).toBeNull();
+    expect(parsePickupCode('7891234567890')).toBeNull();
+  });
+  it('ticket do pedido: número, nome, itens, PAGO e código de barras CODE128 no conjunto C', () => {
+    const data = {
+      barName: 'Bar Teste', orderNumber: 42, code: 'RB2610160042', customerName: 'Juliana P.', comandaNumber: null, table: null,
+      waiterName: 'Ana', createdAt: new Date('2026-10-16T23:00:00Z'), items: [{ quantity: 2, name: 'Heineken long neck' }],
+      paid: { total: 3000, methods: ['Pix'] },
+    };
+    const bytes = renderPickupTicket(data, { paper: 58, codepage: 'cp850' });
+    const text = Buffer.from(bytes).toString('latin1');
+    expect(text).toContain('PEDIDO 42');
+    expect(text).toContain('Juliana P.');
+    expect(text).toContain('2x Heineken long neck');
+    expect(text).toContain('PAGO');
+    expect(text).toContain('Pix');
+    // GS k 73 n {B R B {C 26 10 16 00 42
+    const bc = [0x1d, 0x6b, 73, 11, 0x7b, 0x42, 0x52, 0x42, 0x7b, 0x43, 26, 10, 16, 0, 42];
+    expect(Buffer.from(bytes).includes(Buffer.from(bc))).toBe(true);
+    const comanda = Buffer.from(renderPickupTicket({ ...data, paid: null, comandaNumber: 12, reprint: true }, { paper: 80, codepage: 'cp850' })).toString('latin1');
+    expect(comanda).toContain('Comanda 12');
+    expect(comanda).toContain('2');
+    expect(comanda).not.toContain('PAGO');
   });
 });

@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { formatBRL } from '../lib/format';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
+import { useBarcodeScanner } from '../lib/scanner';
 import '../styles/menu.css';
 import { Button, Empty, ErrorBox, Input, Loading, useToast } from './ui';
 
@@ -17,6 +18,9 @@ export interface MenuItem {
   photoUrl: string | null;
   categoryId: string;
   station: string;
+  /** Código de barras e código interno do produto (leitor no caixa). */
+  barcode?: string | null;
+  code?: string | null;
   available: number | null;
   soldOut: boolean;
 }
@@ -73,8 +77,30 @@ export type Cart = ReturnType<typeof useCart>;
 
 /** Cardápio em blocos grandes (toque para somar), com busca, categorias e mais vendidos. */
 export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?: boolean; autoFocus?: boolean }) {
+  const toast = useToast();
   const { data: menu, error, reload } = useLoad(() => api.get<Menu>('/api/menu'));
   useRealtime('stock.changed', () => void reload());
+
+  /** Produto pelo código de barras ou código interno (o disponível primeiro). */
+  const findByCode = (raw: string): MenuItem | null => {
+    const code = raw.trim();
+    if (!menu || !code) return null;
+    const matches = menu.items.filter((i) => i.barcode === code || (!!i.code && i.code === code));
+    return matches.find((i) => !i.soldOut) ?? matches[0] ?? null;
+  };
+  const addScanned = (item: MenuItem) => {
+    if (item.soldOut) return toast.error(`${itemLabel(item)} está esgotado.`);
+    cart.add(item, 1);
+    toast.success(`+1 ${itemLabel(item)}`);
+  };
+  // Leitor de código de barras: bipar o produto adiciona 1. Ticket de pedido (RB…) fica para a conferência.
+  useBarcodeScanner((code) => {
+    if (!menu || /^RB\d/i.test(code)) return false;
+    const item = findByCode(code);
+    if (item) addScanned(item);
+    else toast.error(`Código ${code} não cadastrado. Cadastre em Produtos → Código de barras.`);
+    return true;
+  }, !!menu);
   const popular = menu?.popular ?? [];
   const [cat, setCat] = useState<string>('all');
   const [q, setQ] = useState('');
@@ -83,7 +109,7 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
   const items = useMemo(() => {
     if (!menu) return [];
     const term = q.trim().toLowerCase();
-    if (term) return menu.items.filter((i) => `${i.productName} ${i.presentationName}`.toLowerCase().includes(term));
+    if (term) return menu.items.filter((i) => `${i.productName} ${i.presentationName}`.toLowerCase().includes(term) || i.barcode === q.trim() || (!!i.code && i.code === q.trim()));
     if (effectiveCat === 'popular') {
       const order = new Map(popular.map((id, n) => [id, n]));
       return menu.items.filter((i) => order.has(i.presentationId)).sort((a, b) => order.get(a.presentationId)! - order.get(b.presentationId)!);
@@ -99,7 +125,18 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
     <div className={`menu-picker ${compact ? 'compact' : ''}`}>
       <div className="menu-search input-group">
         <Search size={17} className="prefix" />
-        <Input placeholder="Buscar produto…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus={autoFocus} aria-label="Buscar produto" />
+        <Input
+          placeholder="Buscar produto ou bipar o código…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus={autoFocus} aria-label="Buscar produto"
+          onKeyDown={(e) => {
+            // Código digitado (ou leitor lento) + Enter: adiciona direto.
+            if (e.key !== 'Enter') return;
+            const item = findByCode(q);
+            if (!item) return;
+            e.preventDefault();
+            addScanned(item);
+            setQ('');
+          }}
+        />
         {q && <button type="button" className="menu-search-clear" aria-label="Limpar busca" onClick={() => setQ('')}><X size={16} /></button>}
       </div>
       {!q && (

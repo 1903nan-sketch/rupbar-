@@ -1,7 +1,7 @@
-import type { Permission } from '@rupbar/core';
+import { parsePickupCode, type Permission } from '@rupbar/core';
 import {
   BarChart3, Boxes, ChefHat, ClipboardList, ClipboardPlus, Cog, KeyRound, LayoutDashboard, LogOut, Maximize2, Menu, Minimize2, PackageMinus,
-  Smartphone, Tv, UserRound, Users, Wallet, Wind, Wine, Zap,
+  ScanBarcode, Smartphone, Tv, UserRound, Users, Wallet, Wind, Wine, Zap,
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom';
@@ -11,15 +11,18 @@ import { api } from '../lib/api';
 import { useFullscreen } from '../lib/fullscreen';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
+import { useBarcodeScanner } from '../lib/scanner';
 import { useSession } from '../lib/session';
 
 const QuickSale = lazy(() => import('../components/QuickSale').then((m) => ({ default: m.QuickSale })));
 const LaunchComanda = lazy(() => import('../components/LaunchComanda').then((m) => ({ default: m.LaunchComanda })));
+const OrderLookup = lazy(() => import('../components/OrderLookup').then((m) => ({ default: m.OrderLookup })));
 
 /** Atalhos disponíveis em qualquer tela do PC (tela inicial, comandas…). */
 export interface ShellActions {
   openQuickSale: () => void;
   openLaunch: (number?: number) => void;
+  openLookup: () => void;
   fullscreen: boolean;
   toggleFullscreen: () => void;
 }
@@ -41,17 +44,27 @@ export function DesktopShell() {
   useRealtime(['stock', 'kitchen', 'comandas'], () => void reload());
   const [quick, setQuick] = useState(false);
   const [launch, setLaunch] = useState<{ number?: number } | null>(null);
+  const [lookup, setLookup] = useState<{ q: string } | null>(null);
   const [fullscreen, toggleFullscreen] = useFullscreen();
   const canQuick = can('orders.create') && can('cash.payment');
   const canLaunch = can('orders.create');
+  const canLookup = can('orders.view');
   const actions: ShellActions = {
     openQuickSale: () => canQuick && setQuick(true),
     openLaunch: (number) => canLaunch && setLaunch({ number }),
+    openLookup: () => canLookup && setLookup({ q: '' }),
     fullscreen,
     toggleFullscreen,
   };
 
-  // F2 venda rápida · F3 lançar na comanda · F11 tela cheia
+  // Bipar o ticket do pedido em qualquer tela abre a conferência (pago? já entregue?).
+  useBarcodeScanner((code) => {
+    if (!parsePickupCode(code)) return false;
+    setLookup({ q: code });
+    return true;
+  }, canLookup);
+
+  // F2 venda rápida · F3 lançar na comanda · F4 conferir pedido · F11 tela cheia
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F2' && canQuick) {
@@ -60,6 +73,9 @@ export function DesktopShell() {
       } else if (e.key === 'F3' && canLaunch) {
         e.preventDefault();
         setLaunch({});
+      } else if (e.key === 'F4' && canLookup) {
+        e.preventDefault();
+        setLookup({ q: '' });
       } else if (e.key === 'F11') {
         e.preventDefault();
         toggleFullscreen();
@@ -67,7 +83,7 @@ export function DesktopShell() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [canQuick, canLaunch, toggleFullscreen]);
+  }, [canQuick, canLaunch, canLookup, toggleFullscreen]);
 
   const groups: { label: string; items: NavItem[] }[] = [
     {
@@ -138,6 +154,7 @@ export function DesktopShell() {
           <div className="grow small muted ellipsis">{titleFor(loc.pathname)}</div>
           {canQuick && <Button size="small" variant="primary" className="topbar-action" icon={<Zap size={15} />} title="Venda rápida (F2)" onClick={() => setQuick(true)}>Venda rápida</Button>}
           {canLaunch && <Button size="small" className="topbar-action" icon={<ClipboardPlus size={15} />} title="Lançar na comanda (F3)" onClick={() => setLaunch({})}>Lançar na comanda</Button>}
+          {canLookup && <Button size="small" className="topbar-action secondary" icon={<ScanBarcode size={15} />} title="Conferir pedido: bipe o ticket ou busque pelo número (F4)" onClick={() => setLookup({ q: '' })}>Conferir pedido</Button>}
           <Button size="small" variant="plain" icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} title={fullscreen ? 'Sair da tela cheia (F11)' : 'Tela cheia (F11)'} aria-label="Tela cheia" onClick={toggleFullscreen} />
           <SyncIndicator />
           <div className="row" style={{ gap: 4 }}>
@@ -155,6 +172,7 @@ export function DesktopShell() {
       <Suspense fallback={null}>
         {quick && <QuickSale onClose={() => setQuick(false)} />}
         {launch && <LaunchComanda initialNumber={launch.number} onClose={() => setLaunch(null)} />}
+        {lookup && <OrderLookup key={lookup.q} initial={lookup.q} onClose={() => setLookup(null)} />}
       </Suspense>
     </div>
   );

@@ -270,7 +270,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
             <Field label="Código interno" hint={product ? 'Pode trocar; em branco mantém o atual.' : `Em branco: gerado automaticamente${nextCode.data ? ` (${nextCode.data.code})` : ''}.`}>
               <Input className="mono" value={f.internalCode} placeholder={nextCode.data ? `Automático: ${nextCode.data.code}` : product?.internalCode ?? 'Automático'} onChange={(e) => setF({ ...f, internalCode: e.target.value })} />
             </Field>
-            <Field label="Código de barras"><Input inputMode="numeric" value={f.barcode} onChange={(e) => setF({ ...f, barcode: e.target.value })} /></Field>
+            <Field label="Código de barras" hint="Clique aqui e bipe o produto com o leitor."><Input inputMode="numeric" data-barcode="field" value={f.barcode} onChange={(e) => setF({ ...f, barcode: e.target.value })} /></Field>
             <Field label="Fornecedor">
               <Select value={f.supplierId} onChange={(e) => setF({ ...f, supplierId: e.target.value })}>
                 <option value="">—</option>

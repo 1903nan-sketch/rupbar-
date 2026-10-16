@@ -40,6 +40,14 @@ Configurações → Impressoras:
 | Windows | Impressora USB instalada no Windows. Use o driver do fabricante ou “Generic / Text Only”. O RupBar envia bytes RAW pelo spooler. |
 | Arquivo | Testes. |
 
+**Impressora USB:** ligue no PC do bar e instale o driver do fabricante (nas genéricas de 58 mm costuma ser “POS-58”). Sem driver, adicione no Windows uma impressora manual na porta **USB001** com o modelo **Generic / Text Only**. Depois, em Configurações → Impressoras → Adicionar, escolha **USB (instalada no Windows)** e selecione-a na lista (botão **Atualizar** se acabou de instalar).
+
+**Impressora do caixa:** a primeira impressora cadastrada já vem marcada como **Impressora do caixa**. Ela imprime o **ticket de cada pedido** (venda rápida, depois do pagamento, e cada pedido das comandas) para o cliente levar ao bar e retirar, com número do pedido, nome, itens, “PAGO” (venda rápida) ou o número da comanda, e um **código de barras**. Setores sem impressora própria também saem nela. Quando colocar uma impressora na cozinha ou no bar, cadastre-a com o setor: os pedidos daquele setor passam a sair lá e o caixa continua com o ticket do cliente.
+
+**Conferir pedido (F4):** se o cliente perder o ticket, busque pelo número do pedido, do cartão ou pelo nome, ou bipe o código de barras do ticket com o leitor. A tela mostra se está pago e se já foi entregue (“Marcar como entregue”), e imprime a 2ª via.
+
+**Leitor de código de barras (USB):** na venda rápida e no “Lançar na comanda”, bipar o produto adiciona 1 unidade. Cadastre o código em Produtos → Código de barras (clique no campo e bipe). Bipar um ticket de pedido em qualquer tela abre a conferência.
+
 Escolha o papel (58 mm = 32 colunas, 80 mm = 48 colunas), o setor (cozinha, bebidas) e se a impressora recebe contas/fechamento de caixa. Use **Testar**: se os acentos saírem errados, troque entre CP850, CP860 ou “sem acentos”. A fila é persistente: impressora desligada não perde cupons; eles saem quando ela voltar (até 8 tentativas, depois ficam como “Falhou” com botão “Tentar de novo”).
 
 ## 4. TV de retirada

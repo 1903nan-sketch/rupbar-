@@ -1,10 +1,12 @@
-import { billTotals, comandaDisplayNumber, comandaLabel, displayName, firstName, maskCpf, maskPhone, splitEqually, type Station } from '@rupbar/core';
+import {
+  billTotals, comandaDisplayNumber, comandaLabel, displayName, firstName, maskCpf, maskPhone, parsePickupCode, pickupCode, splitEqually, type Station,
+} from '@rupbar/core';
 import {
   cancelComandaSchema, cancelItemSchema, closeComandaSchema, comandaEditSchema, comandaOpenSchema, discountSchema, moveItemsSchema, orderCreateSchema,
   serviceFeeSchema, transferSchema,
 } from '@rupbar/core/schemas';
 import type { Row } from '../db/db';
-import { badRequest, conflict, notFound, staleVersion } from '../lib/errors';
+import { badRequest, conflict, forbidden, notFound, staleVersion } from '../lib/errors';
 import { businessDay } from '../lib/time';
 import { hasPerm, requirePerm, type Actor, type Ctx } from './context';
 import type { SettingsService } from './settings';
@@ -352,6 +354,90 @@ export class ComandasService {
         since, limit,
       )
       .map((r) => r.presentation_id);
+  }
+
+  /**
+   * Conferência de pedido (o cliente perdeu o ticket, ou o bar quer confirmar):
+   * busca pelo código do ticket (bipado ou digitado), número do pedido, número
+   * do cartão ou nome, nos últimos 2 dias. Diz se está pago e se já foi entregue.
+   */
+  lookupOrders(actor: Actor, raw: string | undefined) {
+    requirePerm(actor, 'orders.view');
+    const q = (raw ?? '').trim().slice(0, 60);
+    if (!q) return [];
+    const code = parsePickupCode(q);
+    const base = 'SELECT o.id FROM orders o JOIN comandas c ON c.id = o.comanda_id';
+    const since = new Date(this.ctx.clock.now().getTime() - 2 * 86_400_000).toISOString();
+    let ids: { id: string }[];
+    if (code) {
+      ids = this.ctx.db.all(`${base} WHERE o.business_day = ? AND o.number = ?`, code.businessDay, code.orderNumber);
+    } else if (/^\d{1,6}$/.test(q)) {
+      ids = this.ctx.db.all(
+        `${base} WHERE o.created_at >= ? AND (o.number = ? OR c.card_number = ?) ORDER BY o.created_at DESC LIMIT 20`,
+        since, Number(q), Number(q),
+      );
+    } else {
+      ids = this.ctx.db.all(
+        `${base} WHERE o.created_at >= ? AND c.customer_name LIKE ? ESCAPE '\\' ORDER BY o.created_at DESC LIMIT 20`,
+        since, `%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`,
+      );
+    }
+    return ids.map((r) => this.orderCheck(r.id));
+  }
+
+  /** Pedido com a situação do pagamento e da entrega (conferência). */
+  orderCheck(orderId: string) {
+    const v = this.orderView(orderId);
+    const o = this.ctx.db.get(
+      `SELECT o.business_day, o.picked_up_at, u.name AS picked_up_name, c.kind, c.status AS comanda_status
+       FROM orders o JOIN comandas c ON c.id = o.comanda_id LEFT JOIN users u ON u.id = o.picked_up_by WHERE o.id = ?`,
+      orderId,
+    )!;
+    const t = this.totals(String(v.comandaId));
+    const active = v.items.filter((i) => i.status === 'active');
+    const tickets = v.tickets.filter((x) => x.status !== 'canceled');
+    const deliveredByKitchen = tickets.length > 0 && tickets.every((x) => x.status === 'delivered')
+      ? tickets.map((x) => String(x.delivered_at ?? '')).sort().at(-1) || null
+      : null;
+    return {
+      ...v,
+      code: pickupCode(String(o.business_day), Number(v.number)),
+      quick: o.kind === 'quick',
+      comandaStatus: o.comanda_status as string,
+      /** paid: comanda quitada (venda rápida sempre); open: comanda aberta, paga na saída; canceled. */
+      payment: o.comanda_status === 'canceled' ? 'canceled' : t.total > 0 && t.remaining <= 0 ? 'paid' : 'open',
+      orderTotal: active.reduce((a, i) => a + Number(i.quantity) * Number(i.unit_price_cents), 0),
+      comandaTotal: t.total,
+      paidCents: t.paid,
+      remaining: t.remaining,
+      payments: this.ctx.db.all(
+        "SELECT method, amount_cents, created_at FROM payments WHERE comanda_id = ? AND status = 'active' ORDER BY created_at",
+        String(v.comandaId),
+      ),
+      pickedUpAt: (o.picked_up_at as string | null) ?? deliveredByKitchen,
+      pickedUpBy: (o.picked_up_name as string | null) ?? null,
+      ticketPrints: Number(this.ctx.db.value("SELECT COUNT(*) FROM print_jobs WHERE kind = 'pickup_ticket' AND ref_id = ? AND status <> 'canceled'", orderId)),
+    };
+  }
+
+  /** O bar entregou o pedido: registra quem e quando (e tira da tela de produção). */
+  markPickedUp(actor: Actor, orderId: string) {
+    if (!hasPerm(actor, 'orders.create') && !hasPerm(actor, 'kitchen.update')) throw forbidden();
+    return this.ctx.tx(() => {
+      const o = this.ctx.db.get('SELECT id, number, picked_up_at FROM orders WHERE id = ?', orderId);
+      if (!o) throw notFound('Pedido');
+      if (o.picked_up_at) throw conflict('Este pedido já foi entregue.', 'ALREADY_PICKED_UP', { pickedUpAt: o.picked_up_at });
+      const now = this.ctx.nowIso();
+      this.ctx.db.run('UPDATE orders SET picked_up_at = ?, picked_up_by = ?, updated_at = ? WHERE id = ?', now, actor.userId, now, orderId);
+      const changed = this.ctx.db.run(
+        `UPDATE order_tickets SET status = 'delivered', delivered_at = ?, updated_by = ?, version = version + 1, updated_at = ?
+         WHERE order_id = ? AND status NOT IN ('delivered','canceled')`,
+        now, actor.userId, now, orderId,
+      ).changes;
+      if (changed) this.ctx.emit({ channel: 'kitchen', type: 'order.status', data: { orderId, status: 'delivered' } });
+      this.ctx.audit(actor, 'orders.picked_up', 'order', orderId, { number: o.number });
+      return this.orderCheck(orderId);
+    });
   }
 
   /** Pedidos recentes feitos pelo próprio usuário (acompanhamento no celular). */

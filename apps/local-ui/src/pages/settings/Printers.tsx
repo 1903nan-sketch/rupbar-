@@ -1,5 +1,5 @@
 import { PRINT_JOB_KINDS, type PrintJobKind } from '@rupbar/core';
-import { Plus, Printer, RefreshCw, RotateCcw, TestTube2 } from 'lucide-react';
+import { Info, Plus, Printer, RefreshCw, RotateCcw, TestTube2, Usb } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, Empty, Field, Input, Loading, Modal, PageHeader, Select, Switch, useToast } from '../../components/ui';
 import { api } from '../../lib/api';
@@ -22,6 +22,7 @@ interface PrinterCfg {
   autoPrint: boolean;
   beep: boolean;
   printQr: boolean;
+  cashier: boolean;
   active: boolean;
   lastStatus: string | null;
   lastError: string | null;
@@ -44,8 +45,14 @@ export function PrintersSettings() {
 
   return (
     <div className="stack-l">
-      <PageHeader title="Impressoras" subtitle="Térmicas ESC/POS de 58 mm ou 80 mm, por rede (porta 9100) ou instaladas no Windows (USB)." actions={<Button variant="primary" icon={<Plus size={16} />} onClick={() => setEdit('new')}>Adicionar impressora</Button>} />
-      {!data ? <Loading /> : data.length === 0 ? <Card><Empty icon={<Printer size={40} />} title="Nenhuma impressora">Adicione as impressoras da cozinha, do balcão e do caixa.</Empty></Card> : (
+      <PageHeader title="Impressoras" subtitle="Térmicas ESC/POS de 58 mm ou 80 mm, ligadas por USB no PC ou pela rede." actions={<Button variant="primary" icon={<Plus size={16} />} onClick={() => setEdit('new')}>Adicionar impressora</Button>} />
+      {!data ? <Loading /> : data.length === 0 ? (
+        <Card>
+          <Empty icon={<Printer size={40} />} title="Nenhuma impressora">
+            Comece pela impressora do caixa: ela imprime o ticket de cada pedido (venda rápida e comandas) e, enquanto não houver outras, também os pedidos da cozinha e do bar.
+          </Empty>
+        </Card>
+      ) : (
         <div className="grid-auto">
           {data.map((p) => (
             <Card key={p.id}>
@@ -54,8 +61,9 @@ export function PrintersSettings() {
                 {p.transport === 'network' ? `Rede ${p.host}:${p.port}` : p.transport === 'windows' ? `Windows: ${p.windowsName}` : `Arquivo: ${p.filePath}`} · {p.paper} mm
               </div>
               <div className="row wrap" style={{ marginTop: 8, gap: 4 }}>
-                {p.stations.includes('kitchen') && <Badge color="orange">Cozinha</Badge>}
-                {p.stations.includes('bar') && <Badge color="blue">Bebidas</Badge>}
+                {p.cashier && <Badge color="green">Caixa · ticket de cada pedido</Badge>}
+                {!p.cashier && p.stations.includes('kitchen') && <Badge color="orange">Cozinha</Badge>}
+                {!p.cashier && p.stations.includes('bar') && <Badge color="blue">Bebidas</Badge>}
                 {p.printReceipts && <Badge color="purple">Contas e caixa</Badge>}
                 {p.autoPrint && <Badge>Automática</Badge>}
               </div>
@@ -89,19 +97,31 @@ export function PrintersSettings() {
           </table>
         </div>
       </Card>
-      {edit && <PrinterModal printer={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onDone={reload} />}
+      {edit && <PrinterModal printer={edit === 'new' ? null : edit} first={!data?.some((p) => p.active)} hasCashier={!!data?.some((p) => p.active && p.cashier)} onClose={() => setEdit(null)} onDone={reload} />}
     </div>
   );
 }
 
-function PrinterModal({ printer, onClose, onDone }: { printer: PrinterCfg | null; onClose: () => void; onDone: () => void }) {
+interface WindowsPrinter {
+  name: string;
+  port: string | null;
+  driver: string | null;
+  offline: boolean;
+}
+
+function PrinterModal({ printer, first, hasCashier, onClose, onDone }: { printer: PrinterCfg | null; first: boolean; hasCashier: boolean; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
-  const winPrinters = useLoad(() => api.get<{ printers: string[]; platform: string }>('/api/printers/windows'));
+  const winPrinters = useLoad(() => api.get<{ printers: string[]; details?: WindowsPrinter[]; platform: string }>('/api/printers/windows'));
+  // A primeira impressora é a do caixa: tudo sai nela até existirem outras.
+  const cashierDefault = !printer && (first || !hasCashier);
   const [f, setF] = useState({
-    name: printer?.name ?? '', transport: printer?.transport ?? ('network' as PrinterCfg['transport']), host: printer?.host ?? '', port: printer?.port ?? 9100,
-    windowsName: printer?.windowsName ?? '', filePath: printer?.filePath ?? '', paper: printer?.paper ?? 80, codepage: printer?.codepage ?? 'cp850',
-    stations: printer?.stations ?? ['kitchen'], printReceipts: printer?.printReceipts ?? false, autoPrint: printer?.autoPrint ?? true, beep: printer?.beep ?? false, printQr: printer?.printQr ?? true, active: printer?.active ?? true,
+    name: printer?.name ?? (cashierDefault ? 'Caixa' : ''), transport: printer?.transport ?? ('windows' as PrinterCfg['transport']), host: printer?.host ?? '', port: printer?.port ?? 9100,
+    windowsName: printer?.windowsName ?? '', filePath: printer?.filePath ?? '', paper: printer?.paper ?? 58, codepage: printer?.codepage ?? 'cp850',
+    stations: printer?.stations ?? (cashierDefault ? [] : ['kitchen']), printReceipts: printer?.printReceipts ?? cashierDefault, autoPrint: printer?.autoPrint ?? true,
+    beep: printer?.beep ?? false, printQr: printer?.printQr ?? true, cashier: printer?.cashier ?? cashierDefault, active: printer?.active ?? true,
   });
+  const details: WindowsPrinter[] = winPrinters.data?.details ?? (winPrinters.data?.printers ?? []).map((name) => ({ name, port: null, driver: null, offline: false }));
+  const onWindows = winPrinters.data?.platform === 'win32';
   const toggleStation = (s: string) => setF({ ...f, stations: f.stations.includes(s) ? f.stations.filter((x) => x !== s) : [...f.stations, s] });
   return (
     <Modal title={printer ? printer.name : 'Nova impressora'} onClose={onClose} footer={<>
@@ -120,8 +140,8 @@ function PrinterModal({ printer, onClose, onDone }: { printer: PrinterCfg | null
         <Field label="Nome"><Input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Cozinha" /></Field>
         <Field label="Conexão">
           <Select value={f.transport} onChange={(e) => setF({ ...f, transport: e.target.value as PrinterCfg['transport'] })}>
-            <option value="network">Rede (Ethernet/Wi-Fi, porta 9100)</option>
-            <option value="windows">Instalada no Windows (USB/compartilhada)</option>
+            <option value="windows">USB (instalada no Windows)</option>
+            <option value="network">Rede (cabo ou Wi-Fi, porta 9100)</option>
             <option value="file">Arquivo (testes)</option>
           </Select>
         </Field>
@@ -132,11 +152,33 @@ function PrinterModal({ printer, onClose, onDone }: { printer: PrinterCfg | null
           </div>
         )}
         {f.transport === 'windows' && (
-          <Field label="Impressora do Windows" hint="Instale o driver “Generic / Text Only” ou o do fabricante.">
-            {winPrinters.data?.printers.length ? (
-              <Select value={f.windowsName} onChange={(e) => setF({ ...f, windowsName: e.target.value })}><option value="">Selecione…</option>{winPrinters.data.printers.map((p) => <option key={p} value={p}>{p}</option>)}</Select>
-            ) : <Input value={f.windowsName} onChange={(e) => setF({ ...f, windowsName: e.target.value })} placeholder="Nome exato da impressora" />}
-          </Field>
+          <>
+            <Field label="Impressora USB" hint="A lista mostra as impressoras instaladas no Windows deste PC.">
+              <div className="row">
+                {details.length ? (
+                  <Select className="grow" value={f.windowsName} onChange={(e) => setF({ ...f, windowsName: e.target.value })}>
+                    <option value="">Selecione…</option>
+                    {details.map((p) => <option key={p.name} value={p.name}>{p.name}{p.port ? ` — porta ${p.port}` : ''}{p.offline ? ' (desligada)' : ''}</option>)}
+                  </Select>
+                ) : <Input className="grow" value={f.windowsName} onChange={(e) => setF({ ...f, windowsName: e.target.value })} placeholder="Nome exato da impressora no Windows" />}
+                <Button icon={<RefreshCw size={15} />} loading={!winPrinters.data && !winPrinters.error} onClick={() => void winPrinters.reload()}>Atualizar</Button>
+              </div>
+            </Field>
+            {winPrinters.data && !details.length && (
+              <div className="banner small">
+                <Usb size={18} style={{ flex: 'none', marginTop: 2 }} />
+                <div>
+                  {onWindows ? <strong>Nenhuma impressora instalada no Windows.</strong> : <strong>A lista aparece no PC do bar (Windows).</strong>}
+                  <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                    <li>Ligue a impressora no USB do PC do bar e ligue o botão de energia.</li>
+                    <li>Instale o driver que veio com ela (CD ou site do fabricante; nas genéricas de 58 mm costuma se chamar “POS-58”).</li>
+                    <li>Sem driver: Configurações do Windows → Impressoras → Adicionar manualmente → porta <strong>USB001</strong> → fabricante “Generic”, modelo <strong>“Generic / Text Only”</strong>.</li>
+                    <li>Volte aqui e toque em <strong>Atualizar</strong>.</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+          </>
         )}
         {f.transport === 'file' && <Field label="Caminho do arquivo"><Input value={f.filePath} onChange={(e) => setF({ ...f, filePath: e.target.value })} /></Field>}
         <div className="grid-2">
@@ -144,8 +186,16 @@ function PrinterModal({ printer, onClose, onDone }: { printer: PrinterCfg | null
           <Field label="Acentuação" hint="Se sair errado no teste, troque."><Select value={f.codepage} onChange={(e) => setF({ ...f, codepage: e.target.value as PrinterCfg['codepage'] })}><option value="cp850">CP850 (padrão)</option><option value="cp860">CP860 (português)</option><option value="ascii">Sem acentos</option></Select></Field>
         </div>
         <div className="section-label">O que imprimir</div>
-        <label className="check"><input type="checkbox" checked={f.stations.includes('kitchen')} onChange={() => toggleStation('kitchen')} /> Pedidos da cozinha</label>
-        <label className="check"><input type="checkbox" checked={f.stations.includes('bar')} onChange={() => toggleStation('bar')} /> Pedidos de bebidas (balcão)</label>
+        <Switch checked={f.cashier} onChange={(v) => setF({ ...f, cashier: v, printReceipts: v || f.printReceipts })} label="Impressora do caixa"
+          description="Imprime o ticket de cada pedido (venda rápida e comandas) para o cliente levar ao bar, com código de barras para conferir. Pedidos de setores sem impressora própria também saem aqui." />
+        {f.cashier ? (
+          <div className="banner small"><Info size={16} style={{ flex: 'none', marginTop: 2 }} /> Com uma impressora só, tudo sai nela. Quando colocar uma impressora na cozinha ou no bar, cadastre-a com o setor: os pedidos daquele setor passam a sair lá e o caixa continua com o ticket do cliente.</div>
+        ) : (
+          <>
+            <label className="check"><input type="checkbox" checked={f.stations.includes('kitchen')} onChange={() => toggleStation('kitchen')} /> Pedidos da cozinha</label>
+            <label className="check"><input type="checkbox" checked={f.stations.includes('bar')} onChange={() => toggleStation('bar')} /> Pedidos de bebidas (bar)</label>
+          </>
+        )}
         <label className="check"><input type="checkbox" checked={f.printReceipts} onChange={(e) => setF({ ...f, printReceipts: e.target.checked })} /> Conferência de conta e fechamento de caixa</label>
         <Switch checked={f.autoPrint} onChange={(v) => setF({ ...f, autoPrint: v })} label="Impressão automática de pedidos" />
         <Switch checked={f.beep} onChange={(v) => setF({ ...f, beep: v })} label="Bipe ao imprimir" description="Para impressoras de cozinha com buzzer." />

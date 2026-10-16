@@ -115,7 +115,7 @@ describe('migração de código automático', () => {
       insert('a', null, '2026-01-01');
       insert('c', '0001', '2026-01-03');
       insert('d', 'X-9', '2026-01-04');
-      expect(migrate(db).applied).toEqual([target.id]);
+      expect(migrate(db).applied).toEqual(MIGRATIONS.filter((x) => x.id >= target.id).map((x) => x.id));
       const codes = Object.fromEntries(db.all<{ id: string; internal_code: string; version: number }>('SELECT id, internal_code FROM products').map((r) => [r.id, r.internal_code]));
       expect(codes).toEqual({ a: '0002', b: '0003', c: '0001', d: 'X-9' });
       expect(db.value('SELECT version FROM products WHERE id = ?', 'a')).toBe(2);

@@ -1,0 +1,51 @@
+/* Conferir pedido: veredito grande (pode entregar / já entregue / cancelado). */
+.lookup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lookup-verdict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-size: 15px;
+}
+.lookup-verdict strong {
+  font-size: 19px;
+}
+.lookup-verdict.ok {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+.lookup-verdict.info {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.lookup-verdict.warn {
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 16%, transparent);
+}
+.lookup-verdict.bad {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+.lookup-verdict .small {
+  color: var(--text-2);
+}
+.lookup-number {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.lookup-items {
+  margin: 0;
+  padding: 10px 14px;
+  list-style: none;
+  border-radius: 12px;
+  background: var(--fill);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

@@ -96,7 +96,7 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
             <Field label="Código interno" hint={`Em branco: o sistema gera o próximo número${nextCode.data ? ` (${nextCode.data.code})` : ''}.`}>
               <Input value={code} placeholder={nextCode.data ? `Automático: ${nextCode.data.code}` : 'Automático'} onChange={(e) => setCode(e.target.value)} />
             </Field>
-            <Field label="Código de barras"><Input inputMode="numeric" value={barcode} onChange={(e) => setBarcode(e.target.value)} /></Field>
+            <Field label="Código de barras" hint="Clique aqui e bipe o produto com o leitor."><Input inputMode="numeric" data-barcode="field" value={barcode} onChange={(e) => setBarcode(e.target.value)} /></Field>
           </div>
         </details>
       </Card>

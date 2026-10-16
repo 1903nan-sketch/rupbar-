@@ -246,7 +246,7 @@ export class CatalogService {
     const items = this.ctx.db
       .all(
         `SELECT pr.id AS presentation_id, pr.name AS presentation_name, pr.price_cents, p.id AS product_id, p.name AS product_name,
-                p.description, p.photo_attachment_id, p.category_id, COALESCE(p.station, c.station) AS station
+                p.description, p.photo_attachment_id, p.category_id, COALESCE(p.station, c.station) AS station, p.barcode, p.internal_code
          FROM presentations pr JOIN products p ON p.id = pr.product_id JOIN categories c ON c.id = p.category_id
          WHERE pr.active = 1 AND pr.menu_visible = 1 AND p.active = 1 AND p.menu_visible = 1 AND c.active = 1
          ORDER BY c.sort_order, p.name, pr.sort_order, pr.price_cents`,
@@ -258,6 +258,8 @@ export class CatalogService {
           presentationId: r.presentation_id, presentationName: r.presentation_name, priceCents: r.price_cents,
           productId: r.product_id, productName: r.product_name, description: r.description,
           photoUrl: attachmentUrl(r.photo_attachment_id as string | null), categoryId: r.category_id, station: r.station,
+          // Leitor de código de barras no caixa: bipar adiciona o produto.
+          barcode: r.barcode, code: r.internal_code,
           available, soldOut: available === 0,
         };
       });

@@ -1,4 +1,4 @@
-import { AlertTriangle, ChefHat, ClipboardList, ClipboardPlus, Maximize2, Minimize2, PackageMinus, Printer, Wallet, Wind, Zap } from 'lucide-react';
+import { AlertTriangle, ChefHat, ClipboardList, ClipboardPlus, Maximize2, Minimize2, PackageMinus, Printer, ScanBarcode, Wallet, Wind, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, ErrorBox, Loading, PageHeader, Stat } from '../components/ui';
@@ -56,6 +56,9 @@ export function DashboardPage() {
         )}
         {can('orders.create') && (
           <ActionTile icon={<ClipboardPlus size={26} />} title="Lançar na comanda" hint="Digite o número do cartão e escolha os itens" kbd="F3" onClick={() => shell.openLaunch()} />
+        )}
+        {can('orders.view') && (
+          <ActionTile icon={<ScanBarcode size={26} />} title="Conferir pedido" hint="Cliente perdeu o ticket? Veja se pagou e se já retirou" kbd="F4" onClick={shell.openLookup} />
         )}
         {can('comandas.view') && (
           <ActionTile icon={<ClipboardList size={26} />} title="Comandas" hint={plural(data.openComandas, 'aberta agora', 'abertas agora')} onClick={() => navigate('/comandas')} />

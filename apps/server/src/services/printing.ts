@@ -3,9 +3,11 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { backoffMs, comandaPixTxid, firstName, PAYMENT_METHODS, STATIONS, type PaymentMethod, type Station, comandaDisplayNumber } from '@rupbar/core';
 import {
-  renderBillReceipt, renderCashClose, renderOrderTicket, renderTestPage, type CodePage, type PaperWidth, type PrintOptions,
+  backoffMs, comandaPixTxid, displayName, firstName, PAYMENT_METHODS, pickupCode, STATIONS, type PaymentMethod, type Station, comandaDisplayNumber,
+} from '@rupbar/core';
+import {
+  renderBillReceipt, renderCashClose, renderOrderTicket, renderPickupTicket, renderTestPage, type CodePage, type PaperWidth, type PrintOptions,
 } from '@rupbar/core/escpos';
 import { printerSchema } from '@rupbar/core/schemas';
 import { bool, json, type Row } from '../db/db';
@@ -106,14 +108,59 @@ export function sendWindows(printerName: string, data: Uint8Array, timeoutMs = 2
   });
 }
 
-export function listWindowsPrinters(): Promise<string[]> {
+export interface WindowsPrinter {
+  name: string;
+  port: string | null;
+  driver: string | null;
+  offline: boolean;
+}
+
+/** Lê a saída JSON do PowerShell (um objeto ou uma lista). */
+export function parseWindowsPrinters(out: string): WindowsPrinter[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(out.trim() || '[]');
+  } catch {
+    return [];
+  }
+  const list = (Array.isArray(data) ? data : [data]) as Record<string, unknown>[];
+  return list
+    .filter((p) => p && typeof p.Name === 'string' && p.Name)
+    .map((p) => ({
+      name: String(p.Name),
+      port: typeof p.PortName === 'string' ? p.PortName : null,
+      driver: typeof p.DriverName === 'string' ? p.DriverName : null,
+      offline: p.WorkOffline === true,
+    }));
+}
+
+/**
+ * Impressoras instaladas no Windows (inclusive as USB), com porta e driver.
+ * Usa Win32_Printer, que funciona também no serviço (conta do sistema).
+ */
+export function listWindowsPrinters(timeoutMs = 15_000): Promise<WindowsPrinter[]> {
   if (process.platform !== 'win32') return Promise.resolve([]);
   return new Promise((resolve) => {
-    const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-Printer | Select-Object -ExpandProperty Name'], { windowsHide: true });
+    const ps = spawn(
+      'powershell.exe',
+      [
+        '-NoProfile', '-NonInteractive', '-Command',
+        // UTF-8 na saída: nomes com acento ("Térmica") precisam chegar iguais para o spooler encontrar a impressora.
+        '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name,PortName,DriverName,WorkOffline | ConvertTo-Json -Compress',
+      ],
+      { windowsHide: true },
+    );
     let out = '';
+    const timer = setTimeout(() => ps.kill(), timeoutMs);
     ps.stdout.on('data', (d) => (out += String(d)));
-    ps.on('error', () => resolve([]));
-    ps.on('close', () => resolve(out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)));
+    ps.on('error', () => {
+      clearTimeout(timer);
+      resolve([]);
+    });
+    ps.on('close', () => {
+      clearTimeout(timer);
+      resolve(parseWindowsPrinters(out));
+    });
   });
 }
 
@@ -152,7 +199,7 @@ export class PrintingService {
     return {
       id: p.id, name: p.name, transport: p.transport, host: p.host, port: p.port, windowsName: p.windows_name, filePath: p.file_path,
       paper: p.paper, codepage: p.codepage, stations: json<Station[]>(p.stations_json, []), printReceipts: bool(p.print_receipts),
-      autoPrint: bool(p.auto_print), beep: bool(p.beep), printQr: !this.qrOff().has(String(p.id)), active: bool(p.active),
+      autoPrint: bool(p.auto_print), beep: bool(p.beep), printQr: !this.qrOff().has(String(p.id)), cashier: bool(p.cashier), active: bool(p.active),
       lastStatus: p.last_status, lastError: p.last_error,
     };
   }
@@ -187,17 +234,17 @@ export class PrintingService {
       if (id) {
         const r = this.ctx.db.run(
           `UPDATE printers SET name=?, transport=?, host=?, port=?, windows_name=?, file_path=?, paper=?, codepage=?, stations_json=?,
-             print_receipts=?, auto_print=?, beep=?, active=?, updated_at=? WHERE id=?`,
+             print_receipts=?, auto_print=?, beep=?, cashier=?, active=?, updated_at=? WHERE id=?`,
           input.name, input.transport, input.host, input.port, input.windowsName, input.filePath, input.paper, input.codepage,
-          JSON.stringify(input.stations), input.printReceipts, input.autoPrint, input.beep, input.active, now, id,
+          JSON.stringify(input.stations), input.printReceipts, input.autoPrint, input.beep, input.cashier, input.active, now, id,
         );
         if (!r.changes) throw notFound('Impressora');
       } else {
         this.ctx.db.run(
           `INSERT INTO printers (id, name, transport, host, port, windows_name, file_path, paper, codepage, stations_json, print_receipts,
-             auto_print, beep, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+             auto_print, beep, cashier, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           printerId, input.name, input.transport, input.host, input.port, input.windowsName, input.filePath, input.paper, input.codepage,
-          JSON.stringify(input.stations), input.printReceipts, input.autoPrint, input.beep, input.active, now, now,
+          JSON.stringify(input.stations), input.printReceipts, input.autoPrint, input.beep, input.cashier, input.active, now, now,
         );
       }
       this.setPrintQr(printerId, input.printQr);
@@ -232,7 +279,17 @@ export class PrintingService {
     return id;
   }
 
-  /** Gera os cupons de produção de um pedido, um por setor, para as impressoras do setor. */
+  /** Impressoras do caixa ativas (com `manual`, também as sem impressão automática). */
+  private cashierPrinters(manual = false): Row[] {
+    return this.ctx.db.all('SELECT * FROM printers WHERE active = 1 AND cashier = 1').filter((p) => manual || bool(p.auto_print));
+  }
+
+  /**
+   * Cupons de um pedido. Setor com impressora própria recebe o cupom de
+   * produção; a impressora do caixa recebe o ticket do pedido (o cliente leva
+   * ao bar) com todos os itens, que também serve aos setores sem impressora.
+   * Na venda rápida o ticket sai depois do pagamento (enqueuePickupTicket).
+   */
   enqueueOrderTickets(orderId: string, opts: { reprint?: boolean; ticketId?: string; manual?: boolean; createdBy?: string | null } = {}): string[] {
     const tickets = this.ctx.db.all(
       `SELECT t.*, o.number, o.notes AS order_notes, o.created_at AS order_created, c.table_label, c.number AS comanda_number, c.card_number, c.kind AS comanda_kind, c.customer_name,
@@ -241,12 +298,14 @@ export class PrintingService {
        WHERE t.order_id = ? ${opts.ticketId ? 'AND t.id = ?' : ''}`,
       orderId, ...(opts.ticketId ? [opts.ticketId] : []),
     );
-    const printers = this.ctx.db.all('SELECT * FROM printers WHERE active = 1');
+    const dedicated = this.ctx.db.all('SELECT * FROM printers WHERE active = 1 AND cashier = 0');
     const barName = this.settings.branding().tradeName;
     const jobs: string[] = [];
     for (const t of tickets) {
       if (t.status === 'canceled') continue;
-      const targets = printers.filter((p) => json<string[]>(p.stations_json, []).includes(String(t.station)) && (opts.manual || bool(p.auto_print)));
+      let targets = dedicated.filter((p) => json<string[]>(p.stations_json, []).includes(String(t.station)) && (opts.manual || bool(p.auto_print)));
+      // Reimpressão pela produção de um setor sem impressora própria: sai no caixa.
+      if (!targets.length && opts.ticketId) targets = this.cashierPrinters(true);
       if (!targets.length) continue;
       const items = this.ctx.db.all(
         "SELECT product_name, presentation_name, quantity, notes FROM comanda_items WHERE order_id = ? AND station = ? AND status = 'active' ORDER BY created_at",
@@ -278,7 +337,85 @@ export class PrintingService {
         jobs.push(this.enqueue(String(p.id), 'order_ticket', `Pedido ${t.number} — ${STATIONS[t.station as Station]}`, payload, { type: 'order_ticket', id: String(t.id) }, opts.createdBy ?? null));
       }
     }
+    if (!opts.ticketId && this.ctx.db.value('SELECT c.kind FROM orders o JOIN comandas c ON c.id = o.comanda_id WHERE o.id = ?', orderId) !== 'quick') {
+      jobs.push(...this.enqueuePickupTicket(orderId, { manual: opts.manual, createdBy: opts.createdBy }));
+    }
     return jobs;
+  }
+
+  /**
+   * Ticket do pedido na impressora do caixa: número, nome, itens, PAGO (venda
+   * rápida) ou a comanda, e o código de barras para conferir depois. Uma nova
+   * impressão do mesmo pedido sai como "2ª via".
+   */
+  enqueuePickupTicket(orderId: string, opts: { manual?: boolean; createdBy?: string | null } = {}): string[] {
+    const o = this.ctx.db.get(
+      `SELECT o.id, o.number, o.business_day, o.notes, o.created_at, c.id AS comanda_id, c.number AS comanda_number, c.card_number, c.kind AS comanda_kind,
+              c.status AS comanda_status, c.customer_name, c.table_label, u.name AS waiter_name
+       FROM orders o JOIN comandas c ON c.id = o.comanda_id LEFT JOIN users u ON u.id = o.created_by WHERE o.id = ?`,
+      orderId,
+    );
+    if (!o) return [];
+    const targets = this.cashierPrinters(opts.manual);
+    if (!targets.length) return [];
+    const items = this.ctx.db.all(
+      "SELECT product_name, presentation_name, quantity, notes FROM comanda_items WHERE order_id = ? AND status = 'active' ORDER BY created_at",
+      orderId,
+    );
+    if (!items.length) return [];
+    const quick = o.comanda_kind === 'quick';
+    const paid = quick && o.comanda_status === 'closed'
+      ? {
+          total: this.comandas.totals(String(o.comanda_id)).total,
+          methods: this.ctx.db
+            .all<{ method: string }>("SELECT DISTINCT method FROM payments WHERE comanda_id = ? AND status = 'active'", String(o.comanda_id))
+            .map((r) => PAYMENT_METHODS[r.method as PaymentMethod] ?? r.method),
+        }
+      : null;
+    const reprint = !!this.ctx.db.value("SELECT 1 FROM print_jobs WHERE kind = 'pickup_ticket' AND ref_id = ? AND status <> 'canceled' LIMIT 1", orderId);
+    const barName = this.settings.branding().tradeName;
+    return targets.map((p) =>
+      this.enqueue(
+        String(p.id), 'pickup_ticket', `Ticket do pedido ${o.number}${reprint ? ' (2ª via)' : ''}`,
+        renderPickupTicket(
+          {
+            barName,
+            orderNumber: Number(o.number),
+            code: pickupCode(String(o.business_day), Number(o.number)),
+            customerName: displayName(o.customer_name as string) || null,
+            comandaNumber: quick ? null : comandaDisplayNumber({ number: Number(o.comanda_number), cardNumber: o.card_number as number | null, kind: String(o.comanda_kind) }),
+            table: (o.table_label as string) ?? null,
+            waiterName: (o.waiter_name as string) ?? null,
+            createdAt: new Date(String(o.created_at)),
+            items: items.map((i) => ({
+              quantity: Number(i.quantity),
+              name: i.presentation_name === 'Unidade' ? String(i.product_name) : `${i.product_name} (${i.presentation_name})`,
+              notes: (i.notes as string) ?? null,
+            })),
+            notes: (o.notes as string) ?? null,
+            paid,
+            reprint,
+          },
+          this.opts(p),
+        ),
+        { type: 'order', id: orderId }, opts.createdBy ?? null,
+      ),
+    );
+  }
+
+  /** Imprime de novo o ticket do pedido (cliente perdeu o papel): sai como 2ª via. */
+  reprintPickupTicket(actor: Actor, orderId: string) {
+    requirePerm(actor, 'cash.payment');
+    if (!this.ctx.db.value('SELECT id FROM orders WHERE id = ?', orderId)) throw notFound('Pedido');
+    if (!this.cashierPrinters(true).length) {
+      throw badRequest('Nenhuma impressora do caixa. Em Configurações → Impressoras, marque "Impressora do caixa".', 'NO_CASHIER_PRINTER');
+    }
+    return this.ctx.tx(() => {
+      const jobs = this.enqueuePickupTicket(orderId, { manual: true, createdBy: actor.userId });
+      if (!jobs.length) throw badRequest('Este pedido não tem itens para imprimir.', 'EMPTY_ORDER');
+      this.ctx.audit(actor, 'printing.pickup_ticket', 'order', orderId, { jobs: jobs.length });
+      return { jobs };
+    });
   }
 
   printBill(actor: Actor, comandaId: string) {

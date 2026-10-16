@@ -64,6 +64,9 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 - **Aba Narguilé no celular do garçom**: alugar (sabor em um toque), trocar rosh, narguilé do cliente e pacote de essência fechado.
 - **Essência em pacote fechado**: o mesmo produto é vendido fechado no cardápio e usado por grama no narguilé, sem cobrar a essência do aluguel.
 - **Pix**: já vem ligado ao cadastrar a chave, e o caixa liga o Pix na própria tela de pagamento.
+- **Impressora USB do caixa**: imprime o ticket de cada pedido (venda rápida e comandas) para o cliente retirar no bar, com código de barras. Com uma impressora só, tudo sai nela; impressoras de setor podem ser adicionadas depois.
+- **Conferir pedido (F4)**: cliente perdeu o ticket? Bipe ou busque pelo número/nome e veja se pagou e se já retirou; 2ª via e “Marcar como entregue”.
+- **Leitor de código de barras**: bipar o produto na venda rápida ou no “Lançar na comanda” adiciona ao pedido.
 
 ### Novidades da versão 0.2.0
 

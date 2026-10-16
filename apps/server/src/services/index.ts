@@ -105,13 +105,17 @@ export function createServices(opts: CreateOptions) {
     printing.printCashClose(sessionId, null);
     notifications.enqueueCashClosed(sessionId);
   };
-  sales.onReceipt = (comandaId, actor) => {
-    try {
-      printing.printBill(actor, comandaId);
-    } catch (err) {
-      // Sem impressora de contas a venda continua válida; só não sai o comprovante.
-      ctx.log.warn('comprovante da venda rápida não impresso', { error: (err as Error).message });
+  sales.onCompleted = ({ comandaId, orderId, printReceipt }, actor) => {
+    const tickets = settings.operation().autoPrintOrders ? printing.enqueuePickupTicket(orderId, { createdBy: actor.userId }).length : 0;
+    if (printReceipt) {
+      try {
+        printing.printBill(actor, comandaId);
+      } catch (err) {
+        // Sem impressora de contas a venda continua válida; só não sai o comprovante.
+        ctx.log.warn('comprovante da venda rápida não impresso', { error: (err as Error).message });
+      }
     }
+    return tickets;
   };
 
   return {

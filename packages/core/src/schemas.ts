@@ -544,6 +544,11 @@ export const printerSchema = z.object({
   beep: z.boolean().default(false),
   /** Imprime o QR Code do Pix na conta (desative em impressoras sem suporte a QR). */
   printQr: z.boolean().default(true),
+  /**
+   * Impressora do caixa: imprime o ticket de cada pedido (venda rápida e
+   * comandas) para o cliente retirar e cobre os setores sem impressora própria.
+   */
+  cashier: z.boolean().default(false),
   active: z.boolean().default(true),
 });
 export type PrinterInput = z.infer<typeof printerSchema>;

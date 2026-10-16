@@ -328,6 +328,9 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/admin/losses/:id/delete', (req, a) => s.admin.deleteLoss(a, id(req), req.body));
   r('POST', '/api/admin/hookah-sessions/:id/delete', (req, a) => s.admin.deleteHookahSession(a, id(req), req.body));
   r('GET', '/api/orders/mine', (_req, a) => s.comandas.myOrders(a));
+  r('GET', '/api/orders/lookup', (req, a) => s.comandas.lookupOrders(a, q(req).q));
+  r('POST', '/api/orders/:id/picked-up', (req, a) => s.comandas.markPickedUp(a, id(req)));
+  r('POST', '/api/orders/:id/ticket', (req, a) => s.printing.reprintPickupTicket(a, id(req)));
   r('GET', '/api/orders/:id', (req, a) => {
     requirePerm(a, 'orders.view');
     return s.comandas.orderView(id(req));
@@ -389,7 +392,8 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('GET', '/api/printers', (_req, a) => s.printing.list(a));
   r('GET', '/api/printers/windows', async (_req, a) => {
     requirePerm(a, 'printers.manage');
-    return { printers: await listWindowsPrinters(), platform: process.platform };
+    const details = await listWindowsPrinters();
+    return { printers: details.map((p) => p.name), details, platform: process.platform };
   });
   r('POST', '/api/printers', (req, a) => s.printing.save(a, null, req.body));
   r('PUT', '/api/printers/:id', (req, a) => s.printing.save(a, id(req), req.body));

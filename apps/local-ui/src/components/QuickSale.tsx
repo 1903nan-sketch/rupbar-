@@ -10,6 +10,9 @@ import { Button, Input, MoneyInput, Switch, useToast } from './ui';
 
 interface SaleResult {
   comandaId: string;
+  orderId: string | null;
+  /** Ticket do pedido foi para a impressora do caixa. */
+  ticketPrinted?: boolean;
   saleNumber: number;
   orderNumber: number | null;
   customerName: string;
@@ -117,6 +120,16 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const reprintTicket = async () => {
+    if (!result?.orderId) return;
+    try {
+      await api.post(`/api/orders/${result.orderId}/ticket`);
+      toast.success('2ª via do ticket enviada para a impressora do caixa');
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
   const reset = () => {
     cart.clear();
     setName('');
@@ -171,6 +184,15 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
             <div className="quick-done-values">
               <div><span className="muted small">Total</span><strong className="num">{formatBRL(result.totalCents)}</strong></div>
               {result.changeCents > 0 && <div className="quick-change"><span className="small">Troco</span><strong className="num">{formatBRL(result.changeCents)}</strong></div>}
+            </div>
+            <div className={`banner small ${result.ticketPrinted ? 'success' : 'warning'}`} style={{ textAlign: 'left' }}>
+              <Printer size={18} style={{ flex: 'none' }} />
+              <span className="grow">
+                {result.ticketPrinted
+                  ? 'Ticket do pedido impresso no caixa: entregue ao cliente para retirar no bar.'
+                  : 'O ticket não foi impresso: marque uma impressora como "Impressora do caixa" em Configurações → Impressoras.'}
+              </span>
+              {result.orderId && <Button size="small" variant="plain" onClick={() => void reprintTicket()}>{result.ticketPrinted ? '2ª via' : 'Imprimir'}</Button>}
             </div>
             <div className="row" style={{ justifyContent: 'center' }}>
               <Button onClick={onClose}>Fechar</Button>
@@ -235,7 +257,7 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
                 </Button>
               )}
               {change > 0 && <div className="quick-change pop-in"><span>Troco</span><strong className="num">{formatBRL(change)}</strong></div>}
-              <Switch checked={print} onChange={setPrint} label={<span className="row"><Printer size={15} /> Imprimir comprovante</span>} />
+              <Switch checked={print} onChange={setPrint} label={<span className="row"><Printer size={15} /> Imprimir também o comprovante de pagamento</span>} description="O ticket do pedido sai sempre na impressora do caixa." />
               <Button variant="primary" size="large" block disabled={!ready} loading={busy} icon={<CheckCircle2 size={20} />} onClick={finish}>
                 Finalizar {total > 0 && formatBRL(total)}
               </Button>

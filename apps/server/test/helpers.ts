@@ -47,7 +47,7 @@ export async function createEnv(extra: Partial<CreateOptions> = {}): Promise<Tes
     printerTransport: {
       async send(printer, data) {
         if (printerFail.on) throw new Error('Impressora desligada');
-        printed.push({ printer: String(printer.name), bytes: data });
+        printed.push({ printer: String(printer.printer_name ?? printer.name), bytes: data });
       },
     },
     ...extra,

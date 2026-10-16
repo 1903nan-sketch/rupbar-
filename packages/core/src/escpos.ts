@@ -201,6 +201,34 @@ export class EscPosBuilder {
       .raw([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]); // função 181: imprime
   }
 
+  /**
+   * Código de barras CODE128 (GS k, m = 73) com o texto embaixo. Letras no
+   * conjunto B e, havendo número par de dígitos no fim, os dígitos no conjunto
+   * C (dois por barra), para caber em 58 mm. Só ASCII.
+   */
+  barcode128(data: string, opts: { height?: number; moduleWidth?: number; hri?: boolean } = {}): this {
+    const ascii = Array.from(data, (ch) => {
+      const c = ch.codePointAt(0)!;
+      return c >= 0x20 && c < 0x7f ? c : 0x3f;
+    });
+    if (!ascii.length) return this;
+    const m = /^(\D*)(\d+)$/.exec(data);
+    let body: number[];
+    if (m && m[2]!.length >= 4 && m[2]!.length % 2 === 0) {
+      const digits = m[2]!;
+      const pairs: number[] = [];
+      for (let i = 0; i < digits.length; i += 2) pairs.push(Number(digits.slice(i, i + 2)));
+      body = m[1] ? [0x7b, 0x42, ...encodeText(m[1], 'ascii'), 0x7b, 0x43, ...pairs] : [0x7b, 0x43, ...pairs];
+    } else {
+      body = [0x7b, 0x42, ...ascii];
+    }
+    return this.raw([GS, 0x68, Math.max(24, Math.min(255, opts.height ?? 64))]) // altura em pontos
+      .raw([GS, 0x77, Math.max(1, Math.min(6, opts.moduleWidth ?? 2))]) // largura do módulo
+      .raw([GS, 0x48, opts.hri === false ? 0 : 2]) // texto embaixo
+      .raw([GS, 0x66, 0])
+      .raw([GS, 0x6b, 73, body.length, ...body]);
+  }
+
   build(): Uint8Array {
     return Uint8Array.from(this.bytes);
   }
@@ -268,6 +296,64 @@ export function renderOrderTicket(data: OrderTicketData, opts: PrintOptions): Ui
   }
   p.separator();
   p.align('center').line(fmtDateTime(data.createdAt));
+  return p.cut().build();
+}
+
+export interface PickupTicketData {
+  barName: string;
+  orderNumber: number;
+  /** Código do ticket (código de barras): ver pickupCode(). */
+  code: string;
+  /** Nome para chamar ("Carlos S."). */
+  customerName: string | null;
+  /** Número do cartão/comanda; null na venda rápida. */
+  comandaNumber: number | null;
+  table: string | null;
+  waiterName: string | null;
+  createdAt: Date;
+  items: { quantity: number; name: string; notes?: string | null }[];
+  notes?: string | null;
+  /** Venda rápida: já pago no caixa. */
+  paid: { total: number; methods: string[] } | null;
+  /** 2ª via (cliente perdeu o ticket). */
+  reprint?: boolean;
+}
+
+/**
+ * Ticket do pedido para o cliente levar ao bar e retirar (impresso no caixa).
+ * Com uma impressora só, também serve de pedido de produção. O código de
+ * barras abre a conferência do pedido (pago? já entregue?) no RupBar.
+ */
+export function renderPickupTicket(data: PickupTicketData, opts: PrintOptions): Uint8Array {
+  const p = new EscPosBuilder(opts.paper, opts.codepage);
+  if (opts.beep) p.beep(1);
+  p.align('center').bold(true).wrapped(data.barName).bold(false);
+  if (data.reprint) p.bold(true).size(2, 2).line('2ª VIA').size(1, 1).bold(false);
+  p.line(data.paid ? 'VENDA NO CAIXA' : 'PEDIDO');
+  p.size(2, 2).bold(true).line(`PEDIDO ${data.orderNumber}`).bold(false).size(1, 1);
+  if (data.customerName) p.size(2, 2).bold(true).wrapped(data.customerName, 2).bold(false).size(1, 1);
+  const where = [data.comandaNumber !== null ? `Comanda ${data.comandaNumber}` : null, data.table ? `Mesa ${data.table}` : null].filter(Boolean).join(' · ');
+  if (where) p.size(1, 2).bold(true).line(where).bold(false).size(1, 1);
+  p.align('left').separator();
+  for (const item of data.items) {
+    p.bold(true).size(1, 2);
+    const head = `${item.quantity}x `;
+    wrap(item.name, p.columns - head.length).forEach((l, i) => p.line((i === 0 ? head : ' '.repeat(head.length)) + l));
+    p.size(1, 1).bold(false);
+    if (item.notes) for (const l of wrap(`> ${item.notes}`, p.columns - 2)) p.line('  ' + l);
+  }
+  if (data.notes) p.separator().bold(true).line('OBSERVAÇÕES:').bold(false).wrapped(data.notes);
+  p.separator().align('center');
+  if (data.paid) {
+    p.size(2, 2).bold(true).line('PAGO').size(1, 1);
+    p.line(`${formatBRL(data.paid.total)}${data.paid.methods.length ? ` · ${data.paid.methods.join(' + ')}` : ''}`).bold(false);
+  } else if (data.comandaNumber !== null) {
+    p.bold(true).line(`Lançado na comanda ${data.comandaNumber}`).bold(false).line('Pagamento no caixa, na saída');
+  }
+  // O código vai também em texto: há impressoras genéricas que não imprimem o texto do código de barras.
+  p.feed(1).barcode128(data.code, { height: 60, moduleWidth: 2, hri: false }).line().line(data.code);
+  p.line(`${fmtDateTime(data.createdAt)}${data.waiterName ? ` · ${data.waiterName}` : ''}`);
+  p.wrapped('Entregue este ticket no bar para retirar o pedido.');
   return p.cut().build();
 }
 

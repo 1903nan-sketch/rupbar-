@@ -8,7 +8,7 @@
 // Uso: pnpm --filter @rupbar/local-ui build && pnpm --filter @rupbar/server bundle
 //      node tests/e2e/smoke.mjs [pasta-de-capturas]
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,7 +93,7 @@ try {
       { name: 'Dose dupla 100 ml', priceCents: 5490, components: [{ productId: null, qty: 100_000 }] },
     ],
   });
-  await api('POST', '/api/products', { name: 'Batata frita', categoryId: cat('Porções'), measure: 'unit', stockTracked: false, presentations: [{ name: 'Porção', priceCents: 3890 }] });
+  await api('POST', '/api/products', { name: 'Batata frita', categoryId: cat('Porções'), measure: 'unit', stockTracked: false, barcode: '7891234567895', presentations: [{ name: 'Porção', priceCents: 3890 }] });
   await api('POST', '/api/stock/purchases', { items: [{ productId: whisky.id, packages: 2, packageQty: 1_000_000, totalCostCents: 30_000 }] });
   // Essência: por grama no narguilé e em pacote fechado no cardápio.
   const essence = await api('POST', '/api/products', {
@@ -112,6 +112,23 @@ try {
   await page.getByText('Pix ligado').waitFor();
   assert((await api('GET', '/api/settings/pix')).enabled === true, 'o Pix deveria ficar ligado ao salvar a chave pela primeira vez');
 
+  // Impressora do caixa (aqui gravando em arquivo): a primeira já vem como "Impressora do caixa".
+  const ticketFile = join(dataDir, 'caixa.prn');
+  const ticketText = () => (existsSync(ticketFile) ? readFileSync(ticketFile).toString('latin1') : '');
+  const waitTicket = async (needle) => {
+    for (let i = 0; i < 40 && !ticketText().includes(needle); i++) await page.waitForTimeout(250);
+    assert(ticketText().includes(needle), `ticket do caixa deveria conter "${needle}"`);
+  };
+  await page.goto(B + '/configuracoes/impressoras');
+  await page.getByRole('button', { name: 'Adicionar impressora' }).click();
+  const pm = page.locator('.modal');
+  await pm.getByLabel('Conexão').selectOption('file');
+  await pm.getByLabel('Caminho do arquivo').fill(ticketFile);
+  await pm.getByRole('button', { name: 'Salvar' }).click();
+  await page.locator('.badge', { hasText: 'Caixa · ticket de cada pedido' }).waitFor();
+  const printers = await api('GET', '/api/printers');
+  assert(printers.length === 1 && printers[0].cashier && printers[0].paper === 58, 'primeira impressora deveria ser a do caixa, 58 mm');
+
   // 3. Comanda e pedido pela interface
   await page.goto(B + '/comandas');
   await page.getByRole('button', { name: 'Nova comanda' }).click();
@@ -129,6 +146,8 @@ try {
   await modal.getByRole('button', { name: 'Enviar pedido' }).click();
   await page.locator('text=Pedido 1').first().waitFor();
   await page.screenshot({ path: join(out, '02-comanda.png') });
+  await waitTicket('PEDIDO 1');
+  assert(ticketText().includes('Comanda 12'), 'ticket do pedido da comanda deveria trazer o número do cartão');
   const stock = (await api('GET', `/api/products/${whisky.id}`)).stockQty;
   assert(stock === 1_950_000, `estoque após dose de 50 ml deveria ser 1.950.000, veio ${stock}`);
 
@@ -176,16 +195,34 @@ try {
   await page.getByRole('button', { name: /Venda rápida.*Balcão/ }).click();
   const quick = page.locator('.quick-sale');
   await quick.locator('.menu-tile').first().waitFor();
-  await quick.getByRole('button', { name: /Adicionar Batata/ }).click();
+  // Leitor de código de barras: "digita" rápido e dá Enter; o produto entra no pedido.
+  await page.keyboard.type('7891234567895', { delay: 5 });
+  await page.keyboard.press('Enter');
+  await quick.locator('.cart-line', { hasText: 'Batata frita' }).waitFor();
+  assert((await quick.getByLabel('Buscar produto').inputValue()) === '', 'o código bipado não deveria ficar na busca');
   await quick.getByPlaceholder('Ex.: Juliana').fill('Juliana Prado');
   await quick.getByRole('radio', { name: 'Débito' }).click();
   await quick.getByRole('button', { name: /Finalizar/ }).click();
   await quick.locator('.quick-call-name', { hasText: 'Juliana' }).waitFor();
+  await quick.getByText('Ticket do pedido impresso no caixa').waitFor();
   await page.waitForTimeout(600);
   await page.screenshot({ path: join(out, '04b-venda-rapida.png') });
+  await waitTicket('PAGO');
   await quick.getByRole('button', { name: 'Fechar', exact: true }).last().click();
   await page.goto(B + '/producao');
   await page.locator('.kds-ticket', { hasText: 'Juliana' }).locator('.kds-tag', { hasText: 'Venda rápida' }).waitFor();
+
+  // Cliente perdeu o ticket: bipar o código (ou buscar pelo nome) mostra se pagou e se já retirou.
+  const [julianaOrder] = await api('GET', '/api/orders/lookup?q=juliana');
+  assert(julianaOrder && julianaOrder.payment === 'paid', 'venda rápida deveria constar como paga');
+  await page.keyboard.type(julianaOrder.code, { delay: 5 });
+  await page.keyboard.press('Enter');
+  const lookup = page.locator('.modal', { hasText: 'Conferir pedido' });
+  await lookup.getByText('Pago · pode entregar').waitFor();
+  await page.screenshot({ path: join(out, '04d-conferir-pedido.png') });
+  await lookup.getByRole('button', { name: 'Marcar como entregue' }).click();
+  await lookup.getByText(/Já entregue às/).waitFor();
+  await page.keyboard.press('Escape');
 
   // 5c. Lançar na comanda pelo número do cartão (atalho F3). O cartão 12 já
   // foi encerrado, então está livre: abre a comanda na hora e lança.

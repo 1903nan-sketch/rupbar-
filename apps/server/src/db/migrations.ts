@@ -739,6 +739,22 @@ const M006 = /* sql */ `
 ALTER TABLE products ADD COLUMN unit_label TEXT;
 `;
 
+/**
+ * Impressora do caixa (ticket de cada pedido para o cliente retirar) e
+ * registro de entrega do pedido (conferência quando o cliente perde o ticket).
+ */
+const M007 = /* sql */ `
+ALTER TABLE printers ADD COLUMN cashier INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN picked_up_at TEXT;
+ALTER TABLE orders ADD COLUMN picked_up_by TEXT;
+`;
+
+/** Com uma impressora só, ela passa a ser a do caixa: tudo sai nela. */
+function singlePrinterIsCashier(db: Db) {
+  const active = db.all<{ id: string }>('SELECT id FROM printers WHERE active = 1');
+  if (active.length === 1) db.run('UPDATE printers SET cashier = 1, print_receipts = 1 WHERE id = ?', active[0]!.id);
+}
+
 export interface Migration {
   id: number;
   name: string;
@@ -754,6 +770,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 4, name: 'correções da conta mestre', sql: M004 },
   { id: 5, name: 'anúncios da TV de retirada', sql: M005 },
   { id: 6, name: 'código automático e unidade avulsa dos produtos', sql: M006, run: (db) => void backfillProductCodes(db, new Date().toISOString()) },
+  { id: 7, name: 'impressora do caixa e entrega do pedido', sql: M007, run: singlePrinterIsCashier },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

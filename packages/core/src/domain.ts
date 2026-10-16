@@ -122,11 +122,31 @@ export type SyncStatus = keyof typeof SYNC_STATUS;
 
 export const PRINT_JOB_KINDS = {
   order_ticket: 'Pedido de produção',
+  pickup_ticket: 'Ticket do pedido (cliente)',
   receipt: 'Conferência de conta',
   cash_close: 'Fechamento de caixa',
   test: 'Teste de impressão',
 } as const;
 export type PrintJobKind = keyof typeof PRINT_JOB_KINDS;
+
+/**
+ * Código do ticket do pedido (vai no código de barras): "RB" + dia de
+ * movimento (AAMMDD) + número do pedido. Ex.: RB2610160042. A numeração dos
+ * pedidos recomeça a cada dia, por isso o dia faz parte do código.
+ */
+export function pickupCode(businessDay: string, orderNumber: number): string {
+  const [y = '', m = '', d = ''] = businessDay.split('-');
+  return `RB${y.slice(-2)}${m}${d}${String(orderNumber).padStart(orderNumber > 9999 ? 6 : 4, '0')}`;
+}
+
+/** Lê o código do ticket (bipado ou digitado). Aceita minúsculas, espaços e hífens. */
+export function parsePickupCode(raw: string): { businessDay: string; orderNumber: number } | null {
+  const m = /^RB(\d{2})(\d{2})(\d{2})(\d{4}|\d{6})$/.exec(raw.replace(/[\s-]/g, '').toUpperCase());
+  if (!m) return null;
+  const [, yy, mm, dd, n] = m;
+  if (Number(mm) < 1 || Number(mm) > 12 || Number(dd) < 1 || Number(dd) > 31) return null;
+  return { businessDay: `20${yy}-${mm}-${dd}`, orderNumber: Number(n) };
+}
 
 // ------------------------------------------------------------- comandas
 
