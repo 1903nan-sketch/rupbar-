@@ -16,6 +16,6 @@
     "dev:ui": "pnpm --filter @rupbar/local-ui dev",
     "dev:panel": "pnpm --filter @rupbar/owner-panel dev",
     "bundle:server": "pnpm --filter @rupbar/local-ui build && pnpm --filter @rupbar/server bundle",
-    "build:installer": "pnpm bundle:server && cargo build --release --manifest-path apps/service-host/Cargo.toml && pnpm --filter @rupbar/desktop build:installer"
+    "build:installer": "pnpm bundle:server && cargo build --release --manifest-path apps/service-host/Cargo.toml --config apps/service-host/.cargo/config.toml && pnpm --filter @rupbar/desktop build:installer"
   }
 }

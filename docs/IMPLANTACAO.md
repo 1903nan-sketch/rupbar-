@@ -133,6 +133,7 @@ Avisos disponíveis: estoque baixo (padrão) e resumo do fechamento de caixa. Os
 
 | Sintoma | Verifique |
 |---|---|
+| Erro “VCRUNTIME140.dll não foi encontrado” (rupbar-service.exe) | Versões até a 0.2.0 dependiam do Visual C++ Redistributable. Instale a versão nova por cima (o serviço já leva a biblioteca embutida) ou instale o “Microsoft Visual C++ Redistributable x64” do site da Microsoft e reinstale o RupBar. |
 | Janela fica em “Iniciando o servidor local…” | `services.msc` → RupBar Server; logs em `C:\ProgramData\RupBar\logs\service.log` e `rupbar-server.log` |
 | Celular não abre o endereço | Mesmo Wi-Fi? Rede do Windows como Privada? IP mudou (veja Conectar dispositivo)? |
 | Impressora não imprime | Configurações → Impressoras → histórico; teste de impressão; IP/porta 9100 |

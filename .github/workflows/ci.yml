@@ -136,8 +136,8 @@ jobs:
         run: |
           pnpm --filter @rupbar/local-ui build
           pnpm --filter @rupbar/server bundle
-      - name: Serviço do Windows
-        run: cargo build --release --manifest-path apps/service-host/Cargo.toml
+      - name: Serviço do Windows (biblioteca C embutida, sem Visual C++ Redistributable)
+        run: cargo build --release --manifest-path apps/service-host/Cargo.toml --config apps/service-host/.cargo/config.toml
       - name: App Android do garçom (servido pelo PC em /download/rupbar-garcom.apk)
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -148,6 +148,18 @@ jobs:
         run: pnpm --filter @rupbar/desktop prepare-resources
       - name: Build do instalador
         run: pnpm --filter @rupbar/desktop tauri build
+      - name: Conferir que nenhum executável depende do VCRUNTIME140.dll
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { Write-Error 'dumpbin.exe não encontrado'; exit 1 }
+          $exes = @('apps/service-host/target/release/rupbar-service.exe', 'apps/desktop/src-tauri/target/release/rupbar-desktop.exe')
+          foreach ($exe in $exes) {
+            $deps = & $dumpbin /nologo /dependents $exe | Out-String
+            Write-Host "== $exe"; Write-Host $deps
+            if ($deps -match '(?i)vcruntime|msvcp') { Write-Error "$exe depende do Visual C++ Redistributable"; exit 1 }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: RupBar-instalador-windows

@@ -1,0 +1,9 @@
+# O serviço roda em PCs de bar recém-formatados, sem o "Visual C++
+# Redistributable": a biblioteca C da Microsoft vai embutida no executável
+# (sem depender do VCRUNTIME140.dll). Os scripts de build passam este arquivo
+# com --config, porque o cargo só lê .cargo/ a partir da pasta atual.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
