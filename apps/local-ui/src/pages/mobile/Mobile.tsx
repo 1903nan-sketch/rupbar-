@@ -11,6 +11,7 @@ import { useRealtime } from '../../lib/realtime';
 import { useSession } from '../../lib/session';
 import '../../styles/mobile.css';
 import { MobileCharge } from './MobileCharge';
+import { MobileHookah } from './MobileHookah';
 import { OpenComandaModal, type ComandaSummary } from '../Comandas';
 import type { ComandaDetail } from '../ComandaDetail';
 
@@ -141,7 +142,8 @@ export function MobileComandas() {
 export function MobileComanda() {
   const { id = '' } = useParams();
   const nav = useNavigate();
-  const [view, setView] = useState<'lancar' | 'cobrar'>('lancar');
+  const { can } = useSession();
+  const [view, setView] = useState<'lancar' | 'narguile' | 'cobrar'>('lancar');
   const { data: c, error, reload } = useLoad(() => api.get<ComandaDetail>(`/api/comandas/${id}`), [id]);
   useRealtime(['comanda.changed', 'order.status'], () => void reload());
   if (error) return <div className="mobile-body"><ErrorBox error={error} onRetry={reload} /></div>;
@@ -160,15 +162,14 @@ export function MobileComanda() {
         <div className="banner warning">Esta comanda foi encerrada.</div>
       ) : (
         <>
-          <div className="mtabs" role="tablist">
-            <button type="button" role="tab" aria-selected={view === 'lancar'} className={view === 'lancar' ? 'active' : ''} onClick={() => setView('lancar')}>Lançar pedido</button>
+          <div className="mtabs" role="tablist" style={{ gridTemplateColumns: `repeat(${can('hookah.rent') ? 3 : 2}, minmax(0, 1fr))` }}>
+            <button type="button" role="tab" aria-selected={view === 'lancar'} className={view === 'lancar' ? 'active' : ''} onClick={() => setView('lancar')}>Pedido</button>
+            {can('hookah.rent') && <button type="button" role="tab" aria-selected={view === 'narguile'} className={view === 'narguile' ? 'active' : ''} onClick={() => setView('narguile')}>Narguilé</button>}
             <button type="button" role="tab" aria-selected={view === 'cobrar'} className={view === 'cobrar' ? 'active' : ''} onClick={() => setView('cobrar')}>Cobrar</button>
           </div>
-          {view === 'lancar' ? (
-            <OrderComposer comandaId={c.id} compact onSent={() => { void reload(); }} />
-          ) : (
-            <MobileCharge comanda={c} onChanged={() => void reload()} onClosed={() => nav('/m')} />
-          )}
+          {view === 'lancar' && <OrderComposer comandaId={c.id} compact onSent={() => { void reload(); }} />}
+          {view === 'narguile' && <MobileHookah comandaId={c.id} onChanged={() => void reload()} />}
+          {view === 'cobrar' && <MobileCharge comanda={c} onChanged={() => void reload()} onClosed={() => nav('/m')} />}
         </>
       )}
     </div>

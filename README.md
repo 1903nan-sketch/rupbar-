@@ -58,6 +58,13 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 
 ## Gerar o instalador do Windows
 
+### Ajustes após a 0.2.0
+
+- **Narguilé sem devolução**: aluguel e trocas entram na comanda na hora e a locação termina sozinha quando a comanda é encerrada. O aluguel pode ser feito sem escolher aparelho.
+- **Aba Narguilé no celular do garçom**: alugar (sabor em um toque), trocar rosh, narguilé do cliente e pacote de essência fechado.
+- **Essência em pacote fechado**: o mesmo produto é vendido fechado no cardápio e usado por grama no narguilé, sem cobrar a essência do aluguel.
+- **Pix**: já vem ligado ao cadastrar a chave, e o caixa liga o Pix na própria tela de pagamento.
+
 ### Novidades da versão 0.2.0
 
 - **Visual novo** em vidro fosco com fundo animado, no PC, no celular do garçom, na produção, na TV e no painel online.

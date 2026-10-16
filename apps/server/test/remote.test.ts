@@ -222,9 +222,11 @@ describe('narguilés', () => {
     expect((await owner.ok('GET', `/api/products/${uva}`)).stockQty).toBe(200_000 - 4_000);
     expect((await owner.ok('GET', `/api/products/${coal.id}`)).stockQty).toBe(72_000 - 5_000);
 
+    // Com narguilé em uso, o que impede o encerramento é só o saldo a pagar.
     d = await owner.ok('GET', `/api/comandas/${c.id}`);
-    expect((await owner.fail('POST', `/api/comandas/${c.id}/close`, { expectedVersion: d.version })).code).toBe('HOOKAH_ACTIVE');
+    expect((await owner.fail('POST', `/api/comandas/${c.id}/close`, { expectedVersion: d.version })).code).toBe('BALANCE_DUE');
 
+    // A devolução continua disponível para liberar o aparelho antes de a comanda fechar.
     const finished = await waiter.ok('POST', `/api/hookah-sessions/${session.id}/finish`, { sendToCleaning: true });
     expect(finished).toMatchObject({ status: 'finished', chargeCents: 3_700, roshCount: 2 });
     d = await waiter.ok('GET', `/api/comandas/${c.id}`);
@@ -249,6 +251,75 @@ describe('narguilés', () => {
     const ind = await owner.ok('GET', `/api/hookah/indicators?from=${from}&to=${to}`);
     expect(ind).toMatchObject({ sessions: 2, roshes: 4, revenueCents: 5_500, essenceGramsMilli: 44_000, coalUnits: 8 });
     expect(ind.flavors.map((f: { name: string; qty: number }) => [f.name, f.qty])).toEqual([['Essência Uva', 24_000], ['Essência Menta', 20_000]]);
+  });
+});
+
+describe('narguilé sem devolução', () => {
+  it('aluguel rápido sem aparelho, troca, pacote de essência fechado e encerramento junto com a comanda', async () => {
+    env = await createEnv();
+    const owner = await setupEstablishment(env);
+    const essCat = await category(owner, 'Essências');
+    const coalCat = await category(owner, 'Carvão');
+    // Mesma essência: vai por grama no aluguel e é vendida em pacote fechado no cardápio.
+    const menta = await owner.ok('POST', '/api/products', {
+      name: 'Ziggy Menta', categoryId: essCat, measure: 'mass', packageQty: 50_000,
+      presentations: [{ name: 'Pacote fechado 50 g', priceCents: 4_500, components: [{ productId: null, qty: 50_000 }] }],
+    });
+    await owner.ok('POST', '/api/stock/purchases', { items: [{ productId: menta.id, packages: 4, packageQty: 50_000, totalCostCents: 10_000 }] });
+    const coal = await owner.ok('POST', '/api/products', { name: 'Carvão de coco', categoryId: coalCat, measure: 'unit', packageQty: 72_000, menuVisible: false });
+    await owner.ok('POST', '/api/stock/purchases', { items: [{ productId: coal.id, packages: 1, packageQty: 72_000, totalCostCents: 3_600 }] });
+    const n1 = await owner.ok('POST', '/api/hookahs', { code: 'N-01' });
+    await owner.ok('POST', '/api/cash/open', { openingBalanceCents: 0 });
+
+    const waiter = await createStaff(env, owner, 'waiter', 'Davi', 'davi@bar.com');
+    const c = await waiter.ok('POST', '/api/comandas', { cardNumber: 7, customerName: 'Rafa' });
+
+    // Tudo o que o celular precisa numa chamada.
+    let panel = await waiter.ok('GET', `/api/comandas/${c.id}/hookah`);
+    expect(panel.pricing).toEqual({ rentalCents: 2_000, roshSwapCents: 1_000, ownRoshCents: 1_500 });
+    expect(panel.devices.map((x: { code: string }) => x.code)).toEqual(['N-01']);
+    expect(panel.essences.map((x: { name: string }) => x.name)).toEqual(['Ziggy Menta']);
+    expect(panel.coals.map((x: { name: string }) => x.name)).toEqual(['Carvão de coco']);
+
+    // Aluguel sem escolher aparelho: R$ 20 com essência e carvão, sem cobrar a essência.
+    const rental = await waiter.ok('POST', '/api/hookah-sessions', {
+      comandaId: c.id, clientRequestId: uuid(), essences: [{ productId: menta.id, qty: 12_000 }], coalProductId: coal.id, coalUnits: 3,
+    });
+    expect(rental).toMatchObject({ mode: 'house', owner: 'loose', chargeCents: 2_000 });
+    await waiter.ok('POST', `/api/hookah-sessions/${rental.id}/rosh`, { essences: [{ productId: menta.id, qty: 12_000 }], coalProductId: coal.id, coalUnits: 2 });
+    // Aparelho da lista alugado na mesma comanda.
+    await waiter.ok('POST', '/api/hookah-sessions', { hookahId: n1.id, comandaId: c.id, clientRequestId: uuid() });
+    // O aluguel rápido não aparece entre os aparelhos da casa.
+    expect((await owner.ok('GET', '/api/hookahs')).map((x: { code: string; status: string }) => [x.code, x.status])).toEqual([['N-01', 'rented']]);
+    panel = await waiter.ok('GET', `/api/comandas/${c.id}/hookah`);
+    expect(panel.sessions.map((x: { title: string; chargedCents: number }) => [x.title, x.chargedCents])).toEqual([['Narguilé alugado', 3_000], ['Narguilé N-01', 2_000]]);
+    expect(panel.devices).toEqual([]);
+
+    // Cliente compra um pacote fechado: é um item do cardápio e baixa 50 g.
+    const menu = await waiter.ok('GET', '/api/menu');
+    const pack = menu.items.find((i: { productName: string }) => i.productName === 'Ziggy Menta');
+    expect(pack).toMatchObject({ presentationName: 'Pacote fechado 50 g', priceCents: 4_500 });
+    await waiter.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: pack.presentationId, quantity: 1 }] });
+    expect((await owner.ok('GET', `/api/products/${menta.id}`)).stockQty).toBe(200_000 - 24_000 - 50_000);
+
+    let d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    expect(d.total).toBe(2_000 + 1_000 + 2_000 + 4_500);
+    await owner.ok('POST', '/api/payments', { comandaId: c.id, method: 'pix', amountCents: d.remaining, clientRequestId: uuid() });
+    d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    // Encerrar a comanda encerra os narguilés: sem devolução.
+    await owner.ok('POST', `/api/comandas/${c.id}/close`, { expectedVersion: d.version });
+    const sessions = await owner.ok('GET', '/api/hookah-sessions');
+    expect(sessions.map((x: { status: string; charge_cents: number }) => [x.status, x.charge_cents]).sort()).toEqual([['finished', 2_000], ['finished', 3_000]]);
+    expect((await owner.ok('GET', '/api/hookahs'))[0].status).toBe('cleaning');
+
+    // Comanda cancelada com aluguel: a locação é cancelada e o aparelho volta.
+    await owner.ok('POST', `/api/hookahs/${n1.id}/status`, { status: 'available' });
+    const c2 = await waiter.ok('POST', '/api/comandas', { cardNumber: 8 });
+    await waiter.ok('POST', '/api/hookah-sessions', { hookahId: n1.id, comandaId: c2.id, clientRequestId: uuid() });
+    const d2 = await owner.ok('GET', `/api/comandas/${c2.id}`);
+    await owner.ok('POST', `/api/comandas/${c2.id}/cancel`, { expectedVersion: d2.version, reason: 'Cliente desistiu', returnToStock: true });
+    expect((await owner.ok('GET', '/api/hookahs'))[0].status).toBe('cleaning');
+    expect((await owner.ok('GET', '/api/hookah-sessions?status=active'))).toEqual([]);
   });
 });
 

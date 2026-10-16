@@ -95,6 +95,12 @@ try {
   });
   await api('POST', '/api/products', { name: 'Batata frita', categoryId: cat('Porções'), measure: 'unit', stockTracked: false, presentations: [{ name: 'Porção', priceCents: 3890 }] });
   await api('POST', '/api/stock/purchases', { items: [{ productId: whisky.id, packages: 2, packageQty: 1_000_000, totalCostCents: 30_000 }] });
+  // Essência: por grama no narguilé e em pacote fechado no cardápio.
+  const essence = await api('POST', '/api/products', {
+    name: 'Ziggy Menta', categoryId: cat('Essências'), measure: 'mass', packageQty: 50_000,
+    presentations: [{ name: 'Pacote fechado 50 g', priceCents: 4500, components: [{ productId: null, qty: 50_000 }] }],
+  });
+  await api('POST', '/api/stock/purchases', { items: [{ productId: essence.id, packages: 4, packageQty: 50_000, totalCostCents: 10_000 }] });
   await api('POST', '/api/cash/open', { openingBalanceCents: 10_000 });
   // Pix pela tela de configurações: na primeira vez já vem ligado.
   await page.goto(B + '/configuracoes/pix');
@@ -228,6 +234,29 @@ try {
   await m.getByRole('button', { name: 'Imprimir conta' }).waitFor();
   await m.screenshot({ path: join(out, '05b-celular-cobrar.png') });
   assert((await api('GET', `/api/products/${whisky.id}`)).stockQty === 1_900_000, 'pedido do celular deveria baixar mais 50 ml');
+
+  // Aba "Narguilé": aluguel sem aparelho e sem devolução, troca de rosh e pacote fechado.
+  await m.getByRole('tab', { name: 'Narguilé' }).click();
+  await m.getByRole('button', { name: /Alugar narguilé/ }).click();
+  await m.getByRole('button', { name: 'Ziggy Menta' }).click();
+  await m.getByRole('button', { name: /Lançar R\$\s20,00/ }).click();
+  await m.locator('.mhookah-session', { hasText: 'Narguilé alugado' }).waitFor();
+  await m.getByRole('button', { name: /Trocar rosh/ }).click();
+  await m.getByRole('button', { name: 'Ziggy Menta' }).click();
+  await m.getByRole('button', { name: /Lançar R\$\s10,00/ }).click();
+  await m.locator('.mhookah-session', { hasText: '2 rosh' }).waitFor();
+  await m.getByRole('button', { name: /Pacote de essência fechado/ }).click();
+  await m.getByRole('button', { name: 'Adicionar Ziggy Menta' }).click();
+  await m.getByRole('button', { name: /Lançar R\$\s45,00/ }).click();
+  await m.locator('.mhookah-session').waitFor();
+  await m.waitForTimeout(500);
+  await m.screenshot({ path: join(out, '05c-celular-narguile.png') });
+  const card30 = await api('GET', '/api/comandas/by-number/30');
+  const c30 = await api('GET', `/api/comandas/${card30.id}`);
+  const hookahItems = c30.items.filter((i) => i.kind === 'hookah').map((i) => i.totalCents);
+  assert(JSON.stringify(hookahItems) === JSON.stringify([2000, 1000]), `aluguel e troca na comanda: ${JSON.stringify(hookahItems)}`);
+  assert(c30.items.some((i) => i.kind === 'product' && i.totalCents === 4500), 'pacote fechado deveria entrar como item do cardápio');
+  assert((await api('GET', `/api/products/${essence.id}`)).stockQty === 200_000 - 24_000 - 50_000, 'essência: 12 g por rosh e 50 g do pacote');
 
   assert(errors.length === 0, `erros no navegador:\n${errors.join('\n')}`);
   console.log(`E2E OK — capturas em ${out}`);

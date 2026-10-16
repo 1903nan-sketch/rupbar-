@@ -155,7 +155,7 @@ export function ComandaDetailPage() {
             </Card>
           ))}
           {c.hookahSessions.some((h) => h.status === 'active') && (
-            <div className="banner"><Wind size={18} /> Narguilé em uso nesta comanda. O aluguel e as trocas já estão lançados; registre a devolução em Narguilés antes de encerrar.</div>
+            <div className="banner"><Wind size={18} /> Narguilé em uso nesta comanda. O aluguel e as trocas já estão lançados e ele termina sozinho quando a comanda for encerrada.</div>
           )}
         </div>
 

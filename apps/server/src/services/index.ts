@@ -81,6 +81,7 @@ export function createServices(opts: CreateOptions) {
   const kitchen = new KitchenService(ctx, settings);
   const losses = new LossesService(ctx, stock);
   const hookah = new HookahService(ctx, settings, stock, comandas);
+  comandas.endHookahs = (actor, comandaId, outcome) => hookah.endForComanda(actor, comandaId, outcome);
   const printing = new PrintingService(ctx, settings, comandas, opts.printerTransport);
   const tvMedia = new TvMediaService(ctx);
   const tv = new TvService(ctx, settings, kitchen, tvMedia);

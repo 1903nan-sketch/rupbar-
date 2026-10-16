@@ -494,8 +494,9 @@ export type HookahPricingTable = z.infer<typeof hookahPricingSchema>;
 
 export const hookahStartSchema = z
   .object({
-    /** 'house' = aparelho do bar (aluguel); 'own' = narguilé do cliente. */
+    /** 'house' = aluguel do narguilé do bar; 'own' = narguilé do cliente. */
     mode: z.enum(['house', 'own']).default('house'),
+    /** Aparelho da casa. Opcional: sem ele, o aluguel não prende nenhum aparelho da lista. */
     hookahId: zUuid.nullable().optional().transform((v) => v ?? null),
     /** Identificação do narguilé próprio (ex.: "do Pedro", "preto"). */
     ownLabel: optionalText(40),
@@ -505,8 +506,7 @@ export const hookahStartSchema = z
     coalUnits: z.number().int().min(0).max(50).default(0),
     notes: optionalText(200),
     clientRequestId: zUuid,
-  })
-  .refine((v) => v.mode === 'own' || v.hookahId !== null, { message: 'Escolha o narguilé', path: ['hookahId'] });
+  });
 
 export const hookahRoshSchema = z.object({
   essences: z.array(essenceUseSchema).default([]),

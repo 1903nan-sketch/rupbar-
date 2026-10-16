@@ -128,7 +128,7 @@ try {
   await modal.getByLabel('Nome do produto', { exact: true }).fill('Ingrediente teste');
   await modal.getByLabel('Quantidade em estoque agora', { exact: true }).fill('4');
   await modal.getByLabel('Quanto você pagou?', { exact: true }).fill('10,00');
-  assert.equal(await modal.getByRole('button', { name: /Como ingrediente de receita/ }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await modal.getByRole('button', { name: /Só no narguilé ou em receitas/ }).getAttribute('aria-pressed'), 'true');
   assert(await modal.evaluate((el) => el.scrollWidth <= el.clientWidth), 'modal não deve transbordar no celular');
   await page.screenshot({ path: join(out, '05-cadastro-mobile.png') });
   await modal.getByRole('button', { name: 'Cadastrar produto', exact: true }).click();

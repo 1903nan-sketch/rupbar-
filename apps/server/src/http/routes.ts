@@ -373,6 +373,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('PUT', '/api/hookahs/:id', (req, a) => s.hookah.save(a, id(req), req.body));
   r('POST', '/api/hookahs/:id/status', (req, a) => s.hookah.changeStatus(a, id(req), req.body));
   r('GET', '/api/hookahs/:id/history', (req, a) => s.hookah.history(a, id(req)));
+  r('GET', '/api/comandas/:id/hookah', (req, a) => s.hookah.panel(a, id(req)));
   r('GET', '/api/hookah-sessions', (req, a) => s.hookah.sessions(a, { status: q(req).status, from: q(req).from, to: q(req).to }));
   r('POST', '/api/hookah-sessions', (req, a) => s.hookah.start(a, req.body));
   r('GET', '/api/hookah-sessions/:id', (req, a) => s.hookah.session(a, id(req)));

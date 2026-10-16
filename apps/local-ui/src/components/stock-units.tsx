@@ -273,13 +273,20 @@ export function BuyModePicker({ value, onChange, lockedMeasure }: { value: PackD
 }
 
 const SELL_TEXT: Record<SellMode, (p: Packaging) => { title: string; hint: string }> = {
-  unit: (p) => buyModeOf(p) === 'single' || buyModeOf(p) === 'pack'
-    ? { title: 'Por unidade', hint: `Cada venda baixa 1 ${unitName(p, 1)}.` }
-    : { title: `${cap(packName(p, 1))} inteir${isFemininePt(packName(p, 1)) ? 'a' : 'o'}`, hint: `Cada venda baixa 1 ${packName(p, 1)} fechad${isFemininePt(packName(p, 1)) ? 'a' : 'o'}.` },
+  unit: (p) => {
+    if (buyModeOf(p) === 'single' || buyModeOf(p) === 'pack') return { title: 'Por unidade', hint: `Cada venda baixa 1 ${unitName(p, 1)}.` };
+    const pack = packName(p, 1);
+    const closed = `fechad${isFemininePt(pack) ? 'a' : 'o'}`;
+    // Essência: o mesmo estoque vai por grama no narguilé e em pacote fechado no cardápio.
+    if (p.measure === 'mass') return { title: `${cap(pack)} ${closed} + narguilé`, hint: `O cliente compra o ${pack} ${closed} no cardápio. O narguilé usa por grama, sem cobrar a essência.` };
+    return { title: `${cap(pack)} inteir${isFemininePt(pack) ? 'a' : 'o'}`, hint: `Cada venda baixa 1 ${pack} ${closed}.` };
+  },
   dose: (p) => p.measure === 'mass'
     ? { title: 'Por porção de X g', hint: 'Ex.: porção de 100 g.' }
     : { title: 'Por dose de X ml', hint: 'Ex.: dose de 50 ml.' },
-  ingredient: () => ({ title: 'Como ingrediente de receita', hint: 'Drinks, porções, narguilé. Não aparece no cardápio.' }),
+  ingredient: (p) => p.measure === 'mass'
+    ? { title: 'Só no narguilé ou em receitas', hint: 'Usado por grama, sem preço. Não aparece no cardápio.' }
+    : { title: 'Como ingrediente de receita', hint: 'Drinks e porções. Não aparece no cardápio.' },
 };
 
 /** "Como você vende?" — cria a apresentação de venda do cadastro rápido. */

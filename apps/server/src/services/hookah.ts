@@ -207,8 +207,27 @@ export class HookahService {
   }
 
   /**
-   * Nova locação. Aparelho da casa: lança o aluguel (já inclui a 1ª essência e o
-   * carvão). Narguilé próprio do cliente: lança o rosh (essência + carvão).
+   * Registro interno para locações sem aparelho da lista: narguilé próprio do
+   * cliente ('customer', P-1, P-2…) ou aluguel rápido ('loose', A-1, A-2…).
+   */
+  private virtualHookah(owner: 'customer' | 'loose', prefix: string, model: string, now: string): string {
+    const id = this.ctx.id();
+    let code: string;
+    do code = `${prefix}-${this.ctx.nextSeq(owner === 'customer' ? 'own_hookah' : 'loose_hookah')}`;
+    while (this.ctx.db.value('SELECT id FROM hookahs WHERE code = ? COLLATE NOCASE', code));
+    this.ctx.db.run(
+      `INSERT INTO hookahs (id, code, model, pricing_mode, price_cents, status, notes, active, owner, created_at, updated_at)
+       VALUES (?,?,?, 'fixed', 0, 'available', NULL, 0, ?, ?, ?)`,
+      id, code, model, owner, now, now,
+    );
+    return id;
+  }
+
+  /**
+   * Nova locação. Aluguel: lança o valor do aluguel (já inclui a 1ª essência e o
+   * carvão), com ou sem aparelho escolhido. Narguilé próprio do cliente: lança o
+   * rosh (essência + carvão). Não precisa de devolução: tudo termina sozinho
+   * quando a comanda é encerrada.
    */
   start(actor: Actor, raw: unknown) {
     requirePerm(actor, 'hookah.rent');
@@ -223,23 +242,19 @@ export class HookahService {
       const now = this.ctx.nowIso();
       let hookahId: string;
       let label: string;
-      if (input.mode === 'house') {
-        const h = this.hookahRow(input.hookahId!);
+      if (input.mode === 'house' && input.hookahId) {
+        const h = this.hookahRow(input.hookahId);
         if (h.owner !== 'house') throw badRequest('Escolha um narguilé da casa.');
         if (h.status !== 'available') throw conflict(`Narguilé ${h.code} está "${HOOKAH_STATUS[h.status as HookahStatus]}".`, 'HOOKAH_UNAVAILABLE');
         hookahId = String(h.id);
         label = `Narguilé ${h.code}`;
+      } else if (input.mode === 'house') {
+        // Aluguel rápido (celular do garçom): não prende nenhum aparelho da lista.
+        hookahId = this.virtualHookah('loose', 'A', 'Narguilé da casa', now);
+        label = 'Narguilé (aluguel)';
       } else {
         // O aparelho do cliente vira um registro interno (fora da lista de aparelhos da casa).
-        hookahId = this.ctx.id();
-        let code: string;
-        do code = `P-${this.ctx.nextSeq('own_hookah')}`;
-        while (this.ctx.db.value('SELECT id FROM hookahs WHERE code = ? COLLATE NOCASE', code));
-        this.ctx.db.run(
-          `INSERT INTO hookahs (id, code, model, pricing_mode, price_cents, status, notes, active, owner, created_at, updated_at)
-           VALUES (?,?,?, 'fixed', 0, 'available', NULL, 0, 'customer', ?, ?)`,
-          hookahId, code, input.ownLabel ?? 'Narguilé do cliente', now, now,
-        );
+        hookahId = this.virtualHookah('customer', 'P', input.ownLabel ?? 'Narguilé do cliente', now);
         label = input.ownLabel ? `Narguilé próprio (${input.ownLabel})` : 'Narguilé próprio';
       }
       const id = this.ctx.id();
@@ -283,7 +298,7 @@ export class HookahService {
         const price = input.charge ? (own ? table.ownRoshCents : table.roshSwapCents) : 0;
         this.chargeItem(
           actor, { id: sessionId, comandaId: String(s.comanda_id) },
-          own ? 'Narguilé próprio' : `Narguilé ${h.code}`,
+          own ? 'Narguilé próprio' : h.owner === 'house' ? `Narguilé ${h.code}` : 'Narguilé (aluguel)',
           `${own ? 'Rosh — essência e carvão' : 'Troca de rosh'} (${roshNo}º)${input.charge ? '' : ' — cortesia'}`,
           price, cost,
         );
@@ -328,16 +343,45 @@ export class HookahService {
            notes = COALESCE(?, notes), version = version + 1, updated_at = ? WHERE id = ?`,
         nowIso, chargeCents, itemId, actor.userId, input.notes, nowIso, sessionId,
       );
-      if (h.owner === 'customer') {
-        this.setStatus(String(h.id), 'rented', 'inactive', actor, 'Cliente levou o narguilé');
-      } else {
-        const needsCleaning = input.sendToCleaning && this.settings.operation().hookahRequiresCleaning;
-        this.setStatus(String(h.id), 'rented', needsCleaning ? 'cleaning' : 'available', actor, 'Devolução');
-      }
+      this.release(h, actor, input.sendToCleaning, 'Devolução');
       this.comandas.touch(String(s.comanda_id), 'hookah_finished');
       this.ctx.audit(actor, 'hookah.returned', 'hookah_session', sessionId, { code: h.code, chargeCents });
       return { ...this.session(actor, sessionId), chargeCents };
     });
+  }
+
+  /** Libera o aparelho no fim da locação: da casa vai para limpeza (ou disponível); registros internos saem de uso. */
+  private release(h: Row, actor: Actor, sendToCleaning: boolean, note: string) {
+    if (h.owner !== 'house') {
+      this.setStatus(String(h.id), 'rented', 'inactive', actor, h.owner === 'customer' ? 'Cliente levou o narguilé' : note);
+      return;
+    }
+    const needsCleaning = sendToCleaning && this.settings.operation().hookahRequiresCleaning;
+    this.setStatus(String(h.id), 'rented', needsCleaning ? 'cleaning' : 'available', actor, note);
+  }
+
+  /**
+   * Encerra as locações da comanda junto com ela, sem etapa de devolução: o
+   * aluguel e as trocas já foram lançados na hora. Chamado dentro da transação
+   * do encerramento (ou cancelamento) da comanda. Locações antigas, cobradas por
+   * tempo na devolução, continuam exigindo a devolução antes.
+   */
+  endForComanda(actor: Actor, comandaId: string, outcome: 'closed' | 'canceled') {
+    const active = this.ctx.db.all("SELECT * FROM hookah_sessions WHERE comanda_id = ? AND status = 'active'", comandaId);
+    if (active.some((s) => s.mode === 'legacy')) {
+      throw conflict('Há narguilé em uso nesta comanda cobrado por tempo. Registre a devolução antes de encerrar.', 'HOOKAH_ACTIVE');
+    }
+    const now = this.ctx.nowIso();
+    for (const s of active) {
+      const h = this.hookahRow(String(s.hookah_id));
+      const chargeCents = outcome === 'closed' ? this.chargedCents(String(s.id)) : 0;
+      this.ctx.db.run(
+        `UPDATE hookah_sessions SET status = ?, ended_at = ?, charge_cents = ?, finished_by = ?, version = version + 1, updated_at = ? WHERE id = ?`,
+        outcome === 'closed' ? 'finished' : 'canceled', now, chargeCents, actor.userId, now, String(s.id),
+      );
+      this.release(h, actor, true, outcome === 'closed' ? 'Comanda encerrada' : 'Comanda cancelada');
+      this.ctx.audit(actor, 'hookah.ended_with_comanda', 'hookah_session', String(s.id), { code: h.code, outcome, chargeCents });
+    }
   }
 
   session(actor: Actor, id: string) {
@@ -387,6 +431,48 @@ export class HookahService {
     );
   }
 
+  /**
+   * Tudo o que o celular do garçom precisa para o narguilé de uma comanda numa
+   * só chamada: valores, locações em andamento, aparelhos livres e os sabores e
+   * carvões do estoque.
+   */
+  panel(actor: Actor, comandaId: string) {
+    requirePerm(actor, 'hookah.view');
+    const c = this.ctx.db.get('SELECT id, status FROM comandas WHERE id = ?', comandaId);
+    if (!c) throw notFound('Comanda');
+    const sessions = this.ctx.db.all(
+      `SELECT s.id, s.mode, s.rosh_count, s.started_at, h.code, h.owner, h.model FROM hookah_sessions s JOIN hookahs h ON h.id = s.hookah_id
+       WHERE s.comanda_id = ? AND s.status = 'active' ORDER BY s.started_at, s.id`,
+      comandaId,
+    ).map((s) => ({
+      id: s.id, mode: s.mode, roshCount: s.rosh_count, startedAt: s.started_at, code: s.owner === 'house' ? s.code : null,
+      title: s.mode === 'own' ? (s.model && s.model !== 'Narguilé do cliente' ? `Narguilé próprio (${s.model})` : 'Narguilé próprio') : s.owner === 'house' ? `Narguilé ${s.code}` : 'Narguilé alugado',
+      chargedCents: s.mode === 'legacy' ? null : this.chargedCents(String(s.id)),
+    }));
+    const devices = this.ctx.db.all("SELECT id, code, model FROM hookahs WHERE owner = 'house' AND active = 1 AND status = 'available' ORDER BY code");
+    return { pricing: this.pricing(), sessions, devices, ...this.supplies() };
+  }
+
+  /**
+   * Sabores (produtos em gramas da categoria Essências ou com "essência" no nome)
+   * e carvões. Sem nenhum sabor assim, oferece todos os produtos em gramas.
+   */
+  supplies() {
+    const product = (r: Row) => ({ id: r.id, name: r.name, stockQty: r.stock_qty, stockTracked: r.stock_tracked === 1 });
+    const mass = this.ctx.db.all(
+      `SELECT p.id, p.name, p.stock_qty, p.stock_tracked, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id
+       WHERE p.active = 1 AND p.measure = 'mass' ORDER BY p.name COLLATE NOCASE`,
+    );
+    const isEssence = (r: Row) => String(r.category) === 'Essências' || /ess[eê]ncia/i.test(String(r.name));
+    const essences = mass.some(isEssence) ? mass.filter(isEssence) : mass;
+    const coals = this.ctx.db.all(
+      `SELECT p.id, p.name, p.stock_qty, p.stock_tracked, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id
+       WHERE p.active = 1 AND p.measure = 'unit' ORDER BY p.name COLLATE NOCASE`,
+    ).filter((r) => String(r.category) === 'Carvão' || /carv[aã]o/i.test(String(r.name)));
+    const op = this.settings.operation();
+    return { essences: essences.map(product), coals: coals.map(product), gramsPerRosh: op.defaultGramsPerRosh, allowNegativeStock: op.allowNegativeStock };
+  }
+
   /** Indicadores do período: gramas, sessões, sabores, carvão, receita, duração e uso por aparelho. */
   indicators(actor: Actor, from: string, to: string) {
     requirePerm(actor, 'reports.operational');
@@ -412,6 +498,7 @@ export class HookahService {
       `SELECT h.code, h.model, COUNT(s.id) AS sessions, COALESCE(SUM(s.charge_cents),0) AS revenue,
               COALESCE(SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440),0) AS minutes
        FROM hookahs h LEFT JOIN hookah_sessions s ON s.hookah_id = h.id AND s.status = 'finished' AND s.started_at >= ? AND s.started_at < ?
+       WHERE h.owner = 'house'
        GROUP BY h.id ORDER BY sessions DESC`,
       from, to,
     );

@@ -35,3 +35,97 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------- celular do garçom: aba Narguilé ---------- */
+.mhookah {
+  gap: 12px;
+}
+.mhookah .stack-s {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mhookah-action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-strong);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease-out, ease-out), box-shadow 0.2s;
+}
+.mhookah-action:active {
+  transform: scale(0.98);
+}
+.mhookah-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.mhookah-action strong {
+  display: block;
+  font-size: 17px;
+}
+.mhookah-action .grow > span {
+  display: block;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.mhookah-action.primary {
+  border-color: transparent;
+  color: var(--accent-contrast);
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--violet, #7c5cff)));
+  box-shadow: 0 12px 26px -14px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+.mhookah-action.primary .grow > span {
+  color: color-mix(in srgb, var(--accent-contrast) 82%, transparent);
+}
+.mhookah-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+.mhookah-action.primary .mhookah-icon {
+  background: rgba(255, 255, 255, 0.18);
+}
+.mhookah-price {
+  flex: none;
+  font-size: 19px;
+  font-weight: 800;
+}
+.mhookah-session {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mhookah-flavors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mhookah-flavors .chip {
+  min-height: 44px;
+  max-width: 100%;
+  gap: 6px;
+  font-size: 15px;
+}
+.mhookah-pack.in-cart {
+  border-color: var(--accent);
+}
+.mhookah-pack.sold-out {
+  opacity: 0.6;
+}
+.mhookah-footer {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}

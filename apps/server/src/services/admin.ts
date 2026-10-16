@@ -117,7 +117,7 @@ export class AdminService {
       );
       for (const s of this.db.all("SELECT s.id, s.hookah_id, h.owner FROM hookah_sessions s JOIN hookahs h ON h.id = s.hookah_id WHERE s.comanda_id = ? AND s.status = 'active'", id)) {
         this.db.run("UPDATE hookah_sessions SET status = 'canceled', ended_at = ?, version = version + 1, updated_at = ? WHERE id = ?", now, now, String(s.id));
-        this.db.run('UPDATE hookahs SET status = ?, version = version + 1, updated_at = ? WHERE id = ?', s.owner === 'customer' ? 'inactive' : 'available', now, String(s.hookah_id));
+        this.db.run('UPDATE hookahs SET status = ?, version = version + 1, updated_at = ? WHERE id = ?', s.owner === 'house' ? 'available' : 'inactive', now, String(s.hookah_id));
       }
       this.db.run(
         "UPDATE comandas SET status = 'canceled', canceled_by = ?, canceled_at = ?, cancel_reason = ? WHERE id = ?",
@@ -437,7 +437,7 @@ export class AdminService {
       );
       if (s.status === 'active') {
         const h = this.get('hookahs', String(s.hookah_id), 'Narguilé');
-        this.db.run('UPDATE hookahs SET status = ?, version = version + 1, updated_at = ? WHERE id = ?', h.owner === 'customer' ? 'inactive' : 'available', now, String(h.id));
+        this.db.run('UPDATE hookahs SET status = ?, version = version + 1, updated_at = ? WHERE id = ?', h.owner === 'house' ? 'available' : 'inactive', now, String(h.id));
         this.ctx.emit({ channel: 'hookah', type: 'hookah.status', data: { hookahId: h.id } });
       }
       this.db.run("UPDATE hookah_sessions SET status = 'canceled', ended_at = COALESCE(ended_at, ?), charge_cents = 0, version = version + 1, updated_at = ? WHERE id = ?", now, now, id);

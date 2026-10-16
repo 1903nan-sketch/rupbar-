@@ -53,7 +53,7 @@ interface SessionRow {
   mode: 'legacy' | 'house' | 'own';
   code: string;
   model: string;
-  owner: 'house' | 'customer';
+  owner: 'house' | 'customer' | 'loose';
   comanda_display_number: number;
   table_label: string | null;
 }
@@ -77,7 +77,7 @@ export function HookahsPage() {
   const { can } = useSession();
   return (
     <div className="stack">
-      <PageHeader title="Narguilés" subtitle="Aluguel com essência e carvão inclusos, trocas de rosh e narguilé próprio do cliente." />
+      <PageHeader title="Narguilés" subtitle="Aluguel com essência e carvão inclusos, trocas de rosh e narguilé próprio do cliente. Não precisa devolver: termina junto com a comanda." />
       <Tabs value={tab} onChange={setTab} options={[{ value: 'aparelhos', label: 'Em uso e aparelhos' }, { value: 'historico', label: 'Locações' }, { value: 'indicadores', label: 'Indicadores', hidden: !can('reports.operational') }]} />
       {tab === 'aparelhos' && <Devices />}
       {tab === 'historico' && <SessionsHistory />}
@@ -130,7 +130,7 @@ function Devices() {
   const refresh = () => { void reload(); void own.reload(); };
   useRealtime(['hookah', 'comandas'], () => { refresh(); void pricing.reload(); });
   const [edit, setEdit] = useState<Hookah | 'new' | null>(null);
-  const [rent, setRent] = useState<Hookah | 'own' | null>(null);
+  const [rent, setRent] = useState<Hookah | 'own' | 'loose' | null>(null);
   const [rosh, setRosh] = useState<RentalTarget | null>(null);
   const [finish, setFinish] = useState<RentalTarget | null>(null);
   const [history, setHistory] = useState<Hookah | null>(null);
@@ -151,22 +151,27 @@ function Devices() {
 
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
-  const ownActive = (own.data ?? []).filter((x) => x.owner === 'customer');
+  // Locações sem aparelho da lista: aluguel rápido e narguilé do cliente.
+  const ownActive = (own.data ?? []).filter((x) => x.owner !== 'house');
   return (
     <div className="stack">
       {pricing.data && <PricingCard pricing={pricing.data} onEdit={can('hookah.manage') ? () => setEditPricing(true) : undefined} />}
       <div className="row wrap">
-        {can('hookah.rent') && <Button variant="primary" icon={<Users size={16} />} onClick={() => setRent('own')}>Narguilé próprio do cliente</Button>}
+        {can('hookah.rent') && <Button variant="primary" icon={<Wind size={16} />} onClick={() => setRent('loose')}>Alugar narguilé</Button>}
+        {can('hookah.rent') && <Button icon={<Users size={16} />} onClick={() => setRent('own')}>Narguilé próprio do cliente</Button>}
         {can('hookah.manage') && <Button icon={<Plus size={16} />} onClick={() => setEdit('new')}>Cadastrar aparelho</Button>}
       </div>
 
       {ownActive.length > 0 && (
         <>
-          <div className="section-label">Narguilés próprios em uso</div>
+          <div className="section-label">Em uso sem aparelho da lista</div>
           <div className="grid-auto">
             {ownActive.map((s) => (
               <Card key={s.id} className="hookah-card rented">
-                <div className="row between"><span className="strong" style={{ fontSize: 18 }}>{s.model || 'Narguilé do cliente'}</span><Badge color="purple">Próprio</Badge></div>
+                <div className="row between">
+                  <span className="strong" style={{ fontSize: 18 }}>{s.owner === 'loose' ? 'Narguilé alugado' : s.model || 'Narguilé do cliente'}</span>
+                  {s.owner === 'loose' ? <Badge color="blue">Aluguel</Badge> : <Badge color="purple">Próprio</Badge>}
+                </div>
                 <div className="hookah-session">
                   <div className="strong">{s.customer_name || 'Sem nome'}</div>
                   <div className="small muted">Comanda {s.comanda_display_number}{s.table_label && ` · Mesa ${s.table_label}`}</div>
@@ -178,11 +183,12 @@ function Devices() {
                 {can('hookah.rent') && (
                   <div className="row wrap" style={{ marginTop: 12, gap: 6 }}>
                     {(() => {
-                      const t: RentalTarget = { sessionId: s.id, title: s.model || 'Narguilé próprio', mode: 'own', customerName: s.customer_name, comandaDisplayNumber: s.comanda_display_number, chargedCents: s.charged_cents, legacyCharge: null };
+                      const loose = s.owner === 'loose';
+                      const t: RentalTarget = { sessionId: s.id, title: loose ? 'Narguilé alugado' : s.model || 'Narguilé próprio', mode: loose ? 'house' : 'own', customerName: s.customer_name, comandaDisplayNumber: s.comanda_display_number, chargedCents: s.charged_cents, legacyCharge: null };
                       return (
                         <>
-                          <Button size="small" icon={<Plus size={14} />} onClick={() => setRosh(t)}>Novo rosh</Button>
-                          <Button size="small" variant="primary" icon={<RotateCcw size={14} />} onClick={() => setFinish(t)}>Encerrar</Button>
+                          <Button size="small" variant="primary" icon={<Plus size={14} />} onClick={() => setRosh(t)}>{loose ? 'Troca de rosh' : 'Novo rosh'}</Button>
+                          <Button size="small" variant="plain" icon={<RotateCcw size={14} />} onClick={() => setFinish(t)}>Encerrar agora</Button>
                         </>
                       );
                     })()}
@@ -218,8 +224,8 @@ function Devices() {
                 {h.status === 'available' && can('hookah.rent') && <Button size="small" variant="primary" onClick={() => setRent(h)}>Alugar</Button>}
                 {h.status === 'rented' && can('hookah.rent') && (
                   <>
-                    <Button size="small" icon={<Plus size={14} />} onClick={() => setRosh(targetOf(h))}>Troca de rosh</Button>
-                    <Button size="small" variant="primary" icon={<RotateCcw size={14} />} onClick={() => setFinish(targetOf(h))}>Devolução</Button>
+                    <Button size="small" variant="primary" icon={<Plus size={14} />} onClick={() => setRosh(targetOf(h))}>Troca de rosh</Button>
+                    <Button size="small" icon={<RotateCcw size={14} />} onClick={() => setFinish(targetOf(h))}>Devolver agora</Button>
                   </>
                 )}
                 {h.status === 'cleaning' && can('hookah.manage') && <Button size="small" variant="success" icon={<Sparkles size={14} />} onClick={() => setStatus(h, 'available')}>Limpo</Button>}
@@ -233,7 +239,7 @@ function Devices() {
         </div>
       )}
       {edit && <HookahEditor hookah={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onDone={reload} />}
-      {rent && pricing.data && <RentModal hookah={rent === 'own' ? null : rent} pricing={pricing.data} onClose={() => setRent(null)} onDone={refresh} />}
+      {rent && pricing.data && <RentModal mode={rent === 'own' ? 'own' : 'house'} hookah={typeof rent === 'string' ? null : rent} pricing={pricing.data} onClose={() => setRent(null)} onDone={refresh} />}
       {rosh && pricing.data && <RoshModal target={rosh} pricing={pricing.data} onClose={() => setRosh(null)} onDone={refresh} />}
       {finish && <FinishModal target={finish} onClose={() => setFinish(null)} onDone={refresh} />}
       {history && <HistoryModal hookah={history} onClose={() => setHistory(null)} />}
@@ -348,10 +354,10 @@ function ComandaChooser({ value, onChange }: { value: string; onChange: (id: str
   );
 }
 
-function RentModal({ hookah, pricing, onClose, onDone }: { hookah: Hookah | null; pricing: Pricing; onClose: () => void; onDone: () => void }) {
+function RentModal({ mode, hookah, pricing, onClose, onDone }: { mode: 'house' | 'own'; hookah: Hookah | null; pricing: Pricing; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const supplies = useHookahSupplies();
-  const own = hookah === null;
+  const own = mode === 'own';
   const [comandaId, setComandaId] = useState('');
   const [ownLabel, setOwnLabel] = useState('');
   const [cons, setCons] = useState<{ essences: { productId: string; grams: number | null }[]; coalProductId: string; coalUnits: number } | null>(null);
@@ -361,7 +367,7 @@ function RentModal({ hookah, pricing, onClose, onDone }: { hookah: Hookah | null
   const price = own ? pricing.ownRoshCents : pricing.rentalCents;
 
   return (
-    <Modal title={own ? 'Narguilé próprio do cliente' : `Alugar ${hookah.code}`} onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!comandaId} onClick={async () => {
+    <Modal title={own ? 'Narguilé próprio do cliente' : hookah ? `Alugar ${hookah.code}` : 'Alugar narguilé'} onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!comandaId} onClick={async () => {
       setBusy(true);
       try {
         await api.post('/api/hookah-sessions', { mode: own ? 'own' : 'house', hookahId: hookah?.id ?? null, ownLabel: ownLabel || null, comandaId, clientRequestId: rid, ...toPayload(cons!) });
@@ -369,10 +375,10 @@ function RentModal({ hookah, pricing, onClose, onDone }: { hookah: Hookah | null
       } catch (e) { toast.error(e); } finally { setBusy(false); }
     }}>Lançar {formatBRL(price)}</Button></>}>
       <div className="stack">
-        <div className="banner">{own ? <>Cliente trouxe o narguilé: lança <strong>{formatBRL(price)}</strong> de essência + carvão a cada rosh.</> : <>Aluguel de <strong>{formatBRL(price)}</strong> com a primeira essência e o carvão inclusos.</>}</div>
+        <div className="banner">{own ? <>Cliente trouxe o narguilé: lança <strong>{formatBRL(price)}</strong> de essência + carvão a cada rosh.</> : <>Aluguel de <strong>{formatBRL(price)}</strong> com a primeira essência e o carvão inclusos. Não precisa devolver: termina junto com a comanda.</>}</div>
         <ComandaChooser value={comandaId} onChange={setComandaId} />
         {own && <Field label="Identificação do narguilé (opcional)"><Input value={ownLabel} maxLength={40} onChange={(e) => setOwnLabel(e.target.value)} placeholder="Ex.: preto do Pedro" /></Field>}
-        <div className="section-label">Consumo (para o estoque)</div>
+        <div className="section-label">Sabor e carvão (só para o estoque, não é cobrado)</div>
         {supplies.data && cons ? <ConsumptionFields value={cons} onChange={setCons} supplies={supplies.data} /> : <Loading />}
       </div>
     </Modal>
@@ -427,7 +433,8 @@ function FinishModal({ target, onClose, onDone }: { target: RentalTarget; onClos
             <div className="row between"><span className="muted">Já lançado na comanda</span><strong className="num">{formatBRL(target.chargedCents ?? 0)}</strong></div>
           )}
         </div>
-        {!own && <Switch checked={cleaning} onChange={setCleaning} label="Enviar para limpeza" />}
+        {!legacy && <p className="small muted">Não é obrigatório: quando a comanda é encerrada, o narguilé termina sozinho.</p>}
+        {!own && !target.title.startsWith('Narguilé alugado') && <Switch checked={cleaning} onChange={setCleaning} label="Enviar para limpeza" />}
       </div>
     </Modal>
   );
@@ -459,7 +466,7 @@ function SessionsHistory() {
         {data.map((s) => (
           <tr key={s.id} className={s.status === 'canceled' ? 'voided' : ''}>
             <td className="small">{fmtDateTime(s.started_at)}</td>
-            <td>{s.owner === 'customer' ? <><Badge color="purple">Próprio</Badge> {s.model}</> : s.code}</td>
+            <td>{s.owner === 'customer' ? <><Badge color="purple">Próprio</Badge> {s.model}</> : s.owner === 'loose' ? <Badge color="blue">Aluguel</Badge> : s.code}</td>
             <td>{s.customer_name || '—'}</td>
             <td>{s.comanda_display_number}</td>
             <td>{s.rosh_count}</td>

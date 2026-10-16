@@ -26,6 +26,17 @@ export class ComandasService {
     private readonly stock: StockService,
   ) {}
 
+  /**
+   * Encerra as locações de narguilé junto com a comanda (ligado pelo
+   * HookahService na montagem dos serviços). Sem ele, a comanda não encerra com
+   * narguilé em uso.
+   */
+  endHookahs: (actor: Actor, comandaId: string, outcome: 'closed' | 'canceled') => void = (_actor, comandaId) => {
+    if (Number(this.ctx.db.value("SELECT COUNT(*) FROM hookah_sessions WHERE comanda_id = ? AND status = 'active'", comandaId)) > 0) {
+      throw conflict('Há narguilé em uso nesta comanda. Registre a devolução antes de encerrar.', 'HOOKAH_ACTIVE');
+    }
+  };
+
   private row(id: string): Row {
     const c = this.ctx.db.get('SELECT * FROM comandas WHERE id = ?', id);
     if (!c) throw notFound('Comanda');
@@ -484,8 +495,7 @@ export class ComandasService {
       const c = this.row(id);
       this.requireOpen(c);
       this.checkVersion(c, input.expectedVersion);
-      const active = this.ctx.db.value("SELECT COUNT(*) FROM hookah_sessions WHERE comanda_id = ? AND status = 'active'", id);
-      if (Number(active) > 0) throw conflict('Há narguilé em uso nesta comanda. Registre a devolução antes de encerrar.', 'HOOKAH_ACTIVE');
+      this.endHookahs(actor, id, 'closed');
       const t = this.totals(id);
       if (t.remaining > 0) throw conflict(`Ainda faltam ${(t.remaining / 100).toFixed(2).replace('.', ',')} para encerrar.`, 'BALANCE_DUE', t);
       const now = this.ctx.nowIso();
@@ -504,9 +514,7 @@ export class ComandasService {
       this.requireOpen(c);
       this.checkVersion(c, input.expectedVersion);
       if (this.totals(id).paid > 0) throw conflict('Estorne os pagamentos antes de cancelar a comanda.', 'HAS_PAYMENTS');
-      if (Number(this.ctx.db.value("SELECT COUNT(*) FROM hookah_sessions WHERE comanda_id = ? AND status = 'active'", id)) > 0) {
-        throw conflict('Há narguilé em uso nesta comanda.', 'HOOKAH_ACTIVE');
-      }
+      this.endHookahs(actor, id, 'canceled');
       const now = this.ctx.nowIso();
       const items = this.ctx.db.all<{ id: string; kind: string; order_id: string | null }>(
         "SELECT id, kind, order_id FROM comanda_items WHERE comanda_id = ? AND status = 'active'",
