@@ -1,4 +1,4 @@
-import type { PaymentMethod } from '@rupbar/core';
+import { presentationSuffix, type PaymentMethod } from '@rupbar/core';
 import { ShieldCheck } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { api } from '../lib/api';
@@ -69,7 +69,7 @@ export function EditItemModal({ item, onClose, onDone }: {
   return (
     <ReasonModal
       title="Editar item"
-      description={<>{item.name}{item.presentationName !== 'Unidade' && ` · ${item.presentationName}`}. Mudar a quantidade ajusta o estoque automaticamente.</>}
+      description={<>{item.name}{presentationSuffix(item.name, item.presentationName) && ` · ${item.presentationName}`}. Mudar a quantidade ajusta o estoque automaticamente.</>}
       valid={valid}
       onClose={onClose}
       onConfirm={async (reason) => {

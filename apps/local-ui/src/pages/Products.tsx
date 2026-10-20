@@ -210,6 +210,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
     if (!pk.ok) { setTab('estoque'); return toast.error(pk.error); }
     if (min.amount !== null && min.amount < 0) return toast.error('O estoque mínimo não pode ser negativo.');
     for (const p of pres) {
+      if (!p.name.trim()) { setTab('apresentacoes'); return toast.error('Dê um nome para a apresentação (ex.: Unidade, Dose 50 ml).'); }
       if (p.priceCents === null) return toast.error(`Informe o preço de "${p.name}".`);
       if (p.mode === 'recipe' && p.components.some((c) => !c.productId || !c.qty)) return toast.error(`Complete a ficha técnica de "${p.name}".`);
     }
@@ -373,7 +374,14 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
               </Card>
             );
           })}
-          <Button icon={<Plus size={16} />} style={{ alignSelf: 'flex-start' }} onClick={() => setPres([...pres, { name: '', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: packaging.measure === 'volume' ? 50 : 1, components: [] }])}>Adicionar apresentação</Button>
+          {pres.length === 0 && <p className="small banner">Este produto não está à venda (é ingrediente ou adicional). Adicione uma apresentação com o preço para ele aparecer no cardápio.</p>}
+          <Button icon={<Plus size={16} />} style={{ alignSelf: 'flex-start' }} onClick={() => {
+            // Já vem com o nome do produto (o cardápio não repete o nome); a 2ª apresentação começa em branco (ex.: Dose 50 ml).
+            const name = f.name.trim();
+            // Ingrediente que passa a ser vendido: volta para o cardápio.
+            if (!pres.length) setF({ ...f, menuVisible: true });
+            setPres([...pres, { name: name && !pres.some((p) => p.name.trim() === name) ? name : '', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: packaging.measure === 'volume' ? 50 : 1, components: [] }]);
+          }}>Adicionar apresentação</Button>
         </div>
       )}
     </Modal>

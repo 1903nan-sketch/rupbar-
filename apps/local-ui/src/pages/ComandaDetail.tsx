@@ -1,4 +1,4 @@
-import { PAYMENT_METHODS, splitEqually, type PaymentMethod } from '@rupbar/core';
+import { PAYMENT_METHODS, presentationSuffix, splitEqually, type PaymentMethod } from '@rupbar/core';
 import {
   ArrowLeft, ArrowRightLeft, Ban, CheckCircle2, CreditCard, Divide, Eye, MoreHorizontal, Pencil, Percent, Plus, Printer, RotateCcw, Tag, Trash2,
   Undo2, Wind, X,
@@ -136,7 +136,7 @@ export function ComandaDetailPage() {
                     <div className="grow">
                       <div style={{ textDecoration: i.status === 'canceled' ? 'line-through' : undefined }}>
                         {i.kind === 'hookah' && <Wind size={14} style={{ marginRight: 4, verticalAlign: -2 }} />}
-                        {i.name} {i.presentationName !== 'Unidade' && <span className="muted">· {i.presentationName}</span>}
+                        {i.name} {presentationSuffix(i.name, i.presentationName) && <span className="muted">· {i.presentationName}</span>}
                       </div>
                       {i.options && <div className="small accent-text strong">{i.options}</div>}
                       {i.notes && <div className="small warning-text">{i.notes}</div>}
@@ -413,7 +413,7 @@ function MoveItemsModal({ comanda, onClose, onDone }: { comanda: ComandaDetail; 
         {items.map((i) => (
           <label key={i.id} className="check">
             <input type="checkbox" checked={selected.includes(i.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, i.id] : selected.filter((x) => x !== i.id))} />
-            <span className="grow">{i.quantity}× {i.name} {i.presentationName !== 'Unidade' && `· ${i.presentationName}`}{i.options && ` (${i.options})`}</span>
+            <span className="grow">{i.quantity}× {i.name} {presentationSuffix(i.name, i.presentationName) && `· ${i.presentationName}`}{i.options && ` (${i.options})`}</span>
             <span className="num muted">{formatBRL(i.totalCents)}</span>
           </label>
         ))}

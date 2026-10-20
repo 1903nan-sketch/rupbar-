@@ -1,4 +1,4 @@
-import type { PaymentMethod } from '@rupbar/core';
+import { presentationSuffix, type PaymentMethod } from '@rupbar/core';
 import { Banknote, CheckCircle2, CreditCard, Printer, QrCode, Wallet } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { PixQr } from '../../components/PixQr';
@@ -121,7 +121,7 @@ export function MobileCharge({ comanda, onChanged, onClosed }: { comanda: Comand
         <div className="mcharge-lines">
           {active.map((i) => (
             <div key={i.id} className="row between small">
-              <span className="ellipsis">{i.quantity}× {i.name}{i.presentationName !== 'Unidade' && ` · ${i.presentationName}`}{i.options && ` (${i.options})`}</span>
+              <span className="ellipsis">{i.quantity}× {i.name}{presentationSuffix(i.name, i.presentationName) && ` · ${i.presentationName}`}{i.options && ` (${i.options})`}</span>
               <span className="num">{formatBRL(i.totalCents)}</span>
             </div>
           ))}

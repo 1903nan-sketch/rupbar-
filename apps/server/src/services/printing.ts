@@ -4,7 +4,7 @@ import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  backoffMs, comandaPixTxid, displayName, firstName, PAYMENT_METHODS, pickupCode, STATIONS, type PaymentMethod, type Station, comandaDisplayNumber,
+  backoffMs, comandaPixTxid, displayName, firstName, PAYMENT_METHODS, pickupCode, presentationSuffix, STATIONS, type PaymentMethod, type Station, comandaDisplayNumber,
 } from '@rupbar/core';
 import {
   renderBillReceipt, renderCashClose, renderOrderTicket, renderPickupTicket, renderTestPage, type CodePage, type PaperWidth, type PrintOptions,
@@ -326,7 +326,7 @@ export class PrintingService {
             createdAt: new Date(String(t.order_created)),
             items: items.map((i) => ({
               quantity: Number(i.quantity),
-              name: i.presentation_name === 'Unidade' ? String(i.product_name) : `${i.product_name} (${i.presentation_name})`,
+              name: presentationSuffix(String(i.product_name), String(i.presentation_name)) ? `${i.product_name} (${i.presentation_name})` : String(i.product_name),
               options: (i.options_label as string) ?? null,
               notes: (i.notes as string) ?? null,
             })),
@@ -390,7 +390,7 @@ export class PrintingService {
             createdAt: new Date(String(o.created_at)),
             items: items.map((i) => ({
               quantity: Number(i.quantity),
-              name: i.presentation_name === 'Unidade' ? String(i.product_name) : `${i.product_name} (${i.presentation_name})`,
+              name: presentationSuffix(String(i.product_name), String(i.presentation_name)) ? `${i.product_name} (${i.presentation_name})` : String(i.product_name),
               options: (i.options_label as string) ?? null,
               notes: (i.notes as string) ?? null,
             })),
@@ -450,7 +450,7 @@ export class PrintingService {
               openedAt: new Date(String(d.openedAt)), printedAt: this.ctx.clock.now(),
               items: d.items.filter((i) => i.status === 'active').map((i) => ({
                 quantity: Number(i.quantity),
-                name: i.presentationName === 'Unidade' ? String(i.name) : `${i.name} ${i.presentationName}`,
+                name: presentationSuffix(String(i.name), String(i.presentationName)) ? `${i.name} ${i.presentationName}` : String(i.name),
                 options: i.options,
                 total: Number(i.totalCents),
               })),

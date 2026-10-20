@@ -6,7 +6,7 @@ import {
   maskCpf, maskPhone, normalizePhoneBR, numberToWordsPtBR, packageBreakdown, parseBRL, parseQty, pickupAnnouncement,
   restockSuggestion, sanitizeGrantable, splitEqually, splitMix, stockLevel, theoreticalYield, toMilli,
   unitCostFromPurchase, uuidv7, uuidv7Time, weightedAverageCost, backoffMs, checkPasswordStrength, SYSTEM_ROLES,
-  canTransition,
+  canTransition, presentationSuffix,
 } from '../src';
 
 describe('dinheiro', () => {
@@ -236,5 +236,13 @@ describe('comandas e nomes de chamada', () => {
     expect(displayName('ana')).toBe('ana');
     expect(displayName('Maria da')).toBe('Maria');
     expect(displayName('  ')).toBe('');
+  });
+});
+
+describe('nome da apresentação junto do produto', () => {
+  it('não repete "Unidade" nem o próprio nome do produto', () => {
+    expect(presentationSuffix('Heineken long neck', 'Unidade')).toBeNull();
+    expect(presentationSuffix('Heineken long neck', ' heineken LONG neck ')).toBeNull();
+    expect(presentationSuffix('Gin Rocks 1 L', 'Dose 50 ml')).toBe('Dose 50 ml');
   });
 });

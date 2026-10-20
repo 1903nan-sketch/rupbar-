@@ -210,6 +210,27 @@ try {
   assert.deepEqual(water.presentations.map((p) => [p.name, p.priceCents]), [['Unidade', 500]]);
   await page.getByRole('row').filter({ hasText: 'Água com gás' }).getByText('20 unidades').waitFor();
 
+  // 6b. Ingrediente que passa a ser vendido: a apresentação já vem com o nome do
+  //     produto, ele volta ao cardápio e a lista de venda não repete o nome.
+  await page.goto(base + '/produtos');
+  await page.getByRole('row').filter({ hasText: 'Ingrediente teste' }).click();
+  await modal.getByRole('button', { name: /Apresentações e preços/ }).click();
+  await modal.getByRole('button', { name: 'Adicionar apresentação' }).click();
+  assert.equal(await modal.getByLabel('Nome', { exact: true }).inputValue(), 'Ingrediente teste');
+  await modal.getByLabel('Preço de venda').fill('9,00');
+  await modal.getByRole('button', { name: 'Salvar', exact: true }).click();
+  await modal.waitFor({ state: 'hidden' });
+  const sold = (await request('GET', '/api/menu')).items.find((i) => i.productName === 'Ingrediente teste');
+  assert.equal(sold?.presentationName, 'Ingrediente teste');
+  assert.equal(sold?.priceCents, 900);
+  await page.getByRole('button', { name: 'Venda rápida' }).first().click();
+  await modal.getByLabel('Buscar produto').fill('Ingrediente teste');
+  const tile = modal.locator('.menu-tile', { hasText: 'Ingrediente teste' });
+  await tile.waitFor();
+  assert.equal(await tile.locator('.menu-tile-pres').count(), 0, 'não repete o nome do produto');
+  await page.keyboard.press('Escape');
+  await modal.waitFor({ state: 'hidden' });
+
   // 7. Conta mestre: apagar os dados de teste (estoque, produtos e relatórios).
   await page.goto(base + '/configuracoes');
   await page.getByRole('link', { name: /Apagar dados de teste/ }).click();

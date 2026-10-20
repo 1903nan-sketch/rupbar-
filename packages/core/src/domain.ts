@@ -130,6 +130,16 @@ export const PRINT_JOB_KINDS = {
 export type PrintJobKind = keyof typeof PRINT_JOB_KINDS;
 
 /**
+ * Nome da apresentação para mostrar junto do produto, ou null quando só
+ * repetiria: "Unidade" ou o próprio nome do produto ("Heineken" · "Heineken").
+ */
+export function presentationSuffix(productName: string, presentationName: string): string | null {
+  const key = (s: string) => s.trim().toLocaleLowerCase('pt-BR');
+  const pres = key(presentationName);
+  return !pres || pres === 'unidade' || pres === key(productName) ? null : presentationName;
+}
+
+/**
  * Código do ticket do pedido (vai no código de barras): "RB" + dia de
  * movimento (AAMMDD) + número do pedido. Ex.: RB2610160042. A numeração dos
  * pedidos recomeça a cada dia, por isso o dia faz parte do código.

@@ -1,3 +1,4 @@
+import { presentationSuffix } from '@rupbar/core';
 import { Check, Flame, Minus, Plus, Search, StickyNote, Trash2, X } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
@@ -61,7 +62,7 @@ export const unitPriceOf = (l: Pick<CartLine, 'item' | 'options'>) => l.item.pri
 export const optionsLabel = (options: CartOption[]) => options.map((o) => o.choice).join(' · ');
 
 export const itemLabel = (i: { productName: string; presentationName: string }) =>
-  i.presentationName === 'Unidade' ? i.productName : `${i.productName} · ${i.presentationName}`;
+  presentationSuffix(i.productName, i.presentationName) ? `${i.productName} · ${i.presentationName}` : i.productName;
 
 /**
  * Carrinho com identificador de envio estável: enquanto o conteúdo não muda,
@@ -225,7 +226,7 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
               >
                 {i.photoUrl && <img className="menu-tile-photo" src={i.photoUrl} alt="" loading="lazy" />}
                 <span className="menu-tile-name">{i.productName}</span>
-                {i.presentationName !== 'Unidade' && <span className="menu-tile-pres">{i.presentationName}</span>}
+                {presentationSuffix(i.productName, i.presentationName) && <span className="menu-tile-pres">{i.presentationName}</span>}
                 <span className="menu-tile-price num">{groupsOf(i).length ? 'a partir de ' : ''}{formatBRL(i.priceCents)}</span>
                 {i.soldOut ? <span className="menu-tile-flag danger">Esgotado</span> : i.available !== null && i.available <= 5 ? <span className="menu-tile-flag">restam {i.available}</span> : null}
               </button>

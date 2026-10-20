@@ -1,4 +1,4 @@
-import { canTransition, comandaDisplayNumber, displayName, firstName, pickupAnnouncement, TICKET_STATUS, type TicketStatus } from '@rupbar/core';
+import { canTransition, comandaDisplayNumber, displayName, firstName, pickupAnnouncement, presentationSuffix, TICKET_STATUS, type TicketStatus } from '@rupbar/core';
 import { ticketStatusSchema } from '@rupbar/core/schemas';
 import type { Row } from '../db/db';
 import { conflict, notFound } from '../lib/errors';
@@ -57,7 +57,7 @@ export class KitchenService {
       calledAt: t.called_at,
       callCount: t.call_count,
       items: items.map((i) => ({
-        id: i.id, name: i.presentation_name === 'Unidade' ? i.product_name : `${i.product_name} — ${i.presentation_name}`,
+        id: i.id, name: presentationSuffix(String(i.product_name), String(i.presentation_name)) ? `${i.product_name} — ${i.presentation_name}` : i.product_name,
         // Escolhas do pedido: "Morango · Red Bull Tropical · Gelo de coco".
         options: (i.options_label as string | null) ?? null,
         quantity: i.quantity, notes: i.notes, canceled: i.status !== 'active',

@@ -1,4 +1,4 @@
-import { PAYMENT_METHODS, parsePickupCode, type PaymentMethod } from '@rupbar/core';
+import { PAYMENT_METHODS, parsePickupCode, presentationSuffix, type PaymentMethod } from '@rupbar/core';
 import { CheckCircle2, CircleAlert, CircleX, HandPlatter, Printer, ScanBarcode, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
@@ -138,7 +138,7 @@ function OrderCheckCard({ order: o, highlight, onChanged }: { order: OrderCheck;
       </div>
       <ul className="lookup-items">
         {items.map((i) => (
-          <li key={i.id}><strong>{i.quantity}×</strong> {i.product_name}{i.presentation_name !== 'Unidade' && ` (${i.presentation_name})`}{i.options_label && <span className="accent-text strong"> — {i.options_label}</span>}</li>
+          <li key={i.id}><strong>{i.quantity}×</strong> {i.product_name}{presentationSuffix(i.product_name, i.presentation_name) && ` (${i.presentation_name})`}{i.options_label && <span className="accent-text strong"> — {i.options_label}</span>}</li>
         ))}
       </ul>
       <div className="row wrap between" style={{ gap: 8 }}>

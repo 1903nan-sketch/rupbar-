@@ -1,3 +1,4 @@
+import { presentationSuffix } from '@rupbar/core';
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, ClipboardList, Delete, ListChecks, LogOut, Plus, Search, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
@@ -220,7 +221,7 @@ export function MobileOrders() {
             <div className="row wrap" style={{ margin: '8px 0', gap: 6 }}>
               {o.tickets.map((t) => <span key={t.station} className="row small">{t.station === 'kitchen' ? 'Cozinha' : 'Bebidas'}: <TicketBadge status={t.status} /></span>)}
             </div>
-            <div className="small">{o.items.filter((i) => i.status === 'active').map((i) => `${i.quantity}× ${i.product_name}${i.presentation_name !== 'Unidade' ? ` (${i.presentation_name})` : ''}${i.options_label ? ` — ${i.options_label}` : ''}`).join(' · ')}</div>
+            <div className="small">{o.items.filter((i) => i.status === 'active').map((i) => `${i.quantity}× ${i.product_name}${presentationSuffix(i.product_name, i.presentation_name) ? ` (${i.presentation_name})` : ''}${i.options_label ? ` — ${i.options_label}` : ''}`).join(' · ')}</div>
           </div>
         );
       })}
