@@ -44,7 +44,15 @@ const choiceText = (c: OptionGroupView['choices'][number]) => `${c.name}${c.pric
  * Cada opção tem o seu preço a mais e pode baixar um produto do estoque (a lata
  * de Red Bull, o gelo de coco). A mesma escolha serve para vários produtos.
  */
-export function OptionGroupsField({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
+export function OptionGroupsField({ value, onChange, qty, onQtyChange, example }: {
+  value: string[];
+  /** Texto de exemplo no topo (o padrão fala de dose com energético e gelo). */
+  example?: string;
+  onChange: (ids: string[]) => void;
+  /** Combos: quantas unidades da opção escolhida vão (ex.: 5 gelos, 4 latas). */
+  qty?: Record<string, number>;
+  onQtyChange?: (qty: Record<string, number>) => void;
+}) {
   const groups = useLoad(() => api.get<OptionGroupView[]>('/api/option-groups'));
   const products = useLoad(() => api.get<StockProduct[]>('/api/products'));
   const [editing, setEditing] = useState<OptionGroupView | 'new' | null>(null);
@@ -63,8 +71,7 @@ export function OptionGroupsField({ value, onChange }: { value: string[]; onChan
   return (
     <div className="stack option-groups-field">
       <p className="small muted">
-        Ex.: dose de gin a {formatBRL(1200)} → no pedido o garçom escolhe o energético (Red Bull +{formatBRL(800)}, Monster +{formatBRL(500)}) e o gelo (coco +{formatBRL(200)}).
-        O preço soma sozinho e o estoque baixa o que foi escolhido.
+        {example ?? `Ex.: dose de gin a ${formatBRL(1200)} → no pedido o garçom escolhe o energético (Red Bull +${formatBRL(800)}, Monster +${formatBRL(500)}) e o gelo (coco +${formatBRL(200)}). O preço soma sozinho e o estoque baixa o que foi escolhido.`}
       </p>
       {attached.length === 0 && !editing && <div className="banner small"><ListChecks size={16} style={{ flex: 'none' }} /> Este produto entra direto no pedido, sem escolhas.</div>}
       {attached.map((g, i) => (
@@ -82,6 +89,17 @@ export function OptionGroupsField({ value, onChange }: { value: string[]; onChan
             </div>
           </div>
           <div className="small muted" style={{ marginTop: 4 }}>{g.choices.map(choiceText).join(' · ') || 'Sem opções'}</div>
+          {onQtyChange && (
+            <div className="row option-qty-row">
+              <span className="small">Vão</span>
+              <div className="stepper small">
+                <button type="button" aria-label={`Menos ${g.name}`} onClick={() => onQtyChange({ ...qty, [g.id]: Math.max(1, (qty?.[g.id] ?? 1) - 1) })}>−</button>
+                <span>{qty?.[g.id] ?? 1}</span>
+                <button type="button" aria-label={`Mais ${g.name}`} onClick={() => onQtyChange({ ...qty, [g.id]: Math.min(50, (qty?.[g.id] ?? 1) + 1) })}>+</button>
+              </div>
+              <span className="small muted">do que o cliente escolher{(qty?.[g.id] ?? 1) > 1 ? ' (preço a mais e baixa multiplicados)' : ''}</span>
+            </div>
+          )}
           {g.products.length > 1 && <div className="tiny muted">Também usada em: {g.products.map((p) => p.name).slice(0, 4).join(', ')}{g.products.length > 4 ? '…' : ''}</div>}
         </div>
       ))}

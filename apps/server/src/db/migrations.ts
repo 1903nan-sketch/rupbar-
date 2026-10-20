@@ -794,6 +794,11 @@ ALTER TABLE comanda_items ADD COLUMN options_label TEXT;
 ALTER TABLE comanda_items ADD COLUMN options_json TEXT;
 `;
 
+/** Combos: a escolha pode valer várias unidades (4 latas do energético escolhido). */
+const M009 = /* sql */ `
+ALTER TABLE product_option_groups ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1);
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -811,6 +816,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 6, name: 'código automático e unidade avulsa dos produtos', sql: M006, run: (db) => void backfillProductCodes(db, new Date().toISOString()) },
   { id: 7, name: 'impressora do caixa e entrega do pedido', sql: M007, run: singlePrinterIsCashier },
   { id: 8, name: 'escolhas no pedido (sabor, energético, gelo)', sql: M008 },
+  { id: 9, name: 'combos: quantidade da escolha', sql: M009 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

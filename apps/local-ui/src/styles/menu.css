@@ -253,6 +253,14 @@
 .option-chooser {
   gap: 18px;
 }
+.option-qty {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 13px;
+}
 .option-group-title {
   display: flex;
   align-items: baseline;
@@ -330,4 +338,9 @@
   .option-choice-row {
     grid-template-columns: 1fr 1fr;
   }
+}
+.option-qty-row {
+  margin-top: 8px;
+  gap: 8px;
+  align-items: center;
 }

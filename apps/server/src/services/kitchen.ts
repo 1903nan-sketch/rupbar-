@@ -72,8 +72,31 @@ export class KitchenService {
    * Painel de produção. Mostra os pedidos ativos e os finalizados recentemente
    * (entregues/cancelados nas últimas `recentHours` horas).
    */
+  /**
+   * Pedidos prontos saem sozinhos da tela de produção (viram "entregue") depois
+   * do tempo configurado, contado do pronto ou da última chamada na TV. Sem
+   * isso, numa casa que não marca "Entregue", a coluna de prontos não esvazia.
+   */
+  sweepReady(): number {
+    const minutes = this.settings.operation().kitchenReadyMinutes;
+    if (!minutes) return 0;
+    const now = this.ctx.nowIso();
+    const limit = new Date(this.ctx.clock.now().getTime() - minutes * 60_000).toISOString();
+    const n = this.ctx.db.run(
+      `UPDATE order_tickets SET status = 'delivered', delivered_at = ?, updated_at = ?, version = version + 1
+       WHERE status = 'ready' AND MAX(COALESCE(ready_at, updated_at), COALESCE(called_at, ready_at, updated_at)) < ?`,
+      now, now, limit,
+    ).changes;
+    if (n) {
+      this.ctx.emit({ channel: 'kitchen', type: 'ticket.updated', data: { auto: true, count: n } });
+      this.ctx.emit({ channel: 'tv', type: 'board.changed' });
+    }
+    return n;
+  }
+
   board(actor: Actor, station: 'kitchen' | 'bar' | 'all', recentHours = 3) {
     requirePerm(actor, 'kitchen.view');
+    this.sweepReady();
     const since = new Date(this.ctx.clock.now().getTime() - recentHours * 3_600_000).toISOString();
     const rows = this.ctx.db.all(
       `${this.baseQuery} WHERE (? = 'all' OR t.station = ?)

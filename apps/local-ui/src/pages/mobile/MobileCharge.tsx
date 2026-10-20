@@ -1,10 +1,12 @@
 import type { PaymentMethod } from '@rupbar/core';
-import { Banknote, CheckCircle2, CreditCard, Printer, QrCode } from 'lucide-react';
+import { Banknote, CheckCircle2, CreditCard, Printer, QrCode, Wallet } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { PixQr } from '../../components/PixQr';
 import { Button, MoneyInput, useToast } from '../../components/ui';
 import { api, requestId } from '../../lib/api';
 import { formatBRL, PAYMENT_METHODS } from '../../lib/format';
+import { useLoad } from '../../lib/hooks';
+import { useRealtime } from '../../lib/realtime';
 import { useSession } from '../../lib/session';
 import type { ComandaDetail } from '../ComandaDetail';
 
@@ -24,6 +26,42 @@ function bills(total: number): number[] {
     if (out.size >= 4) break;
   }
   return [...out];
+}
+
+/**
+ * Caixa fechado no momento de cobrar: quem pode (ex.: garçom que também
+ * trabalha no caixa) abre ali mesmo, informando o troco inicial.
+ */
+function CashGate() {
+  const { can } = useSession();
+  const toast = useToast();
+  const { data, reload } = useLoad(() => (can('cash.view') ? api.get<{ open: boolean }>('/api/cash/current') : Promise.resolve(null)));
+  useRealtime('cash', () => void reload());
+  const [opening, setOpening] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!data || data.open) return null;
+  if (!can('cash.open')) return <div className="banner warning">O caixa está fechado. Peça para abrir o caixa antes de cobrar.</div>;
+  return (
+    <div className="card tight stack" style={{ gap: 10 }}>
+      <div className="row"><Wallet size={18} /><strong>O caixa está fechado</strong></div>
+      <label className="mcharge-amount">
+        <span className="small muted">Troco inicial na gaveta</span>
+        <MoneyInput value={opening} onChange={setOpening} placeholder="0,00" />
+      </label>
+      <Button variant="primary" block loading={busy} icon={<Wallet size={18} />} onClick={async () => {
+        setBusy(true);
+        try {
+          await api.post('/api/cash/open', { openingBalanceCents: opening ?? 0 });
+          toast.success('Caixa aberto');
+          void reload();
+        } catch (e) {
+          toast.error(e);
+        } finally {
+          setBusy(false);
+        }
+      }}>Abrir caixa</Button>
+    </div>
+  );
 }
 
 /**
@@ -83,7 +121,7 @@ export function MobileCharge({ comanda, onChanged, onClosed }: { comanda: Comand
         <div className="mcharge-lines">
           {active.map((i) => (
             <div key={i.id} className="row between small">
-              <span className="ellipsis">{i.quantity}× {i.name}{i.presentationName !== 'Unidade' && ` · ${i.presentationName}`}</span>
+              <span className="ellipsis">{i.quantity}× {i.name}{i.presentationName !== 'Unidade' && ` · ${i.presentationName}`}{i.options && ` (${i.options})`}</span>
               <span className="num">{formatBRL(i.totalCents)}</span>
             </div>
           ))}
@@ -110,6 +148,7 @@ export function MobileCharge({ comanda, onChanged, onClosed }: { comanda: Comand
         </div>
       ) : (
         <div className="stack">
+          <CashGate />
           <div className="mcharge-methods" role="radiogroup" aria-label="Forma de pagamento">
             {METHODS.map(({ m, icon }) => (
               <button key={m} type="button" role="radio" aria-checked={method === m} className={`mcharge-method ${method === m ? 'active' : ''}`} onClick={() => { setMethod(m); setReceived(null); }}>

@@ -34,6 +34,14 @@ describe('como você vende', () => {
   it('cria a apresentação certa para cada jeito de vender', () => {
     expect(presentationsFor({ mode: 'unit', dose: null, priceCents: 900 }, fardo)).toEqual({ ok: true, value: [{ name: 'Unidade', priceCents: 900, components: [{ productId: null, qty: 1000 }] }] });
     expect(presentationsFor({ ...defaultSell('bottle'), priceCents: 2990 }, garrafa)).toEqual({ ok: true, value: [{ name: 'Dose 50 ml', priceCents: 2990, components: [{ productId: null, qty: 50_000 }] }] });
+    // Dose e garrafa fechada no mesmo produto: a dose baixa 50 ml, a garrafa baixa a garrafa inteira.
+    expect(presentationsFor({ ...defaultSell('bottle'), priceCents: 1200, wholePriceCents: 12_000 }, garrafa)).toEqual({
+      ok: true,
+      value: [
+        { name: 'Dose 50 ml', priceCents: 1200, components: [{ productId: null, qty: 50_000 }] },
+        { name: 'Garrafa fechada', priceCents: 12_000, components: [{ productId: null, qty: garrafa.packageQty }] },
+      ],
+    });
     expect(presentationsFor({ mode: 'unit', dose: null, priceCents: 15_000 }, garrafa)).toEqual({ ok: true, value: [{ name: 'Garrafa', priceCents: 15_000, components: [{ productId: null, qty: 1_000_000 }] }] });
     expect(presentationsFor(defaultSell('bag'), garrafa)).toEqual({ ok: true, value: [] });
     expect(presentationsFor({ mode: 'dose', dose: 2000, priceCents: 100 }, garrafa).ok).toBe(false);

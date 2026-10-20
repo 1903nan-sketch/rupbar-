@@ -173,6 +173,7 @@ interface Operation {
   requireCustomerPhone: boolean;
   requireCustomerCpf: boolean;
   autoPrintOrders: boolean;
+  kitchenReadyMinutes: number;
   pickupPlace: string;
   tvVoiceEnabled: boolean;
   lowStockAlertsEnabled: boolean;
@@ -204,6 +205,12 @@ export function OperationSettings() {
         </Card>
         <Card title="Pedidos, impressão e TV">
           <Switch checked={f.autoPrintOrders} onChange={(v) => set('autoPrintOrders', v)} label="Imprimir pedidos automaticamente" />
+          <Field label="Pedido pronto sai da tela de produção depois de" hint="Conta a partir do pronto (ou da última chamada na TV). Assim a coluna de prontos não acumula.">
+            <Select value={f.kitchenReadyMinutes ?? 10} onChange={(e) => set('kitchenReadyMinutes', Number(e.target.value))}>
+              {[3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutos</option>)}
+              <option value={0}>Nunca (só ao marcar entregue)</option>
+            </Select>
+          </Field>
           <Switch checked={f.tvVoiceEnabled} onChange={(v) => set('tvVoiceEnabled', v)} label="Anúncio por voz na TV" />
           <Field label="Local de retirada (anúncio)" hint='Ex.: "no balcão", "no caixa"'><Input value={f.pickupPlace} onChange={(e) => set('pickupPlace', e.target.value)} /></Field>
         </Card>

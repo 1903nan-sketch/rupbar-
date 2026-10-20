@@ -55,6 +55,8 @@ export function KitchenPage() {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [unlocked, setUnlocked] = useState(soundUnlocked);
   const [showDone, setShowDone] = useState(false);
+  const op = useLoad(() => api.get<{ kitchenReadyMinutes?: number }>('/api/settings/operation/public').catch(() => null));
+  const readyMinutes = op.data?.kitchenReadyMinutes ?? 10;
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [cancel, setCancel] = useState<Ticket | null>(null);
   const [fullscreen, toggleFullscreen] = useFullscreen();
@@ -142,6 +144,7 @@ export function KitchenPage() {
                   <span className="row"><span className={`dot ${col.tone}`} />{col.label}</span>
                   <span className="kds-count">{tickets.length}</span>
                 </header>
+                {col.status === 'ready' && readyMinutes > 0 && <div className="kds-col-hint">Saem sozinhos {readyMinutes} min depois de prontos</div>}
                 <div className="kds-col-body">
                   {tickets.length === 0 && <div className="kds-empty">Nenhum pedido</div>}
                   {tickets.map((t) => (

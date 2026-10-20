@@ -233,7 +233,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
     const o = s.settings.operation();
     return {
       defaultGramsPerRosh: o.defaultGramsPerRosh, serviceFeeBp: o.serviceFeeBp, pickupPlace: o.pickupPlace,
-      requireCustomerPhone: o.requireCustomerPhone, requireCustomerCpf: o.requireCustomerCpf,
+      requireCustomerPhone: o.requireCustomerPhone, requireCustomerCpf: o.requireCustomerCpf, kitchenReadyMinutes: o.kitchenReadyMinutes,
     };
   });
   r('GET', '/api/settings/pix', (_req, a) => s.settings.pixConfig(a));

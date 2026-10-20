@@ -1,5 +1,5 @@
 import { BASE_UNIT, buyModeOf, costOf, packName, unitName, type Measure, type Packaging } from '@rupbar/core';
-import { Camera, ImageOff, Plus, Search, Trash2, Wine } from 'lucide-react';
+import { Boxes, Camera, ImageOff, Plus, Search, Trash2, Wine } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
 import { OptionGroupsField } from '../components/OptionGroups';
 import { BuyModePicker, CodeTag, LevelChip, QtyEntry, StockQty } from '../components/stock-units';
@@ -11,6 +11,7 @@ import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
 import { draftFromPackaging, packagingFromDraft, previewPackaging, qtyDraftFrom, qtyOf, type PackDraft, type QtyDraft } from '../lib/stock-units';
 import '../styles/stock.css';
+import { ComboModal } from './ComboModal';
 import { QuickProductModal } from './QuickProduct';
 
 export interface Product {
@@ -53,6 +54,8 @@ export interface Product {
   }[];
   /** Escolhas pedidas ao lançar (ex.: energético e gelo da dose). */
   optionGroupIds?: string[];
+  /** Com a quantidade de cada escolha (combos: 4 energéticos, 5 gelos). */
+  optionGroups?: { groupId: string; quantity: number }[];
 }
 
 export interface Category {
@@ -79,6 +82,7 @@ export function ProductsPage() {
   const [cat, setCat] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<Product | 'new' | 'advanced' | null>(null);
+  const [combo, setCombo] = useState(false);
   const cats = useLoad(() => api.get<Category[]>('/api/categories'));
   const { data, error, reload } = useLoad(() => api.get<Product[]>(`/api/products${qs({ q, categoryId: cat, all: showInactive ? 1 : undefined })}`), [q, cat, showInactive]);
   useRealtime(['stock'], () => void reload());
@@ -88,7 +92,7 @@ export function ProductsPage() {
       <PageHeader
         title="Produtos"
         subtitle="Cadastro único: o mesmo produto é usado no cardápio, no estoque e nas fichas técnicas."
-        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
+        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button icon={<Boxes size={16} />} onClick={() => setCombo(true)}>Novo combo</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
       />
       <div className="row wrap">
         <div className="input-group" style={{ width: 300, maxWidth: '100%' }}>
@@ -134,6 +138,7 @@ export function ProductsPage() {
           </div>
         </Card>
       )}
+      {combo && <ComboModal onClose={() => setCombo(false)} onSaved={() => void reload()} />}
       {editing === 'new' ? <QuickProductModal onClose={() => setEditing(null)} onSaved={() => void reload()} /> : editing && <ProductEditor product={editing === 'advanced' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} />}
     </div>
   );
@@ -170,6 +175,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
   const nextCode = useLoad(() => (product ? Promise.resolve(null) : api.get<{ code: string }>('/api/products/next-code').catch(() => null)));
   const [tab, setTab] = useState<'geral' | 'estoque' | 'apresentacoes' | 'escolhas'>('geral');
   const [optionGroupIds, setOptionGroupIds] = useState<string[]>(product?.optionGroupIds ?? []);
+  const [optionQty, setOptionQty] = useState<Record<string, number>>(() => Object.fromEntries((product?.optionGroups ?? []).map((g) => [g.groupId, g.quantity])));
   const [busy, setBusy] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [f, setF] = useState({
@@ -216,7 +222,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
         stockTracked: f.stockTracked, minStock: qtyOf(min, pk.value), expiryTracked: f.expiryTracked, menuVisible: f.menuVisible, station: f.station || null, active: f.active,
         // Só envia o custo se foi alterado aqui (preserva o custo médio exato das entradas).
         unitCostE4: f.packageCost !== null && f.packageCost !== initialCost ? Math.round((f.packageCost * 1000 * 10_000) / packageQty) : undefined,
-        optionGroupIds,
+        optionGroups: optionGroupIds.map((groupId) => ({ groupId, quantity: optionQty[groupId] ?? 1 })),
         presentations: pres.map((p, i) => ({
           id: p.id, name: p.name, priceCents: p.priceCents ?? 0, menuVisible: p.menuVisible, active: p.active, sortOrder: i,
           components: p.mode === 'self' ? [{ productId: null, qty: Math.round((p.selfQty ?? 1) * 1000) }] : p.components.map((c) => ({ productId: c.productId, qty: Math.round((c.qty ?? 0) * 1000) })),
@@ -244,7 +250,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
     <Modal title={product ? product.name : 'Novo produto'} wide onClose={onClose}
       footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!f.name.trim() || !f.categoryId} onClick={save}>Salvar</Button></>}>
       <Tabs value={tab} onChange={setTab} options={[{ value: 'geral', label: 'Geral' }, { value: 'estoque', label: 'Estoque e custo' }, { value: 'apresentacoes', label: `Apresentações e preços (${pres.length})` }, { value: 'escolhas', label: `Escolhas no pedido${optionGroupIds.length ? ` (${optionGroupIds.length})` : ''}` }]} />
-      {tab === 'escolhas' && <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds} />}
+      {tab === 'escolhas' && <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds} qty={optionQty} onQtyChange={setOptionQty} />}
       {tab === 'geral' && (
         <div className="stack">
           <div className="row top" style={{ gap: 16 }}>

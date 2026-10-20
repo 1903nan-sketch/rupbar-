@@ -320,6 +320,12 @@ export function SellModePicker({ packaging, value, onChange }: { packaging: Pack
           <Field label={priceLabel(value.mode, packaging)} hint="Preço de venda no cardápio (diferente do custo de compra).">
             <MoneyInput value={value.priceCents} onChange={(priceCents) => onChange({ ...value, priceCents })} />
           </Field>
+          {value.mode === 'dose' && (
+            <Field label={`Também vende ${isFemininePt(packName(packaging, 1)) ? 'a' : 'o'} ${packName(packaging, 1)} fechad${isFemininePt(packName(packaging, 1)) ? 'a' : 'o'}? (opcional)`}
+              hint={`Preço d${isFemininePt(packName(packaging, 1)) ? 'a' : 'o'} ${packName(packaging, 1)} inteir${isFemininePt(packName(packaging, 1)) ? 'a' : 'o'}. A dose baixa os ${packaging.measure === 'mass' ? 'gramas' : 'ml'}; ${packName(packaging, 1)} fechad${isFemininePt(packName(packaging, 1)) ? 'a' : 'o'} baixa inteir${isFemininePt(packName(packaging, 1)) ? 'a' : 'o'}.`}>
+              <MoneyInput value={value.wholePriceCents ?? null} placeholder="Não vende" onChange={(wholePriceCents) => onChange({ ...value, wholePriceCents })} />
+            </Field>
+          )}
         </div>
       )}
       {value.mode === 'ingredient' && <p className="small muted">Depois, use este produto na ficha técnica de drinks e porções (Produtos → Apresentações). O estoque baixa sozinho a cada venda.</p>}

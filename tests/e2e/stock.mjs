@@ -138,6 +138,25 @@ try {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.screenshot({ path: join(out, '04-estoque-light.png') });
 
+  // 4b. Combo: a garrafa fechada + 4 latas do energético escolhido.
+  await page.goto(base + '/produtos');
+  await page.getByRole('button', { name: 'Novo combo' }).click();
+  await modal.getByLabel('Nome do combo').fill('Combo Whisky');
+  await modal.getByLabel('Preço do combo').fill('250,00');
+  await modal.getByLabel('Produto', { exact: true }).selectOption({ label: 'Whisky teste' });
+  await modal.getByText('= 1.000 ml').waitFor();
+  await modal.getByLabel('Adicionar escolha já cadastrada').selectOption({ label: 'Energético (2 opções)' });
+  for (let i = 0; i < 3; i++) await modal.getByRole('button', { name: 'Mais Energético' }).click();
+  await modal.locator('.option-qty-row', { hasText: '4' }).waitFor();
+  await page.screenshot({ path: join(out, '04b-novo-combo.png') });
+  await modal.getByRole('button', { name: /Criar combo/ }).click();
+  await modal.waitFor({ state: 'hidden' });
+  const comboProduct = (await request('GET', '/api/products')).find((p) => p.name === 'Combo Whisky');
+  assert.deepEqual(comboProduct.presentations[0].components.map((c) => [c.productId, c.qty]), [[whisky.id, 1_000_000]]);
+  assert.equal(comboProduct.presentations[0].priceCents, 25_000);
+  assert.deepEqual(comboProduct.optionGroups, [{ groupId: energy.id, quantity: 4 }]);
+  await page.goto(base + '/estoque');
+
   // 5. Celular: ingrediente em pacote de 50 g, sem venda no cardápio.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Novo produto', exact: true }).click();
@@ -154,7 +173,7 @@ try {
   assert.equal(ingredient.stockQty, 200_000);
   assert.equal(ingredient.menuVisible, false);
   assert.equal(ingredient.presentations.length, 0);
-  assert.equal(ingredient.internalCode, '0003');
+  assert.equal(ingredient.internalCode, '0004'); // 0003 ficou com o combo
   await page.waitForFunction(() => !document.querySelector('.toast'));
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'estoque não deve transbordar no celular');
   await page.screenshot({ path: join(out, '06-estoque-mobile.png'), fullPage: true });

@@ -114,6 +114,8 @@ export const operationSettingsSchema = z.object({
   requireCustomerPhone: z.boolean().default(false),
   requireCustomerCpf: z.boolean().default(false),
   autoPrintOrders: z.boolean().default(true),
+  /** Pedido pronto sai sozinho da tela de produção depois de N minutos (0 = só ao marcar entregue). */
+  kitchenReadyMinutes: z.number().int().min(0).max(240).default(10),
   pickupPlace: trimmed(40).default('no balcão'),
   tvVoiceEnabled: z.boolean().default(true),
   lowStockAlertsEnabled: z.boolean().default(true),
@@ -261,6 +263,11 @@ export const productSchema = z.object({
   presentations: z.array(presentationSchema).default([]),
   /** Escolhas pedidas ao lançar (na ordem). Sem o campo, mantém as atuais. */
   optionGroupIds: z.array(zUuid).max(10).optional(),
+  /**
+   * Escolhas com quantidade (combo: 4 energéticos, 5 gelos do sabor escolhido).
+   * Quando enviado, vale no lugar de optionGroupIds.
+   */
+  optionGroups: z.array(z.object({ groupId: zUuid, quantity: z.number().int().min(1).max(50).default(1) })).max(10).optional(),
   /**
    * Entrada opcional no cadastro inicial, registrada na mesma transação.
    * Informe `packages` (embalagens) OU `qty` (milli, ex.: 30 latas = 30_000).

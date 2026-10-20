@@ -25,6 +25,8 @@ export interface MenuItem {
   soldOut: boolean;
   /** Escolhas pedidas ao tocar (sabor, energético, gelo…), na ordem. */
   optionGroupIds?: string[];
+  /** Combos: quantas unidades da opção escolhida vão (5 gelos, 4 latas). */
+  optionQty?: Record<string, number>;
 }
 export interface OptionGroup {
   id: string;
@@ -267,9 +269,11 @@ export function OptionChooser({ item, groups, onClose, onAdd }: {
     }
     return init;
   });
+  const qtyOf = (g: OptionGroup) => item.optionQty?.[g.id] ?? 1;
   const options: CartOption[] = groups.flatMap((g) => {
     const c = g.choices.find((x) => x.id === picked[g.id]);
-    return c ? [{ groupId: g.id, choiceId: c.id, choice: c.name, priceDeltaCents: c.priceDeltaCents }] : [];
+    const n = qtyOf(g);
+    return c ? [{ groupId: g.id, choiceId: c.id, choice: n > 1 ? `${n}× ${c.name}` : c.name, priceDeltaCents: c.priceDeltaCents * n }] : [];
   });
   const missing = groups.filter((g) => g.required && !picked[g.id]);
   const price = unitPriceOf({ item, options });
@@ -289,6 +293,7 @@ export function OptionChooser({ item, groups, onClose, onAdd }: {
           <div key={g.id} className="option-group" role="radiogroup" aria-label={g.name}>
             <div className="option-group-title">
               <strong>{g.name}</strong>
+              {qtyOf(g) > 1 && <span className="option-qty">{qtyOf(g)}×</span>}
               <span className="tiny muted">{g.required ? 'obrigatório' : 'opcional'}</span>
             </div>
             <div className="option-choices">
@@ -307,7 +312,7 @@ export function OptionChooser({ item, groups, onClose, onAdd }: {
                   >
                     {on && <Check size={16} />}
                     <span className="option-choice-name">{c.name}</span>
-                    {c.soldOut ? <span className="tiny danger-text">esgotado</span> : c.priceDeltaCents > 0 ? <span className="option-choice-price num">+{formatBRL(c.priceDeltaCents)}</span> : null}
+                    {c.soldOut ? <span className="tiny danger-text">esgotado</span> : c.priceDeltaCents > 0 ? <span className="option-choice-price num">+{formatBRL(c.priceDeltaCents * qtyOf(g))}</span> : null}
                   </button>
                 );
               })}

@@ -118,11 +118,14 @@ export function createServices(opts: CreateOptions) {
     return tickets;
   };
 
+  let kitchenSweep: NodeJS.Timeout | null = null;
   return {
     ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, admin, kitchen, losses, hookah, printing, tv, tvMedia, notifications, sync,
     network, reports, attachments, setup,
     startWorkers() {
       printing.start();
+      kitchenSweep = setInterval(() => kitchen.sweepReady(), 30_000);
+      kitchenSweep.unref?.();
       notifications.start();
       sync.start();
       network.start();
@@ -130,6 +133,7 @@ export function createServices(opts: CreateOptions) {
     },
     stopWorkers() {
       printing.stop();
+      if (kitchenSweep) clearInterval(kitchenSweep);
       notifications.stop();
       sync.stop();
       network.stop();

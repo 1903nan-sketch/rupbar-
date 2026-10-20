@@ -1,5 +1,6 @@
+import { CASHIER_EXTRA } from '@rupbar/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { category, Client, createEnv, setupEstablishment, uuid, type TestEnv } from './helpers';
+import { category, Client, createEnv, createStaff, setupEstablishment, uuid, type TestEnv } from './helpers';
 
 let env: TestEnv;
 let owner: Client;
@@ -148,5 +149,111 @@ describe('escolhas no pedido', () => {
     const tickets = Array.isArray(board) ? board : board.tickets ?? board.active ?? [];
     const ticketItems = JSON.stringify(tickets);
     expect(ticketItems).toContain('"options":"Red Bull"');
+  });
+
+  it('combo da garrafa: baixa a garrafa inteira, 5 gelos do sabor e 4 latas do energético escolhido; a dose baixa só os ml', async () => {
+    const spirits = await category(owner, 'Destilados');
+    const drinks = await category(owner, 'Drinks');
+    // Garrafa vendida em dose (50 ml) e fechada.
+    const gin = await owner.ok('POST', '/api/products', {
+      name: 'Gin Rocks 1 L', categoryId: spirits, measure: 'volume', packageQty: 1_000_000,
+      presentations: [
+        { name: 'Dose 50 ml', priceCents: 1200, components: [{ productId: null, qty: 50_000 }] },
+        { name: 'Garrafa', priceCents: 12_000, components: [{ productId: null, qty: 1_000_000 }] },
+      ],
+    });
+    await owner.ok('POST', '/api/stock/purchases', { items: [{ productId: gin.id, qty: 4_000_000, totalCostCents: 40_000 }] });
+    const coco = await stocked('Gelo de coco', drinks, 'unit', 1000, 20_000);
+    const melancia = await stocked('Gelo de melancia', drinks, 'unit', 1000, 20_000);
+    const redbull = await stocked('Red Bull lata', drinks, 'unit', 1000, 24_000);
+    const baly = await stocked('Baly lata', drinks, 'unit', 1000, 24_000);
+    const ice = await owner.ok('POST', '/api/option-groups', {
+      name: 'Sabor do gelo', choices: [{ name: 'Coco', productId: coco, qty: 1000 }, { name: 'Melancia', productId: melancia, qty: 1000 }],
+    });
+    const energy = await owner.ok('POST', '/api/option-groups', {
+      name: 'Energético', choices: [{ name: 'Baly', productId: baly, qty: 1000 }, { name: 'Red Bull', priceDeltaCents: 500, productId: redbull, qty: 1000 }],
+    });
+    // Combo: a garrafa (fixa) + escolhas que valem 5 gelos e 4 latas.
+    const combo = await owner.ok('POST', '/api/products', {
+      name: 'Combo Gin Rocks', categoryId: drinks, measure: 'unit', stockTracked: false,
+      presentations: [{ name: 'Combo', priceCents: 15_000, components: [{ productId: gin.id, qty: 1_000_000 }] }],
+      optionGroups: [{ groupId: ice.id, quantity: 5 }, { groupId: energy.id, quantity: 4 }],
+    });
+    expect((await owner.ok('GET', `/api/products/${combo.id}`)).optionGroups).toEqual([{ groupId: ice.id, quantity: 5 }, { groupId: energy.id, quantity: 4 }]);
+    const menu = await owner.ok('GET', '/api/menu');
+    const item = menu.items.find((i: { productName: string }) => i.productName === 'Combo Gin Rocks');
+    expect(item.optionQty).toEqual({ [ice.id]: 5, [energy.id]: 4 });
+    const choice = (g: string, name: string) => menu.optionGroups[g].choices.find((c: { name: string }) => c.name === name).id;
+
+    const c = await owner.ok('POST', '/api/comandas', { cardNumber: 21 });
+    await owner.ok('POST', '/api/orders', {
+      comandaId: c.id, clientRequestId: uuid(),
+      items: [{ presentationId: item.presentationId, quantity: 1, options: [{ groupId: ice.id, choiceId: choice(ice.id, 'Melancia') }, { groupId: energy.id, choiceId: choice(energy.id, 'Red Bull') }] }],
+    });
+    const d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    // R$ 150 + 4 × R$ 5 do Red Bull.
+    expect(d.items[0]).toMatchObject({ name: 'Combo Gin Rocks', options: '5× Melancia · 4× Red Bull', unitPriceCents: 17_000 });
+    expect(await stockOf(gin.id)).toBe(3_000_000);
+    expect(await stockOf(melancia)).toBe(15_000);
+    expect(await stockOf(coco)).toBe(20_000);
+    expect(await stockOf(redbull)).toBe(20_000);
+
+    // Dose desconta só 50 ml; garrafa fechada desconta a garrafa inteira.
+    const dose = (await owner.ok('GET', `/api/products/${gin.id}`)).presentations;
+    await owner.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: dose.find((p: { name: string }) => p.name === 'Dose 50 ml').id, quantity: 2 }] });
+    expect(await stockOf(gin.id)).toBe(2_900_000);
+    await owner.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: dose.find((p: { name: string }) => p.name === 'Garrafa').id, quantity: 1 }] });
+    expect(await stockOf(gin.id)).toBe(1_900_000);
+
+    // Corrigir a quantidade do combo (conta mestre) rebaixa tudo multiplicado.
+    await owner.ok('PUT', `/api/admin/comanda-items/${d.items[0].id}`, { quantity: 2, unitPriceCents: 17_000, reason: 'Eram dois combos' });
+    expect(await stockOf(melancia)).toBe(10_000);
+    expect(await stockOf(redbull)).toBe(16_000);
+    expect(await stockOf(gin.id)).toBe(900_000);
+  });
+
+  it('pedido pronto sai sozinho da tela de produção depois do tempo configurado', async () => {
+    const drinks = await category(owner, 'Drinks');
+    const p = await owner.ok('POST', '/api/products', { name: 'Caipirinha', categoryId: drinks, measure: 'unit', stockTracked: false, station: 'bar', presentations: [{ name: 'Unidade', priceCents: 2000 }] });
+    const pres = (await owner.ok('GET', `/api/products/${p.id}`)).presentations[0].id;
+    const c = await owner.ok('POST', '/api/comandas', { cardNumber: 3 });
+    await owner.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: pres, quantity: 1 }] });
+    let board = await owner.ok('GET', '/api/kitchen/board?station=bar');
+    await owner.ok('POST', `/api/kitchen/tickets/${board[0].id}/status`, { status: 'ready' });
+    env.clock.advance(9 * 60_000);
+    board = await owner.ok('GET', '/api/kitchen/board?station=bar');
+    expect(board[0].status).toBe('ready');
+    env.clock.advance(2 * 60_000);
+    board = await owner.ok('GET', '/api/kitchen/board?station=bar');
+    expect(board[0].status).toBe('delivered');
+    // 0 = só sai ao marcar entregue.
+    const op = await owner.ok('GET', '/api/settings/operation');
+    await owner.ok('PUT', '/api/settings/operation', { ...op, kitchenReadyMinutes: 0 });
+    await owner.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: pres, quantity: 1 }] });
+    board = await owner.ok('GET', '/api/kitchen/board?station=bar');
+    const fresh = board.find((t: { status: string }) => t.status === 'received');
+    await owner.ok('POST', `/api/kitchen/tickets/${fresh.id}/status`, { status: 'ready' });
+    env.clock.advance(60 * 60_000);
+    expect(env.s.kitchen.sweepReady()).toBe(0);
+  });
+
+  it('garçom que também trabalha no caixa: abre o caixa e recebe; sem a opção, não', async () => {
+    const waiter = await createStaff(env, owner, 'waiter', 'Davi', 'davi@bar.com');
+    expect((await waiter.fail('POST', '/api/cash/open', { openingBalanceCents: 5_000 })).status).toBe(403);
+    const users = await owner.ok('GET', '/api/users');
+    const davi = users.find((u: { email: string }) => u.email === 'davi@bar.com');
+    await owner.ok('PATCH', `/api/users/${davi.id}`, { name: davi.name, roleId: davi.roleId, status: 'active', grants: [...CASHIER_EXTRA], denies: [] });
+    // Permissões mudaram: a sessão antiga cai; entra de novo.
+    const again = new Client(env.app, '192.168.0.51');
+    await again.ok('POST', '/api/auth/login', { email: 'davi@bar.com', password: 'Senha-Forte-99' });
+    await again.ok('POST', '/api/cash/open', { openingBalanceCents: 5_000 });
+    const drinks = await category(owner, 'Drinks');
+    const p = await owner.ok('POST', '/api/products', { name: 'Água', categoryId: drinks, measure: 'unit', stockTracked: false, presentations: [{ name: 'Unidade', priceCents: 500 }] });
+    const pres = (await owner.ok('GET', `/api/products/${p.id}`)).presentations[0].id;
+    const c = await again.ok('POST', '/api/comandas', { cardNumber: 40 });
+    await again.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: pres, quantity: 1 }] });
+    await again.ok('POST', '/api/payments', { comandaId: c.id, method: 'pix', amountCents: 500, clientRequestId: uuid() });
+    const d = await again.ok('GET', `/api/comandas/${c.id}`);
+    await again.ok('POST', `/api/comandas/${c.id}/close`, { expectedVersion: d.version });
   });
 });

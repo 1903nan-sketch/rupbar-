@@ -305,3 +305,8 @@
     min-height: 0;
   }
 }
+.kds-col-hint {
+  margin: -4px 12px 8px;
+  font-size: 12px;
+  color: var(--text-3, var(--text-2));
+}

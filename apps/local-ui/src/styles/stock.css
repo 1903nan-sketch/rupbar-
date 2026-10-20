@@ -288,3 +288,14 @@
   .buy-mode-options .product-kind:hover:not(:disabled),
   .sell-mode-options .product-kind:hover:not(:disabled) { transform: none; }
 }
+
+/* Novo combo: item fixo (produto + quantidade inteira) */
+.combo-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+.combo-item-row > .btn {
+  margin-top: 28px;
+}

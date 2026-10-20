@@ -3,7 +3,7 @@
  * As conversões de quantidade ficam em @rupbar/core (packaging.ts).
  */
 import {
-  buyModeOf, DEFAULT_PACKAGE_LABEL, MILLI, packName, qtyFrom, unitName, amountIn, preferredMode,
+  buyModeOf, DEFAULT_PACKAGE_LABEL, isFemininePt, MILLI, packName, qtyFrom, unitName, amountIn, preferredMode,
   type BuyMode, type CostMode, type Measure, type Packaging, type QtyMode, type SellMode,
 } from '@rupbar/core';
 
@@ -88,6 +88,8 @@ export interface SellDraft {
   /** Dose em ml (garrafa) ou porção em g (pacote). */
   dose: number | null;
   priceCents: number | null;
+  /** Vendendo por dose, também vende a garrafa (ou o pacote) fechada por este preço. */
+  wholePriceCents?: number | null;
 }
 
 export const SELL_DEFAULT: Record<BuyMode, SellMode> = { single: 'unit', pack: 'unit', bottle: 'dose', bag: 'ingredient' };
@@ -124,7 +126,12 @@ export function presentationsFor(sell: SellDraft, p: Packaging): Checked<Present
     if (dose <= 0) return { ok: false, error: `Informe o tamanho da ${what}.` };
     if (dose > p.packageQty) return { ok: false, error: `A ${what} não pode ser maior que ${p.measure === 'mass' ? 'o pacote' : 'a garrafa'}.` };
     const unit = p.measure === 'mass' ? 'g' : 'ml';
-    return { ok: true, value: [{ name: `${p.measure === 'mass' ? 'Porção' : 'Dose'} ${sell.dose} ${unit}`, priceCents: sell.priceCents, components: [{ productId: null, qty: dose }] }] };
+    const value: PresentationInput[] = [{ name: `${p.measure === 'mass' ? 'Porção' : 'Dose'} ${sell.dose} ${unit}`, priceCents: sell.priceCents, components: [{ productId: null, qty: dose }] }];
+    // A mesma garrafa: a dose baixa os ml e a garrafa fechada baixa a garrafa inteira.
+    if (sell.wholePriceCents && sell.wholePriceCents > 0) {
+      value.push({ name: `${cap(packName(p, 1))} fechad${isFemininePt(packName(p, 1)) ? 'a' : 'o'}`, priceCents: sell.wholePriceCents, components: [{ productId: null, qty: p.packageQty }] });
+    }
+    return { ok: true, value };
   }
   const single = buyModeOf(p) === 'single' || buyModeOf(p) === 'pack';
   return {

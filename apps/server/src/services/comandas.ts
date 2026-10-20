@@ -331,8 +331,8 @@ export class ComandasService {
    * o acréscimo e o produto que sai do estoque.
    */
   private resolveOptions(productId: string, productName: string, selected: { groupId: string; choiceId: string }[]) {
-    const groups = this.ctx.db.all<{ id: string; name: string; required: number }>(
-      `SELECT g.id, g.name, g.required FROM product_option_groups pg JOIN option_groups g ON g.id = pg.group_id
+    const groups = this.ctx.db.all<{ id: string; name: string; required: number; quantity: number }>(
+      `SELECT g.id, g.name, g.required, pg.quantity FROM product_option_groups pg JOIN option_groups g ON g.id = pg.group_id
        WHERE pg.product_id = ? AND g.active = 1 AND EXISTS (SELECT 1 FROM option_choices oc WHERE oc.group_id = g.id AND oc.active = 1)
        ORDER BY pg.sort_order`,
       productId,
@@ -340,7 +340,8 @@ export class ComandasService {
     if (selected.some((s) => !groups.some((g) => g.id === s.groupId))) {
       throw conflict(`As escolhas de ${productName} mudaram. Atualize o cardápio e escolha de novo.`, 'OPTION_UNAVAILABLE');
     }
-    const chosen: { groupId: string; group: string; choiceId: string; choice: string; priceDeltaCents: number; productId: string | null; qty: number }[] = [];
+    // Nos combos a escolha vale várias unidades: preço e baixa multiplicados (4× Red Bull = 4 latas).
+    const chosen: { groupId: string; group: string; choiceId: string; choice: string; quantity: number; priceDeltaCents: number; productId: string | null; qty: number }[] = [];
     for (const g of groups) {
       const picks = selected.filter((s) => s.groupId === g.id);
       if (picks.length > 1) throw badRequest(`Escolha só uma opção em "${g.name}" (${productName}).`, 'OPTION_MULTIPLE');
@@ -350,9 +351,10 @@ export class ComandasService {
       }
       const c = this.ctx.db.get('SELECT * FROM option_choices WHERE id = ? AND group_id = ? AND active = 1', picks[0]!.choiceId, g.id);
       if (!c) throw conflict(`Uma opção de ${productName} não está mais disponível. Atualize o cardápio.`, 'OPTION_UNAVAILABLE');
+      const n = Math.max(1, Number(g.quantity) || 1);
       chosen.push({
-        groupId: g.id, group: g.name, choiceId: String(c.id), choice: String(c.name), priceDeltaCents: Number(c.price_delta_cents),
-        productId: (c.ingredient_product_id as string | null) ?? null, qty: Number(c.qty),
+        groupId: g.id, group: g.name, choiceId: String(c.id), choice: n > 1 ? `${n}× ${c.name}` : String(c.name), quantity: n,
+        priceDeltaCents: Number(c.price_delta_cents) * n, productId: (c.ingredient_product_id as string | null) ?? null, qty: Number(c.qty) * n,
       });
     }
     return chosen;

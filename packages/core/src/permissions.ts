@@ -68,6 +68,15 @@ export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 export const OWNER_ONLY: readonly Permission[] = ['users.manage', 'roles.manage', 'losses.confirm', 'sync.manage', 'admin.override'];
 
 /** Permissões sensíveis: podem ser concedidas, mas a interface exige confirmação. */
+/**
+ * "Também trabalha no caixa": o que um garçom (ou outro cargo) ganha para abrir
+ * e fechar o caixa, receber pagamentos, encerrar comandas, sangria e suprimento.
+ * Estornos ficam de fora (são sensíveis).
+ */
+export const CASHIER_EXTRA: readonly Permission[] = [
+  'cash.view', 'cash.open', 'cash.close', 'cash.payment', 'cash.withdrawal', 'cash.supply', 'comandas.close',
+];
+
 export const SENSITIVE: readonly Permission[] = ['reports.financial', 'cash.payment_reverse', 'comandas.cancel', 'stock.adjust'];
 
 export type SystemRoleKey = 'owner' | 'manager' | 'cashier' | 'waiter' | 'kitchen';

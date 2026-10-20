@@ -196,9 +196,13 @@ export class CatalogService {
       updatedAt: p.updated_at,
       version: p.version,
       presentations,
-      optionGroupIds: this.ctx.db
-        .all<{ group_id: string }>('SELECT group_id FROM product_option_groups WHERE product_id = ? ORDER BY sort_order', String(p.id))
-        .map((r) => r.group_id),
+      ...(() => {
+        const links = this.ctx.db.all<{ group_id: string; quantity: number }>(
+          'SELECT group_id, quantity FROM product_option_groups WHERE product_id = ? ORDER BY sort_order', String(p.id),
+        );
+        // Escolhas na ordem e, nos combos, quantas unidades da opção escolhida vão (4 latas, 5 gelos).
+        return { optionGroupIds: links.map((l) => l.group_id), optionGroups: links.map((l) => ({ groupId: l.group_id, quantity: l.quantity })) };
+      })(),
     };
   }
 
@@ -345,9 +349,9 @@ export class CatalogService {
     requirePerm(actor, 'menu.view');
     const categories = this.ctx.db.all('SELECT id, name, icon, station FROM categories WHERE active = 1 ORDER BY sort_order, name');
     const optionGroups = this.menuOptionGroups();
-    const linked = new Map<string, string[]>();
-    for (const l of this.ctx.db.all<{ product_id: string; group_id: string }>('SELECT product_id, group_id FROM product_option_groups ORDER BY sort_order')) {
-      linked.set(l.product_id, [...(linked.get(l.product_id) ?? []), l.group_id]);
+    const linked = new Map<string, { group_id: string; quantity: number }[]>();
+    for (const l of this.ctx.db.all<{ product_id: string; group_id: string; quantity: number }>('SELECT product_id, group_id, quantity FROM product_option_groups ORDER BY sort_order')) {
+      linked.set(l.product_id, [...(linked.get(l.product_id) ?? []), l]);
     }
     const items = this.ctx.db
       .all(
@@ -360,7 +364,9 @@ export class CatalogService {
       .map((r) => {
         const components = this.componentsOf(String(r.presentation_id), String(r.product_id));
         const available = this.availability(components);
-        const optionGroupIds = (linked.get(String(r.product_id)) ?? []).filter((g) => optionGroups[g]);
+        const links = (linked.get(String(r.product_id)) ?? []).filter((l) => optionGroups[l.group_id]);
+        const optionGroupIds = links.map((l) => l.group_id);
+        const optionQty = Object.fromEntries(links.filter((l) => l.quantity > 1).map((l) => [l.group_id, l.quantity]));
         return {
           presentationId: r.presentation_id, presentationName: r.presentation_name, priceCents: r.price_cents,
           productId: r.product_id, productName: r.product_name, description: r.description,
@@ -368,8 +374,9 @@ export class CatalogService {
           // Leitor de código de barras no caixa: bipar adiciona o produto.
           barcode: r.barcode, code: r.internal_code,
           available, soldOut: available === 0,
-          // Escolhas pedidas ao tocar no produto (sabor, energético, gelo…).
+          // Escolhas pedidas ao tocar no produto (sabor, energético, gelo…) e, nos combos, quantas unidades de cada.
           optionGroupIds,
+          optionQty,
         };
       });
     return { categories, items, optionGroups };
@@ -478,11 +485,15 @@ export class CatalogService {
         if (!kept.has(old)) this.ctx.db.run('UPDATE presentations SET active = 0, version=version+1, updated_at=? WHERE id = ?', now, old);
       }
 
-      if (input.optionGroupIds) {
-        const ids = [...new Set(input.optionGroupIds)];
-        for (const g of ids) if (!this.ctx.db.value('SELECT id FROM option_groups WHERE id = ?', g)) throw notFound('Escolha');
+      const links = input.optionGroups ?? input.optionGroupIds?.map((groupId) => ({ groupId, quantity: 1 }));
+      if (links) {
+        const seen = new Set<string>();
+        const unique = links.filter((l) => !seen.has(l.groupId) && seen.add(l.groupId));
+        for (const l of unique) if (!this.ctx.db.value('SELECT id FROM option_groups WHERE id = ?', l.groupId)) throw notFound('Escolha');
         this.ctx.db.run('DELETE FROM product_option_groups WHERE product_id = ?', productId);
-        ids.forEach((g, i) => this.ctx.db.run('INSERT INTO product_option_groups (product_id, group_id, sort_order) VALUES (?,?,?)', productId, g, i));
+        unique.forEach((l, i) => this.ctx.db.run(
+          'INSERT INTO product_option_groups (product_id, group_id, sort_order, quantity) VALUES (?,?,?,?)', productId, l.groupId, i, l.quantity,
+        ));
       }
 
       this.ctx.audit(actor, id ? 'products.updated' : 'products.created', 'product', productId, {
