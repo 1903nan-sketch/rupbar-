@@ -327,6 +327,12 @@ export const inventorySchema = z.object({
   items: z.array(z.object({ productId: zUuid, countedQty: zMilli.min(0) })).min(1),
 });
 
+/** Planilha de produtos e contagem (CSV). Sem `commit`, só confere e devolve a prévia. */
+export const stockImportSchema = z.object({
+  csv: z.string().min(1, 'A planilha está vazia.').max(1_500_000, 'Planilha grande demais: divida em partes.'),
+  commit: z.boolean().default(false),
+});
+
 export const zCardNumber = z.number().int('Número do cartão inválido').min(1, 'Número do cartão inválido').max(99_999, 'Número do cartão inválido');
 
 export const comandaOpenSchema = z

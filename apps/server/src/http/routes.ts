@@ -285,6 +285,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/stock/adjustments', (req, a) => s.stock.adjust(a, req.body));
   r('POST', '/api/stock/inventories', (req, a) => s.stock.inventory(a, req.body));
   r('GET', '/api/stock/inventories', (_req, a) => s.stock.inventories(a));
+  r('POST', '/api/stock/import', (req, a) => s.imports.products(a, req.body));
   r('GET', '/api/stock/inventories/:id', (req, a) => s.stock.inventoryDetail(a, id(req)));
   r('GET', '/api/stock/movements', (req, a) =>
     s.stock.movements(a, { productId: q(req).productId, type: q(req).type, from: q(req).from, to: q(req).to, limit: Number(q(req).limit) || undefined }),

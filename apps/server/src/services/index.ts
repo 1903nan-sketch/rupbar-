@@ -15,6 +15,7 @@ import { CatalogService } from './catalog';
 import { ComandasService } from './comandas';
 import { Ctx, type ServerConfig } from './context';
 import { HookahService } from './hookah';
+import { ImportService } from './imports';
 import { KitchenService } from './kitchen';
 import { LossesService } from './losses';
 import { NetworkService } from './network';
@@ -91,6 +92,7 @@ export function createServices(opts: CreateOptions) {
   const reports = new ReportsService(ctx);
   const attachments = new AttachmentsService(ctx);
   const setup = new SetupService(ctx, settings, users, catalog, auth);
+  const imports = new ImportService(ctx, catalog, stock);
 
   // Ligações entre módulos (evita dependências circulares).
   stock.onAlertOpened = (alertId, productId) => notifications.enqueueStockAlert(alertId, productId);
@@ -121,7 +123,7 @@ export function createServices(opts: CreateOptions) {
   let kitchenSweep: NodeJS.Timeout | null = null;
   return {
     ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, admin, kitchen, losses, hookah, printing, tv, tvMedia, notifications, sync,
-    network, reports, attachments, setup,
+    network, reports, attachments, setup, imports,
     startWorkers() {
       printing.start();
       kitchenSweep = setInterval(() => kitchen.sweepReady(), 30_000);

@@ -1,6 +1,6 @@
 // Fluxo real do cadastro rápido e da reposição de estoque, em PC e celular:
 // "como você compra" (fardo, garrafa, pacote), embalagem × unidade, frase de
-// conferência, aviso de engano, código automático e filtros.
+// conferência, aviso de engano, código automático, filtros e importação de planilha.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync } from 'node:fs';
@@ -177,7 +177,39 @@ try {
   await page.waitForFunction(() => !document.querySelector('.toast'));
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'estoque não deve transbordar no celular');
   await page.screenshot({ path: join(out, '06-estoque-mobile.png'), fullPage: true });
+
+  // 6. Importar a contagem por planilha salva pelo Excel (CSV em Windows-1252):
+  //    um já cadastrado (atualiza a contagem), um novo e uma linha com erro.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Importar planilha', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await modal.getByRole('button', { name: 'Baixar modelo (.csv)' }).click();
+  assert.equal((await download).suggestedFilename(), 'modelo-estoque-rupbar.csv');
+  const sheet = [
+    'Produto;Como compra;Qtd embalagem;Fechados;Soltos;Custo;Preço de venda',
+    'cerveja TESTE;fardo;12;1;3;54,00;12,00',
+    'Água com gás;unidade;;;20;1,80;5,00',
+    'Linha errada;barril;;;;;',
+  ].join('\r\n');
+  await modal.getByLabel('Arquivo da planilha').setInputFiles({ name: 'contagem.csv', mimeType: 'text/csv', buffer: Buffer.from(sheet, 'latin1') });
+  const importRow = (name) => modal.locator('.import-row', { hasText: name });
+  await importRow('cerveja TESTE').getByText('Já cadastrado pelo nome: Cerveja teste').waitFor();
+  await importRow('cerveja TESTE').getByText('15 latas (1 fardo + 3 latas)').waitFor();
+  await importRow('Água com gás').getByText('Novo', { exact: true }).waitFor();
+  await importRow('Linha errada').getByText(/unidade, fardo, garrafa ou pacote/).waitFor();
+  await page.screenshot({ path: join(out, '07-importar-planilha.png') });
+  await modal.getByRole('button', { name: 'Importar 2 produtos' }).click();
+  await page.getByRole('heading', { name: 'Planilha importada' }).waitFor();
+  await page.getByRole('button', { name: 'Ver o estoque' }).click();
+  await modal.waitFor({ state: 'hidden' });
+  const afterImport = await request('GET', '/api/products');
+  assert.equal(afterImport.find((p) => p.name === 'Cerveja teste').stockQty, 15_000);
+  const water = afterImport.find((p) => p.name === 'Água com gás');
+  assert.equal(water.stockQty, 20_000);
+  assert.equal(water.categoryName, 'Outros');
+  assert.deepEqual(water.presentations.map((p) => [p.name, p.priceCents]), [['Unidade', 500]]);
+  await page.getByRole('row').filter({ hasText: 'Água com gás' }).getByText('20 unidades').waitFor();
   assert.deepEqual(errors, []);
-  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros e celular. Capturas em ${out}`);
+  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular e importação de planilha. Capturas em ${out}`);
 } catch (error) { console.error(error); process.exitCode = 1; }
 finally { await browser?.close(); server.stdin.write('shutdown\n'); setTimeout(() => server.kill(), 3000).unref(); }

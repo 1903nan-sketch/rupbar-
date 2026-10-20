@@ -3,7 +3,7 @@ import {
   type Measure, type Packaging, type StockMovementType,
 } from '@rupbar/core';
 import {
-  AlertTriangle, Boxes, CircleCheck, CircleSlash, ClipboardCheck, History, PackagePlus, Plus, Search, SlidersHorizontal, Trash2, TriangleAlert, Truck,
+  AlertTriangle, Boxes, CircleCheck, CircleSlash, ClipboardCheck, FileSpreadsheet, History, PackagePlus, Plus, Search, SlidersHorizontal, Trash2, TriangleAlert, Truck,
   Undo2, type LucideIcon,
 } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
@@ -20,6 +20,7 @@ import { defaultCostMode, emptyQty, entryPayload, qtyOf, type CostDraft, type Qt
 import '../styles/stock.css';
 import { packagingOf, type Product } from './Products';
 import { QuickProductModal } from './QuickProduct';
+import { StockImportModal } from './StockImport';
 
 type Tab = 'saldos' | 'entradas' | 'movimentacoes' | 'inventario' | 'validades' | 'alertas' | 'fornecedores';
 
@@ -41,11 +42,14 @@ export function StockPage() {
   const { can } = useSession();
   const [create, setCreate] = useState(false);
   const [entry, setEntry] = useState<Product | 'new' | null>(null);
+  const [importing, setImporting] = useState(false);
   const [revision, setRevision] = useState(0);
   const refresh = () => setRevision((n) => n + 1);
+  const canImport = can('products.manage') && can('stock.entry') && can('stock.adjust');
   return (
     <div className="stack stock-page">
       <PageHeader title="Estoque" subtitle="Cadastre, reponha e acompanhe seus produtos. Tudo aparece nas duas formas: em unidades soltas e em embalagens fechadas." actions={<>
+        {canImport && <Button className="hide-mobile" icon={<FileSpreadsheet size={16} />} onClick={() => setImporting(true)}>Importar planilha</Button>}
         {can('products.manage') && <Button icon={<Plus size={16} />} onClick={() => setCreate(true)}>Novo produto</Button>}
         {can('stock.entry') && <Button variant="primary" icon={<PackagePlus size={16} />} onClick={() => setEntry('new')}>Nova entrada</Button>}
       </>} />
@@ -58,7 +62,7 @@ export function StockPage() {
         { value: 'validades', label: 'Validades' },
         { value: 'fornecedores', label: 'Fornecedores' },
       ]} />
-      {tab === 'saldos' && <Balances key={revision} onEntry={setEntry} onCreate={() => setCreate(true)} />}
+      {tab === 'saldos' && <Balances key={revision} onEntry={setEntry} onCreate={() => setCreate(true)} onImport={canImport ? () => setImporting(true) : undefined} />}
       {tab === 'alertas' && <Alerts />}
       {tab === 'entradas' && <Purchases key={revision} />}
       {tab === 'movimentacoes' && <Movements />}
@@ -66,6 +70,7 @@ export function StockPage() {
       {tab === 'validades' && <Lots />}
       {tab === 'fornecedores' && <Suppliers />}
       {create && <QuickProductModal onClose={() => setCreate(false)} onSaved={refresh} />}
+      {importing && <StockImportModal onClose={() => setImporting(false)} onDone={refresh} />}
       {entry && <PurchaseModal initialProduct={entry === 'new' ? undefined : entry} onClose={() => setEntry(null)} onDone={refresh} />}
     </div>
   );
@@ -96,7 +101,7 @@ const KPIS: { value: LevelFilter; label: string; hint: string; icon: LucideIcon;
 ];
 const inLevel = (p: Product, f: LevelFilter) => f === 'all' || (f === 'out' ? p.level === 'out' || p.level === 'negative' : p.level === f);
 
-function Balances({ onEntry, onCreate }: { onEntry: (product: Product) => void; onCreate: () => void }) {
+function Balances({ onEntry, onCreate, onImport }: { onEntry: (product: Product) => void; onCreate: () => void; onImport?: () => void }) {
   const { can } = useSession();
   const { data, error, reload } = useTracked();
   const [adjust, setAdjust] = useState<Product | null>(null);
@@ -144,7 +149,7 @@ function Balances({ onEntry, onCreate }: { onEntry: (product: Product) => void; 
           <Empty icon={<PackagePlus size={32} />} title={data.length ? 'Nenhum produto neste filtro' : 'Vamos cadastrar seu estoque?'}>
             {data.length
               ? <div className="stack stock-empty-actions"><span>Tente outro nome, código ou situação.</span><Button size="small" onClick={clear}>Limpar filtros</Button></div>
-              : <div className="stack stock-empty-actions"><span>Cadastre o produto dizendo como você compra (unidade, fardo, garrafa ou pacote). O saldo inicial entra na mesma tela.</span>{can('products.manage') && <Button variant="primary" onClick={onCreate}>Cadastrar primeiro produto</Button>}</div>}
+              : <div className="stack stock-empty-actions"><span>Cadastre o produto dizendo como você compra (unidade, fardo, garrafa ou pacote). O saldo inicial entra na mesma tela.</span>{can('products.manage') && <Button variant="primary" onClick={onCreate}>Cadastrar primeiro produto</Button>}{onImport && <Button icon={<FileSpreadsheet size={16} />} onClick={onImport}>Importar planilha com tudo</Button>}</div>}
           </Empty>
         ) : (
           <div className="table-wrap">

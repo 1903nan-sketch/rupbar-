@@ -51,7 +51,7 @@ pnpm dev:panel         # painel online em http://localhost:3000 (requer .env.loc
 
 pnpm typecheck
 pnpm test              # domínio, servidor (integração), nuvem (PGlite), interface
-pnpm test:e2e          # navegador real: operação completa + cadastro e reposição de estoque
+pnpm test:e2e          # navegador real: operação completa + cadastro, reposição e importação de estoque
 ```
 
 Abra `http://localhost:5173` no próprio PC para o assistente de configuração inicial (por segurança, só é permitido a partir do computador local).
@@ -71,6 +71,7 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 - **Produção sem acumular**: pronto sai sozinho da tela depois de alguns minutos.
 - **Garçom que também é caixa**: um botão no cadastro do funcionário.
 - **Leitor de código de barras**: bipar o produto na venda rápida ou no “Lançar na comanda” adiciona ao pedido.
+- **Importar planilha do estoque**: em Estoque → Importar planilha, baixe o modelo, preencha a contagem no Excel (fechados + soltos, custo, preço, dose) e salve como CSV. O sistema mostra linha a linha o que vai acontecer; produtos novos entram com saldo, custo e preço, e os já cadastrados recebem a contagem como inventário.
 
 ### Novidades da versão 0.2.0
 
