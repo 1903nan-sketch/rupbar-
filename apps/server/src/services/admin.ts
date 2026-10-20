@@ -7,7 +7,7 @@ import { conflict, notFound } from '../lib/errors';
 import type { CashService } from './cash';
 import type { ComandasService } from './comandas';
 import { requirePerm, type Actor, type Ctx } from './context';
-import type { StockService } from './stock';
+import { StockService } from './stock';
 
 /**
  * Correções da conta mestre (somente o proprietário, permissão admin.override).
@@ -159,12 +159,14 @@ export class AdminService {
         const newId = this.ctx.id();
         this.db.run(
           `INSERT INTO comanda_items (id, comanda_id, order_id, kind, presentation_id, product_id, product_name, presentation_name, category_id,
-             quantity, unit_price_cents, notes, station, created_by, created_at, updated_at)
-           VALUES (?,?,?,'product',?,?,?,?,?,?,?,?,?,?,?,?)`,
+             quantity, unit_price_cents, notes, station, options_label, options_json, created_by, created_at, updated_at)
+           VALUES (?,?,?,'product',?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           newId, comandaId, item.order_id, item.presentation_id, item.product_id, item.product_name, item.presentation_name, item.category_id,
-          input.quantity, input.unitPriceCents, item.notes, item.station, item.created_by, String(item.created_at), now,
+          input.quantity, input.unitPriceCents, item.notes, item.station, item.options_label ?? null, item.options_json ?? null,
+          item.created_by, String(item.created_at), now,
         );
-        const cost = this.stock.deductForSale(newId, String(item.presentation_id), input.quantity, actor.userId);
+        // As escolhas do item (ex.: a lata de Red Bull) baixam de novo com a quantidade corrigida.
+        const cost = this.stock.deductForSale(newId, String(item.presentation_id), input.quantity, actor.userId, StockService.optionComponents(item.options_json));
         this.db.run('UPDATE comanda_items SET unit_cost_cents = ? WHERE id = ?', Math.round(cost / input.quantity), newId);
       }
       this.settle(comandaId);

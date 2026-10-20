@@ -194,7 +194,7 @@ interface MyOrder {
   customerDisplayName: string;
   createdAt: string;
   tickets: { station: string; status: string }[];
-  items: { id: string; product_name: string; presentation_name: string; quantity: number; status: string }[];
+  items: { id: string; product_name: string; presentation_name: string; options_label?: string | null; quantity: number; status: string }[];
 }
 
 export function MobileOrders() {
@@ -220,7 +220,7 @@ export function MobileOrders() {
             <div className="row wrap" style={{ margin: '8px 0', gap: 6 }}>
               {o.tickets.map((t) => <span key={t.station} className="row small">{t.station === 'kitchen' ? 'Cozinha' : 'Bebidas'}: <TicketBadge status={t.status} /></span>)}
             </div>
-            <div className="small">{o.items.filter((i) => i.status === 'active').map((i) => `${i.quantity}× ${i.product_name}${i.presentation_name !== 'Unidade' ? ` (${i.presentation_name})` : ''}`).join(' · ')}</div>
+            <div className="small">{o.items.filter((i) => i.status === 'active').map((i) => `${i.quantity}× ${i.product_name}${i.presentation_name !== 'Unidade' ? ` (${i.presentation_name})` : ''}${i.options_label ? ` — ${i.options_label}` : ''}`).join(' · ')}</div>
           </div>
         );
       })}

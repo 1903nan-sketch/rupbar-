@@ -308,7 +308,7 @@ export class PrintingService {
       if (!targets.length && opts.ticketId) targets = this.cashierPrinters(true);
       if (!targets.length) continue;
       const items = this.ctx.db.all(
-        "SELECT product_name, presentation_name, quantity, notes FROM comanda_items WHERE order_id = ? AND station = ? AND status = 'active' ORDER BY created_at",
+        "SELECT product_name, presentation_name, options_label, quantity, notes FROM comanda_items WHERE order_id = ? AND station = ? AND status = 'active' ORDER BY created_at",
         orderId, String(t.station),
       );
       if (!items.length) continue;
@@ -327,6 +327,7 @@ export class PrintingService {
             items: items.map((i) => ({
               quantity: Number(i.quantity),
               name: i.presentation_name === 'Unidade' ? String(i.product_name) : `${i.product_name} (${i.presentation_name})`,
+              options: (i.options_label as string) ?? null,
               notes: (i.notes as string) ?? null,
             })),
             notes: (t.order_notes as string) ?? null,
@@ -359,7 +360,7 @@ export class PrintingService {
     const targets = this.cashierPrinters(opts.manual);
     if (!targets.length) return [];
     const items = this.ctx.db.all(
-      "SELECT product_name, presentation_name, quantity, notes FROM comanda_items WHERE order_id = ? AND status = 'active' ORDER BY created_at",
+      "SELECT product_name, presentation_name, options_label, quantity, notes FROM comanda_items WHERE order_id = ? AND status = 'active' ORDER BY created_at",
       orderId,
     );
     if (!items.length) return [];
@@ -390,6 +391,7 @@ export class PrintingService {
             items: items.map((i) => ({
               quantity: Number(i.quantity),
               name: i.presentation_name === 'Unidade' ? String(i.product_name) : `${i.product_name} (${i.presentation_name})`,
+              options: (i.options_label as string) ?? null,
               notes: (i.notes as string) ?? null,
             })),
             notes: (o.notes as string) ?? null,
@@ -449,6 +451,7 @@ export class PrintingService {
               items: d.items.filter((i) => i.status === 'active').map((i) => ({
                 quantity: Number(i.quantity),
                 name: i.presentationName === 'Unidade' ? String(i.name) : `${i.name} ${i.presentationName}`,
+                options: i.options,
                 total: Number(i.totalCents),
               })),
               subtotal: d.subtotal, discount: d.discount, serviceFee: d.serviceFee, total: d.total,

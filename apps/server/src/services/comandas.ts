@@ -155,7 +155,7 @@ export class ComandasService {
       openedBy: c.opened_by,
       items: items.map((i) => ({
         id: i.id, orderId: i.order_id, orderNumber: i.order_number, kind: i.kind, presentationId: i.presentation_id,
-        productId: i.product_id, name: i.product_name, presentationName: i.presentation_name, quantity: i.quantity,
+        productId: i.product_id, name: i.product_name, presentationName: i.presentation_name, options: (i.options_label as string | null) ?? null, quantity: i.quantity,
         unitPriceCents: i.unit_price_cents, totalCents: Number(i.quantity) * Number(i.unit_price_cents),
         unitCostCents: showCost ? i.unit_cost_cents : null, notes: i.notes, station: i.station, status: i.status,
         cancelReason: i.cancel_reason, createdAt: i.created_at, createdByName: i.created_by_name, ticketStatus: i.ticket_status,
@@ -294,14 +294,19 @@ export class ComandasService {
         if (!pr || pr.active !== 1 || pr.product_active !== 1) throw conflict('Um dos produtos não está mais disponível. Atualize o cardápio.', 'PRODUCT_UNAVAILABLE');
         const itemId = this.ctx.id();
         const station = String(pr.station) as Station;
+        const chosen = this.resolveOptions(String(pr.product_id), String(pr.product_name), item.options);
+        const unitPrice = Number(pr.price_cents) + chosen.reduce((a, o) => a + o.priceDeltaCents, 0);
         this.ctx.db.run(
           `INSERT INTO comanda_items (id, comanda_id, order_id, kind, presentation_id, product_id, product_name, presentation_name, category_id,
-             quantity, unit_price_cents, notes, station, created_by, created_at, updated_at)
-           VALUES (?,?,?,'product',?,?,?,?,?,?,?,?,?,?,?,?)`,
+             quantity, unit_price_cents, notes, station, options_label, options_json, created_by, created_at, updated_at)
+           VALUES (?,?,?,'product',?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           itemId, input.comandaId, orderId, item.presentationId, pr.product_id as string, pr.product_name as string, pr.name as string,
-          pr.category_id as string, item.quantity, Number(pr.price_cents), item.notes, station, actor.userId ?? 'system', nowIso, nowIso,
+          pr.category_id as string, item.quantity, unitPrice, item.notes, station,
+          chosen.length ? chosen.map((o) => o.choice).join(' · ') : null, chosen.length ? JSON.stringify(chosen) : null,
+          actor.userId ?? 'system', nowIso, nowIso,
         );
-        const cost = this.stock.deductForSale(itemId, item.presentationId, item.quantity, actor.userId);
+        const extra = chosen.filter((o) => o.productId && o.qty > 0).map((o) => ({ productId: o.productId!, qty: o.qty }));
+        const cost = this.stock.deductForSale(itemId, item.presentationId, item.quantity, actor.userId, extra);
         this.ctx.db.run('UPDATE comanda_items SET unit_cost_cents = ? WHERE id = ?', Math.round(cost / item.quantity), itemId);
         if (station !== 'none') stations.add(station);
       }
@@ -318,6 +323,39 @@ export class ComandasService {
       this.onOrderCreated(orderId);
       return { ...this.orderView(orderId), duplicate: false };
     });
+  }
+
+  /**
+   * Confere as escolhas de um item (sabor, energético, gelo): uma opção por
+   * escolha, todas as obrigatórias respondidas. Devolve o que foi escolhido com
+   * o acréscimo e o produto que sai do estoque.
+   */
+  private resolveOptions(productId: string, productName: string, selected: { groupId: string; choiceId: string }[]) {
+    const groups = this.ctx.db.all<{ id: string; name: string; required: number }>(
+      `SELECT g.id, g.name, g.required FROM product_option_groups pg JOIN option_groups g ON g.id = pg.group_id
+       WHERE pg.product_id = ? AND g.active = 1 AND EXISTS (SELECT 1 FROM option_choices oc WHERE oc.group_id = g.id AND oc.active = 1)
+       ORDER BY pg.sort_order`,
+      productId,
+    );
+    if (selected.some((s) => !groups.some((g) => g.id === s.groupId))) {
+      throw conflict(`As escolhas de ${productName} mudaram. Atualize o cardápio e escolha de novo.`, 'OPTION_UNAVAILABLE');
+    }
+    const chosen: { groupId: string; group: string; choiceId: string; choice: string; priceDeltaCents: number; productId: string | null; qty: number }[] = [];
+    for (const g of groups) {
+      const picks = selected.filter((s) => s.groupId === g.id);
+      if (picks.length > 1) throw badRequest(`Escolha só uma opção em "${g.name}" (${productName}).`, 'OPTION_MULTIPLE');
+      if (!picks.length) {
+        if (g.required) throw badRequest(`Escolha ${g.name.toLocaleLowerCase('pt-BR')} para ${productName}.`, 'OPTION_REQUIRED', { groupId: g.id });
+        continue;
+      }
+      const c = this.ctx.db.get('SELECT * FROM option_choices WHERE id = ? AND group_id = ? AND active = 1', picks[0]!.choiceId, g.id);
+      if (!c) throw conflict(`Uma opção de ${productName} não está mais disponível. Atualize o cardápio.`, 'OPTION_UNAVAILABLE');
+      chosen.push({
+        groupId: g.id, group: g.name, choiceId: String(c.id), choice: String(c.name), priceDeltaCents: Number(c.price_delta_cents),
+        productId: (c.ingredient_product_id as string | null) ?? null, qty: Number(c.qty),
+      });
+    }
+    return chosen;
   }
 
   orderView(orderId: string) {
@@ -338,7 +376,7 @@ export class ComandasService {
       createdAt: o.created_at,
       tickets: this.ctx.db.all('SELECT id, station, status, ready_at, delivered_at FROM order_tickets WHERE order_id = ?', orderId),
       items: this.ctx.db.all(
-        'SELECT id, product_name, presentation_name, quantity, unit_price_cents, notes, station, status FROM comanda_items WHERE order_id = ?',
+        'SELECT id, product_name, presentation_name, options_label, quantity, unit_price_cents, notes, station, status FROM comanda_items WHERE order_id = ?',
         orderId,
       ),
     };

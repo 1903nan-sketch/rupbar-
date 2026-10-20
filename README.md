@@ -66,6 +66,7 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 - **Pix**: já vem ligado ao cadastrar a chave, e o caixa liga o Pix na própria tela de pagamento.
 - **Impressora USB do caixa**: imprime o ticket de cada pedido (venda rápida e comandas) para o cliente retirar no bar, com código de barras. Com uma impressora só, tudo sai nela; impressoras de setor podem ser adicionadas depois.
 - **Conferir pedido (F4)**: cliente perdeu o ticket? Bipe ou busque pelo número/nome e veja se pagou e se já retirou; 2ª via e “Marcar como entregue”.
+- **Doses com escolhas**: a dose tem o preço dela e, no pedido, o garçom escolhe o energético (Red Bull, Monster…) e o gelo, cada um com preço à parte; o estoque baixa a lata e o gelo escolhidos. Configurado no próprio cadastro do produto.
 - **Leitor de código de barras**: bipar o produto na venda rápida ou no “Lançar na comanda” adiciona ao pedido.
 
 ### Novidades da versão 0.2.0

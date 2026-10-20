@@ -1,6 +1,7 @@
 import { BASE_UNIT, buyModeOf, costOf, packName, unitName, type Measure, type Packaging } from '@rupbar/core';
 import { Camera, ImageOff, Plus, Search, Trash2, Wine } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
+import { OptionGroupsField } from '../components/OptionGroups';
 import { BuyModePicker, CodeTag, LevelChip, QtyEntry, StockQty } from '../components/stock-units';
 import { Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Switch, Tabs, Textarea, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
@@ -50,6 +51,8 @@ export interface Product {
     components: { productId: string; productName: string; qty: number; measure: Measure; isSelf: boolean }[];
     available: number | null;
   }[];
+  /** Escolhas pedidas ao lançar (ex.: energético e gelo da dose). */
+  optionGroupIds?: string[];
 }
 
 export interface Category {
@@ -165,7 +168,8 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
   const suppliers = useLoad(() => api.get<{ id: string; name: string }[]>('/api/suppliers').catch(() => []));
   const all = useLoad(() => api.get<Product[]>('/api/products'));
   const nextCode = useLoad(() => (product ? Promise.resolve(null) : api.get<{ code: string }>('/api/products/next-code').catch(() => null)));
-  const [tab, setTab] = useState<'geral' | 'estoque' | 'apresentacoes'>('geral');
+  const [tab, setTab] = useState<'geral' | 'estoque' | 'apresentacoes' | 'escolhas'>('geral');
+  const [optionGroupIds, setOptionGroupIds] = useState<string[]>(product?.optionGroupIds ?? []);
   const [busy, setBusy] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [f, setF] = useState({
@@ -212,6 +216,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
         stockTracked: f.stockTracked, minStock: qtyOf(min, pk.value), expiryTracked: f.expiryTracked, menuVisible: f.menuVisible, station: f.station || null, active: f.active,
         // Só envia o custo se foi alterado aqui (preserva o custo médio exato das entradas).
         unitCostE4: f.packageCost !== null && f.packageCost !== initialCost ? Math.round((f.packageCost * 1000 * 10_000) / packageQty) : undefined,
+        optionGroupIds,
         presentations: pres.map((p, i) => ({
           id: p.id, name: p.name, priceCents: p.priceCents ?? 0, menuVisible: p.menuVisible, active: p.active, sortOrder: i,
           components: p.mode === 'self' ? [{ productId: null, qty: Math.round((p.selfQty ?? 1) * 1000) }] : p.components.map((c) => ({ productId: c.productId, qty: Math.round((c.qty ?? 0) * 1000) })),
@@ -238,7 +243,8 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
   return (
     <Modal title={product ? product.name : 'Novo produto'} wide onClose={onClose}
       footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!f.name.trim() || !f.categoryId} onClick={save}>Salvar</Button></>}>
-      <Tabs value={tab} onChange={setTab} options={[{ value: 'geral', label: 'Geral' }, { value: 'estoque', label: 'Estoque e custo' }, { value: 'apresentacoes', label: `Apresentações e preços (${pres.length})` }]} />
+      <Tabs value={tab} onChange={setTab} options={[{ value: 'geral', label: 'Geral' }, { value: 'estoque', label: 'Estoque e custo' }, { value: 'apresentacoes', label: `Apresentações e preços (${pres.length})` }, { value: 'escolhas', label: `Escolhas no pedido${optionGroupIds.length ? ` (${optionGroupIds.length})` : ''}` }]} />
+      {tab === 'escolhas' && <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds} />}
       {tab === 'geral' && (
         <div className="stack">
           <div className="row top" style={{ gap: 16 }}>

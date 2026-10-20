@@ -28,7 +28,7 @@ interface Ticket {
   readyAt: string | null;
   calledAt: string | null;
   callCount: number;
-  items: { id: string; name: string; quantity: number; notes: string | null; canceled: boolean }[];
+  items: { id: string; name: string; options?: string | null; quantity: number; notes: string | null; canceled: boolean }[];
 }
 
 const ACTIVE: { status: Ticket['status']; label: string; tone: string }[] = [
@@ -218,6 +218,7 @@ function TicketCard({ t, now, fresh, showStation, can, act, onCancel }: {
             <span className="kds-qty">{i.quantity}</span>
             <span className="grow">
               {i.name}
+              {i.options && <span className="kds-options">{i.options}</span>}
               {i.notes && <span className="kds-note">↳ {i.notes}</span>}
             </span>
           </li>

@@ -153,6 +153,13 @@ body::after {
   background: transparent;
   backdrop-filter: none;
 }
+/* Cabeçalho fixo ao rolar: fosco por cima do conteúdo (o título não se mistura ao texto). */
+.modal .modal-head {
+  background: var(--glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-radius: 26px 26px 0 0;
+}
 .overlay {
   background: rgba(6, 8, 16, 0.42);
   backdrop-filter: blur(8px) saturate(120%);

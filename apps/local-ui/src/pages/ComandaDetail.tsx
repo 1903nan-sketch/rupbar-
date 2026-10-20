@@ -26,6 +26,8 @@ export interface ComandaItem {
   kind: 'product' | 'hookah';
   name: string;
   presentationName: string;
+  /** Escolhas do pedido: "Rocks Morango · Red Bull Tropical · Gelo de coco". */
+  options?: string | null;
   quantity: number;
   unitPriceCents: number;
   totalCents: number;
@@ -136,6 +138,7 @@ export function ComandaDetailPage() {
                         {i.kind === 'hookah' && <Wind size={14} style={{ marginRight: 4, verticalAlign: -2 }} />}
                         {i.name} {i.presentationName !== 'Unidade' && <span className="muted">· {i.presentationName}</span>}
                       </div>
+                      {i.options && <div className="small accent-text strong">{i.options}</div>}
                       {i.notes && <div className="small warning-text">{i.notes}</div>}
                       {i.status === 'canceled' && <div className="small danger-text">Cancelado: {i.cancelReason}</div>}
                     </div>
@@ -410,7 +413,7 @@ function MoveItemsModal({ comanda, onClose, onDone }: { comanda: ComandaDetail; 
         {items.map((i) => (
           <label key={i.id} className="check">
             <input type="checkbox" checked={selected.includes(i.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, i.id] : selected.filter((x) => x !== i.id))} />
-            <span className="grow">{i.quantity}× {i.name} {i.presentationName !== 'Unidade' && `· ${i.presentationName}`}</span>
+            <span className="grow">{i.quantity}× {i.name} {i.presentationName !== 'Unidade' && `· ${i.presentationName}`}{i.options && ` (${i.options})`}</span>
             <span className="num muted">{formatBRL(i.totalCents)}</span>
           </label>
         ))}

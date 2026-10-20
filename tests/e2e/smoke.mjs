@@ -95,6 +95,17 @@ try {
   });
   await api('POST', '/api/products', { name: 'Batata frita', categoryId: cat('Porções'), measure: 'unit', stockTracked: false, barcode: '7891234567895', presentations: [{ name: 'Porção', priceCents: 3890 }] });
   await api('POST', '/api/stock/purchases', { items: [{ productId: whisky.id, packages: 2, packageQty: 1_000_000, totalCostCents: 30_000 }] });
+  // Dose com escolhas no pedido: energético (Red Bull com preço à parte, baixa a lata) e gelo.
+  const redbullCan = await api('POST', '/api/products', { name: 'Red Bull Tropical lata', categoryId: cat('Energéticos'), measure: 'unit', menuVisible: false });
+  await api('POST', '/api/stock/purchases', { items: [{ productId: redbullCan.id, qty: 12_000, totalCostCents: 6_000 }] });
+  const energyGroup = await api('POST', '/api/option-groups', {
+    name: 'Energético', choices: [{ name: 'Red Bull Tropical', priceDeltaCents: 800, productId: redbullCan.id, qty: 1000 }, { name: 'Sem energético' }],
+  });
+  const iceGroup = await api('POST', '/api/option-groups', { name: 'Gelo', required: false, choices: [{ name: 'Gelo de coco', priceDeltaCents: 200 }, { name: 'Gelo comum' }] });
+  await api('POST', '/api/products', {
+    name: 'Gin tônica', categoryId: cat('Drinks'), measure: 'unit', stockTracked: false,
+    presentations: [{ name: 'Dose', priceCents: 1200 }], optionGroupIds: [energyGroup.id, iceGroup.id],
+  });
   // Essência: por grama no narguilé e em pacote fechado no cardápio.
   const essence = await api('POST', '/api/products', {
     name: 'Ziggy Menta', categoryId: cat('Essências'), measure: 'mass', packageQty: 50_000,
@@ -200,6 +211,15 @@ try {
   await page.keyboard.press('Enter');
   await quick.locator('.cart-line', { hasText: 'Batata frita' }).waitFor();
   assert((await quick.getByLabel('Buscar produto').inputValue()) === '', 'o código bipado não deveria ficar na busca');
+  // Drink com escolhas: toca, escolhe o energético e o gelo; o preço soma.
+  await quick.getByRole('button', { name: /Adicionar Gin tônica/ }).click();
+  const chooser = page.locator('.option-chooser');
+  await chooser.getByRole('radio', { name: /Red Bull Tropical/ }).click();
+  await chooser.getByRole('radio', { name: /Gelo de coco/ }).click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(out, '04a-escolhas-do-drink.png') });
+  await page.getByRole('button', { name: /Adicionar R\$\s22,00/ }).click();
+  await quick.locator('.cart-line', { hasText: 'Red Bull Tropical · Gelo de coco' }).waitFor();
   await quick.getByPlaceholder('Ex.: Juliana').fill('Juliana Prado');
   await quick.getByRole('radio', { name: 'Débito' }).click();
   await quick.getByRole('button', { name: /Finalizar/ }).click();
@@ -208,9 +228,12 @@ try {
   await page.waitForTimeout(600);
   await page.screenshot({ path: join(out, '04b-venda-rapida.png') });
   await waitTicket('PAGO');
+  await waitTicket('+ Red Bull Tropical');
+  assert((await api('GET', `/api/products/${redbullCan.id}`)).stockQty === 11_000, 'o Red Bull escolhido deveria baixar 1 lata');
   await quick.getByRole('button', { name: 'Fechar', exact: true }).last().click();
   await page.goto(B + '/producao');
-  await page.locator('.kds-ticket', { hasText: 'Juliana' }).locator('.kds-tag', { hasText: 'Venda rápida' }).waitFor();
+  await page.locator('.kds-ticket', { hasText: 'Juliana' }).locator('.kds-tag', { hasText: 'Venda rápida' }).first().waitFor();
+  await page.locator('.kds-ticket', { hasText: 'Gin tônica' }).locator('.kds-options', { hasText: 'Red Bull Tropical · Gelo de coco' }).waitFor();
 
   // Cliente perdeu o ticket: bipar o código (ou buscar pelo nome) mostra se pagou e se já retirou.
   const [julianaOrder] = await api('GET', '/api/orders/lookup?q=juliana');

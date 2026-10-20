@@ -99,7 +99,10 @@ try {
   await cervejaRow.waitFor();
   await page.getByLabel('Buscar no estoque').fill('');
 
-  // 4. Whisky em garrafa de 1.000 ml vendido em doses de 50 ml.
+  // 4. Whisky em garrafa de 1.000 ml vendido em doses de 50 ml, com o energético
+  //    escolhido no pedido (preço à parte e baixa da lata).
+  const cats = await request('GET', '/api/categories');
+  const redbull = await request('POST', '/api/products', { name: 'Red Bull lata', internalCode: 'RB-LATA', categoryId: cats.find((c) => c.name === 'Destilados').id, measure: 'unit', menuVisible: false });
   await page.getByRole('button', { name: 'Novo produto', exact: true }).click();
   await modal.getByRole('button', { name: /Garrafa de X ml/ }).click();
   await modal.getByLabel('Nome do produto', { exact: true }).fill('Whisky teste');
@@ -108,6 +111,17 @@ try {
   await modal.getByLabel('Quantidade em estoque agora', { exact: true }).fill('2');
   await modal.getByLabel('Quanto você pagou?', { exact: true }).fill('150,00');
   await modal.getByText('2 garrafas de 1.000 ml = 2.000 ml = 40 doses de 50 ml', { exact: false }).waitFor();
+  await modal.getByRole('button', { name: 'Criar nova escolha' }).click();
+  await modal.getByLabel('Nome da escolha').fill('Energético');
+  await modal.getByLabel('Opção', { exact: true }).first().fill('Red Bull');
+  await modal.getByLabel('Preço a mais').first().fill('8,00');
+  await modal.getByLabel('Baixa do estoque').first().selectOption({ label: 'Red Bull lata' });
+  await modal.getByRole('button', { name: 'Opção', exact: true }).click();
+  await modal.getByLabel('Opção', { exact: true }).nth(1).fill('Sem energético');
+  await modal.getByRole('button', { name: 'Criar e adicionar' }).click();
+  await modal.locator('.option-group-card', { hasText: 'Red Bull +R$' }).waitFor();
+  await modal.locator('.option-groups-field').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(out, '03b-escolhas-no-cadastro.png') });
   await modal.getByRole('button', { name: 'Cadastrar produto', exact: true }).click();
   await page.getByRole('row').filter({ hasText: 'Whisky teste' }).waitFor();
   const whisky = (await request('GET', '/api/products')).find((p) => p.name === 'Whisky teste');
@@ -115,8 +129,11 @@ try {
   assert.equal(whisky.presentations[0].components[0].qty, 50_000);
   assert.equal(whisky.presentations[0].available, 40);
   assert.equal(whisky.internalCode, '0002');
+  const [energy] = await request('GET', '/api/option-groups');
+  assert.deepEqual(whisky.optionGroupIds, [energy.id]);
+  assert.deepEqual(energy.choices.map((c) => [c.name, c.priceDeltaCents, c.productId, c.qty]), [['Red Bull', 800, redbull.id, 1000], ['Sem energético', 0, null, 0]]);
   await page.getByRole('row').filter({ hasText: 'Whisky teste' }).getByText('2 garrafas').waitFor();
-  await page.locator('.toast').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => !document.querySelector('.toast'));
   await page.screenshot({ path: join(out, '03-estoque-dark.png') });
   await page.emulateMedia({ colorScheme: 'light' });
   await page.screenshot({ path: join(out, '04-estoque-light.png') });
@@ -138,7 +155,7 @@ try {
   assert.equal(ingredient.menuVisible, false);
   assert.equal(ingredient.presentations.length, 0);
   assert.equal(ingredient.internalCode, '0003');
-  await page.locator('.toast').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => !document.querySelector('.toast'));
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'estoque não deve transbordar no celular');
   await page.screenshot({ path: join(out, '06-estoque-mobile.png'), fullPage: true });
   assert.deepEqual(errors, []);

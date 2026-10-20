@@ -1,4 +1,4 @@
-import { Flame, Minus, Plus, Search, StickyNote, Trash2, X } from 'lucide-react';
+import { Check, Flame, Minus, Plus, Search, StickyNote, Trash2, X } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { formatBRL } from '../lib/format';
@@ -6,7 +6,7 @@ import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useBarcodeScanner } from '../lib/scanner';
 import '../styles/menu.css';
-import { Button, Empty, ErrorBox, Input, Loading, useToast } from './ui';
+import { Button, Empty, ErrorBox, Input, Loading, Modal, useToast } from './ui';
 
 export interface MenuItem {
   presentationId: string;
@@ -23,17 +23,40 @@ export interface MenuItem {
   code?: string | null;
   available: number | null;
   soldOut: boolean;
+  /** Escolhas pedidas ao tocar (sabor, energético, gelo…), na ordem. */
+  optionGroupIds?: string[];
+}
+export interface OptionGroup {
+  id: string;
+  name: string;
+  required: boolean;
+  choices: { id: string; name: string; priceDeltaCents: number; soldOut: boolean }[];
 }
 export interface Menu {
   categories: { id: string; name: string }[];
   items: MenuItem[];
   popular?: string[];
+  optionGroups?: Record<string, OptionGroup>;
+}
+/** Opção escolhida num item do carrinho. */
+export interface CartOption {
+  groupId: string;
+  choiceId: string;
+  choice: string;
+  priceDeltaCents: number;
 }
 export interface CartLine {
+  /** Produto + escolhas: o mesmo drink com energéticos diferentes vira linhas diferentes. */
+  key: string;
   item: MenuItem;
+  options: CartOption[];
   quantity: number;
   notes: string;
 }
+
+export const lineKey = (item: MenuItem, options: CartOption[]) => [item.presentationId, ...options.map((o) => o.choiceId)].join('|');
+export const unitPriceOf = (l: Pick<CartLine, 'item' | 'options'>) => l.item.priceCents + l.options.reduce((a, o) => a + o.priceDeltaCents, 0);
+export const optionsLabel = (options: CartOption[]) => options.map((o) => o.choice).join(' · ');
 
 export const itemLabel = (i: { productName: string; presentationName: string }) =>
   i.presentationName === 'Unidade' ? i.productName : `${i.productName} · ${i.presentationName}`;
@@ -46,32 +69,57 @@ export function useCart() {
   const toast = useToast();
   const [lines, setLines] = useState<CartLine[]>([]);
   const requestKey = useRef<string | null>(null);
-  const add = useCallback((item: MenuItem, delta: number) => {
+  /** Soma `delta` à linha do produto com estas escolhas (cria a linha se preciso). */
+  const add = useCallback((item: MenuItem, delta: number, options: CartOption[] = []) => {
     requestKey.current = null;
+    const key = lineKey(item, options);
     setLines((c) => {
-      const line = c.find((l) => l.item.presentationId === item.presentationId);
-      if (!line) return delta > 0 ? [...c, { item, quantity: delta, notes: '' }] : c;
+      const line = c.find((l) => l.key === key);
+      if (!line) return delta > 0 ? [...c, { key, item, options, quantity: delta, notes: '' }] : c;
       const quantity = Math.min(99, line.quantity + delta);
-      if (item.available !== null && delta > 0 && quantity > item.available) {
+      const sameProduct = c.filter((l) => l.item.presentationId === item.presentationId).reduce((a, l) => a + l.quantity, 0) + delta;
+      if (item.available !== null && delta > 0 && sameProduct > item.available) {
         toast.error(`Estoque disponível: ${item.available}`);
         return c;
       }
       return quantity <= 0 ? c.filter((l) => l !== line) : c.map((l) => (l === line ? { ...l, quantity } : l));
     });
   }, [toast]);
-  const setNotes = useCallback((presentationId: string, notes: string) => {
+  /** Muda a quantidade de uma linha do carrinho (+1, −1, −tudo). */
+  const changeLine = useCallback((key: string, delta: number) => {
     requestKey.current = null;
-    setLines((c) => c.map((l) => (l.item.presentationId === presentationId ? { ...l, notes } : l)));
+    setLines((c) => c.flatMap((l) => {
+      if (l.key !== key) return [l];
+      const quantity = Math.min(99, l.quantity + delta);
+      return quantity <= 0 ? [] : [{ ...l, quantity }];
+    }));
+  }, []);
+  /** Tira 1 do produto (a última linha dele), pelo "−" do bloco do cardápio. */
+  const removeOne = useCallback((presentationId: string) => {
+    requestKey.current = null;
+    setLines((c) => {
+      const idx = c.map((l) => l.item.presentationId).lastIndexOf(presentationId);
+      if (idx < 0) return c;
+      const l = c[idx]!;
+      return l.quantity <= 1 ? c.filter((_, i) => i !== idx) : c.map((x, i) => (i === idx ? { ...x, quantity: x.quantity - 1 } : x));
+    });
+  }, []);
+  const setNotes = useCallback((key: string, notes: string) => {
+    requestKey.current = null;
+    setLines((c) => c.map((l) => (l.key === key ? { ...l, notes } : l)));
   }, []);
   const clear = useCallback(() => {
     requestKey.current = null;
     setLines([]);
   }, []);
-  const total = lines.reduce((a, l) => a + l.quantity * l.item.priceCents, 0);
+  const total = lines.reduce((a, l) => a + l.quantity * unitPriceOf(l), 0);
   const count = lines.reduce((a, l) => a + l.quantity, 0);
-  const qtyOf = (id: string) => lines.find((l) => l.item.presentationId === id)?.quantity ?? 0;
-  const payload = () => lines.map((l) => ({ presentationId: l.item.presentationId, quantity: l.quantity, notes: l.notes || null }));
-  return { lines, add, setNotes, clear, total, count, qtyOf, payload, requestKey };
+  const qtyOf = (id: string) => lines.filter((l) => l.item.presentationId === id).reduce((a, l) => a + l.quantity, 0);
+  const payload = () => lines.map((l) => ({
+    presentationId: l.item.presentationId, quantity: l.quantity, notes: l.notes || null,
+    options: l.options.map((o) => ({ groupId: o.groupId, choiceId: o.choiceId })),
+  }));
+  return { lines, add, changeLine, removeOne, setNotes, clear, total, count, qtyOf, payload, requestKey };
 }
 export type Cart = ReturnType<typeof useCart>;
 
@@ -80,6 +128,13 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
   const toast = useToast();
   const { data: menu, error, reload } = useLoad(() => api.get<Menu>('/api/menu'));
   useRealtime('stock.changed', () => void reload());
+  const [choosing, setChoosing] = useState<MenuItem | null>(null);
+  const groupsOf = (item: MenuItem) => (item.optionGroupIds ?? []).map((g) => menu?.optionGroups?.[g]).filter((g): g is OptionGroup => !!g);
+  /** Toque no produto: com escolhas (sabor, energético, gelo), abre a escolha; sem, soma 1. */
+  const pick = (item: MenuItem) => {
+    if (groupsOf(item).length) setChoosing(item);
+    else cart.add(item, 1);
+  };
 
   /** Produto pelo código de barras ou código interno (o disponível primeiro). */
   const findByCode = (raw: string): MenuItem | null => {
@@ -90,6 +145,7 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
   };
   const addScanned = (item: MenuItem) => {
     if (item.soldOut) return toast.error(`${itemLabel(item)} está esgotado.`);
+    if (groupsOf(item).length) return setChoosing(item);
     cart.add(item, 1);
     toast.success(`+1 ${itemLabel(item)}`);
   };
@@ -162,26 +218,104 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
                 type="button"
                 className="menu-tile-main"
                 disabled={i.soldOut}
-                onClick={() => cart.add(i, 1)}
+                onClick={() => pick(i)}
                 aria-label={`Adicionar ${itemLabel(i)} (${formatBRL(i.priceCents)})`}
               >
                 {i.photoUrl && <img className="menu-tile-photo" src={i.photoUrl} alt="" loading="lazy" />}
                 <span className="menu-tile-name">{i.productName}</span>
                 {i.presentationName !== 'Unidade' && <span className="menu-tile-pres">{i.presentationName}</span>}
-                <span className="menu-tile-price num">{formatBRL(i.priceCents)}</span>
+                <span className="menu-tile-price num">{groupsOf(i).length ? 'a partir de ' : ''}{formatBRL(i.priceCents)}</span>
                 {i.soldOut ? <span className="menu-tile-flag danger">Esgotado</span> : i.available !== null && i.available <= 5 ? <span className="menu-tile-flag">restam {i.available}</span> : null}
               </button>
               {n > 0 && (
                 <>
                   <span className="menu-tile-qty pop-in" aria-hidden>{n}</span>
-                  <button type="button" className="menu-tile-minus" aria-label={`Tirar um ${itemLabel(i)}`} onClick={() => cart.add(i, -1)}><Minus size={16} /></button>
+                  <button type="button" className="menu-tile-minus" aria-label={`Tirar um ${itemLabel(i)}`} onClick={() => cart.removeOne(i.presentationId)}><Minus size={16} /></button>
                 </>
               )}
             </div>
           );
         })}
       </div>
+      {choosing && (
+        <OptionChooser
+          item={choosing}
+          groups={groupsOf(choosing)}
+          onClose={() => setChoosing(null)}
+          onAdd={(options) => {
+            cart.add(choosing, 1, options);
+            setChoosing(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Escolhas do item (ex.: sabor do gin → energético → gelo): toque numa opção
+ * de cada grupo. Opção única disponível já vem marcada; esgotadas não entram.
+ */
+export function OptionChooser({ item, groups, onClose, onAdd }: {
+  item: MenuItem; groups: OptionGroup[]; onClose: () => void; onAdd: (options: CartOption[]) => void;
+}) {
+  const [picked, setPicked] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const g of groups) {
+      const available = g.choices.filter((c) => !c.soldOut);
+      if (g.required && available.length === 1) init[g.id] = available[0]!.id;
+    }
+    return init;
+  });
+  const options: CartOption[] = groups.flatMap((g) => {
+    const c = g.choices.find((x) => x.id === picked[g.id]);
+    return c ? [{ groupId: g.id, choiceId: c.id, choice: c.name, priceDeltaCents: c.priceDeltaCents }] : [];
+  });
+  const missing = groups.filter((g) => g.required && !picked[g.id]);
+  const price = unitPriceOf({ item, options });
+  return (
+    <Modal
+      title={itemLabel(item)}
+      onClose={onClose}
+      footer={<>
+        <Button onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" size="large" disabled={missing.length > 0} icon={<Plus size={18} />} onClick={() => onAdd(options)}>
+          {missing.length ? `Escolha ${missing[0]!.name.toLocaleLowerCase('pt-BR')}` : `Adicionar ${formatBRL(price)}`}
+        </Button>
+      </>}
+    >
+      <div className="option-chooser stack">
+        {groups.map((g) => (
+          <div key={g.id} className="option-group" role="radiogroup" aria-label={g.name}>
+            <div className="option-group-title">
+              <strong>{g.name}</strong>
+              <span className="tiny muted">{g.required ? 'obrigatório' : 'opcional'}</span>
+            </div>
+            <div className="option-choices">
+              {g.choices.map((c) => {
+                const on = picked[g.id] === c.id;
+                return (
+                  <button
+                    key={c.id} type="button" role="radio" aria-checked={on} disabled={c.soldOut && !on}
+                    className={`option-choice ${on ? 'active' : ''}`}
+                    onClick={() => setPicked((p) => {
+                      const next = { ...p };
+                      if (on && !g.required) delete next[g.id];
+                      else next[g.id] = c.id;
+                      return next;
+                    })}
+                  >
+                    {on && <Check size={16} />}
+                    <span className="option-choice-name">{c.name}</span>
+                    {c.soldOut ? <span className="tiny danger-text">esgotado</span> : c.priceDeltaCents > 0 ? <span className="option-choice-price num">+{formatBRL(c.priceDeltaCents)}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -192,26 +326,29 @@ export function CartLines({ cart, empty = 'Toque nos produtos para adicionar.' }
   return (
     <div className="cart-lines">
       {cart.lines.map((l) => (
-        <div key={l.item.presentationId} className="cart-line pop-in">
+        <div key={l.key} className="cart-line pop-in">
           <div className="row">
             <div className="stepper small">
-              <button type="button" aria-label="Menos" onClick={() => cart.add(l.item, -1)}><Minus size={14} /></button>
+              <button type="button" aria-label="Menos" onClick={() => cart.changeLine(l.key, -1)}><Minus size={14} /></button>
               <span>{l.quantity}</span>
-              <button type="button" aria-label="Mais" onClick={() => cart.add(l.item, 1)}><Plus size={14} /></button>
+              <button type="button" aria-label="Mais" onClick={() => cart.add(l.item, 1, l.options)}><Plus size={14} /></button>
             </div>
-            <span className="grow ellipsis">{itemLabel(l.item)}</span>
-            <span className="num strong">{formatBRL(l.quantity * l.item.priceCents)}</span>
-            <Button size="small" variant="plain" icon={<StickyNote size={15} />} aria-label="Observação" onClick={() => setNoteFor(noteFor === l.item.presentationId ? null : l.item.presentationId)} />
-            <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label="Remover" onClick={() => cart.add(l.item, -l.quantity)} />
+            <span className="grow" style={{ minWidth: 0 }}>
+              <span className="ellipsis" style={{ display: 'block' }}>{itemLabel(l.item)}</span>
+              {l.options.length > 0 && <span className="cart-line-options">{optionsLabel(l.options)}</span>}
+            </span>
+            <span className="num strong">{formatBRL(l.quantity * unitPriceOf(l))}</span>
+            <Button size="small" variant="plain" icon={<StickyNote size={15} />} aria-label="Observação" onClick={() => setNoteFor(noteFor === l.key ? null : l.key)} />
+            <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label="Remover" onClick={() => cart.changeLine(l.key, -l.quantity)} />
           </div>
-          {(noteFor === l.item.presentationId || l.notes) && (
+          {(noteFor === l.key || l.notes) && (
             <Input
               style={{ marginTop: 6 }}
               placeholder="Observação (ex.: sem cebola, bem gelada)"
               maxLength={140}
               value={l.notes}
-              autoFocus={noteFor === l.item.presentationId}
-              onChange={(e) => cart.setNotes(l.item.presentationId, e.target.value)}
+              autoFocus={noteFor === l.key}
+              onChange={(e) => cart.setNotes(l.key, e.target.value)}
             />
           )}
         </div>

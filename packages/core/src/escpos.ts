@@ -262,7 +262,7 @@ export interface OrderTicketData {
   customerFirstName: string | null;
   waiterName: string | null;
   createdAt: Date;
-  items: { quantity: number; name: string; notes?: string | null }[];
+  items: { quantity: number; name: string; options?: string | null; notes?: string | null }[];
   notes?: string | null;
   reprint?: boolean;
 }
@@ -288,6 +288,12 @@ export function renderOrderTicket(data: OrderTicketData, opts: PrintOptions): Ui
     const lines = wrap(item.name, p.columns - head.length);
     lines.forEach((l, i) => p.line((i === 0 ? head : ' '.repeat(head.length)) + l));
     p.size(1, 1).bold(false);
+    // Escolhas do pedido (sabor, energético, gelo) em destaque logo abaixo do item.
+    if (item.options) {
+      p.bold(true);
+      for (const l of wrap(item.options, p.columns - 4)) p.line('  + ' + l);
+      p.bold(false);
+    }
     if (item.notes) for (const l of wrap(`> ${item.notes}`, p.columns - 2)) p.line('  ' + l);
   }
   if (data.notes) {
@@ -311,7 +317,7 @@ export interface PickupTicketData {
   table: string | null;
   waiterName: string | null;
   createdAt: Date;
-  items: { quantity: number; name: string; notes?: string | null }[];
+  items: { quantity: number; name: string; options?: string | null; notes?: string | null }[];
   notes?: string | null;
   /** Venda rápida: já pago no caixa. */
   paid: { total: number; methods: string[] } | null;
@@ -340,6 +346,12 @@ export function renderPickupTicket(data: PickupTicketData, opts: PrintOptions): 
     const head = `${item.quantity}x `;
     wrap(item.name, p.columns - head.length).forEach((l, i) => p.line((i === 0 ? head : ' '.repeat(head.length)) + l));
     p.size(1, 1).bold(false);
+    // Escolhas do pedido (sabor, energético, gelo) em destaque logo abaixo do item.
+    if (item.options) {
+      p.bold(true);
+      for (const l of wrap(item.options, p.columns - 4)) p.line('  + ' + l);
+      p.bold(false);
+    }
     if (item.notes) for (const l of wrap(`> ${item.notes}`, p.columns - 2)) p.line('  ' + l);
   }
   if (data.notes) p.separator().bold(true).line('OBSERVAÇÕES:').bold(false).wrapped(data.notes);
@@ -365,7 +377,7 @@ export interface BillReceiptData {
   customerFirstName: string | null;
   openedAt: Date;
   printedAt: Date;
-  items: { quantity: number; name: string; total: number }[];
+  items: { quantity: number; name: string; options?: string | null; total: number }[];
   subtotal: number;
   discount: number;
   serviceFee: number;
@@ -413,6 +425,7 @@ export function renderBillReceipt(data: BillReceiptData, opts: PrintOptions): Ui
   p.separator();
   for (const it of data.items) {
     p.pair(`${it.quantity}x ${it.name}`, formatBRL(it.total));
+    if (it.options) for (const l of wrap(it.options, p.columns - 4)) p.line('  + ' + l);
   }
   p.separator();
   p.pair('Subtotal', formatBRL(data.subtotal));

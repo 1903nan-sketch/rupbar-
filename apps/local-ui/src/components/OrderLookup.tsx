@@ -29,7 +29,7 @@ export interface OrderCheck {
   pickedUpAt: string | null;
   pickedUpBy: string | null;
   ticketPrints: number;
-  items: { id: string; product_name: string; presentation_name: string; quantity: number; unit_price_cents: number; status: string }[];
+  items: { id: string; product_name: string; presentation_name: string; options_label?: string | null; quantity: number; unit_price_cents: number; status: string }[];
 }
 
 /** Evita uma busca a cada tecla. */
@@ -138,7 +138,7 @@ function OrderCheckCard({ order: o, highlight, onChanged }: { order: OrderCheck;
       </div>
       <ul className="lookup-items">
         {items.map((i) => (
-          <li key={i.id}><strong>{i.quantity}×</strong> {i.product_name}{i.presentation_name !== 'Unidade' && ` (${i.presentation_name})`}</li>
+          <li key={i.id}><strong>{i.quantity}×</strong> {i.product_name}{i.presentation_name !== 'Unidade' && ` (${i.presentation_name})`}{i.options_label && <span className="accent-text strong"> — {i.options_label}</span>}</li>
         ))}
       </ul>
       <div className="row wrap between" style={{ gap: 8 }}>

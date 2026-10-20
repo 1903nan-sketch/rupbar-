@@ -140,7 +140,8 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      // Esc com a escolha do drink aberta fecha só a escolha.
+      if (e.key === 'Escape' && !document.querySelector('.option-chooser')) onClose();
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         if (result) reset();

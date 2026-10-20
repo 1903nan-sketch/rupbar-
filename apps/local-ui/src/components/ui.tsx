@@ -103,7 +103,7 @@ export function MoneyInput({ value, onChange, placeholder = '0,00', autoFocus, l
 }
 
 /** Quantidade decimal (ex.: "1,5" L). Devolve número na unidade exibida. */
-export function DecimalInput({ value, onChange, suffix, placeholder, autoFocus, id }: { value: number | null; onChange: (v: number | null) => void; suffix?: string; placeholder?: string; autoFocus?: boolean; id?: string }) {
+export function DecimalInput({ value, onChange, suffix, placeholder, autoFocus, id, disabled }: { value: number | null; onChange: (v: number | null) => void; suffix?: string; placeholder?: string; autoFocus?: boolean; id?: string; disabled?: boolean }) {
   const [text, setText] = useState(value === null ? '' : fmtDecimal(value));
   const last = useRef(value);
   useEffect(() => {
@@ -121,6 +121,7 @@ export function DecimalInput({ value, onChange, suffix, placeholder, autoFocus, 
         placeholder={placeholder}
         value={text}
         autoFocus={autoFocus}
+        disabled={disabled}
         style={suffix ? { paddingRight: 44 } : undefined}
         onChange={(e) => {
           setText(e.target.value);

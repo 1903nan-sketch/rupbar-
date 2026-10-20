@@ -1,5 +1,6 @@
 import { buyModeOf, describeStock, MILLI } from '@rupbar/core';
 import { useState } from 'react';
+import { OptionGroupsField } from '../components/OptionGroups';
 import { BuyModePicker, CostEntry, EntrySentence, QtyEntry, SellModePicker, totalCostOf } from '../components/stock-units';
 import { Button, Card, ErrorBox, Field, Input, Loading, Modal, Select, useToast } from '../components/ui';
 import { api } from '../lib/api';
@@ -31,6 +32,7 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
   const [stock, setStock] = useState<QtyDraft>(emptyQty(packaging));
   const [cost, setCost] = useState<CostDraft>({ cents: null, mode: defaultCostMode(packaging) });
   const [min, setMin] = useState<QtyDraft>(emptyQty(packaging));
+  const [optionGroupIds, setOptionGroupIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const selectedCategory = categoryId || categories.data?.[0]?.id || '';
   const qty = qtyOf(stock, packaging);
@@ -69,6 +71,7 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
         name: name.trim(), categoryId: selectedCategory, internalCode: code.trim() || null, barcode: barcode.trim() || null,
         measure: pk.value.measure, packageQty: pk.value.packageQty, packageLabel: pk.value.packageLabel, unitLabel: pk.value.unitLabel,
         stockTracked: true, minStock: minQty, menuVisible: sell.mode !== 'ingredient', presentations: pres.value,
+        optionGroupIds: sell.mode !== 'ingredient' ? optionGroupIds : [],
         initialStock: withStock ? { ...entryPayload(stock, pk.value), totalCostCents: totalCost } : undefined,
       });
       const codeText = result.internalCode ? ` (código ${result.internalCode})` : '';
@@ -83,7 +86,7 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
 
   return <Modal title="Novo produto" wide onClose={onClose} footer={<><Button onClick={onClose} disabled={busy}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!categories.data?.length} onClick={submit}>Cadastrar produto</Button></>}>
     {categories.error ? <ErrorBox error={categories.error} onRetry={categories.reload} /> : !categories.data ? <Loading /> : <div className="stack quick-product">
-      <p className="muted small">Responda quatro perguntas simples. Fotos, fornecedor e outras apresentações você ajusta depois, abrindo o produto.</p>
+      <p className="muted small">Responda algumas perguntas simples. Fotos, fornecedor e outras apresentações você ajusta depois, abrindo o produto.</p>
 
       <Card title={<h3><span className="step-number">1</span>O que você está cadastrando?</h3>} className="form-section">
         <div className="grid-2">
@@ -123,6 +126,12 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
           </div>
         </Card>
       </div>
+
+      {sell.mode !== 'ingredient' && (
+        <Card title={<h3><span className="step-number">5</span>Tem escolhas no pedido? <span className="muted small">(opcional)</span></h3>} className="form-section">
+          <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds} />
+        </Card>
+      )}
     </div>}
   </Modal>;
 }

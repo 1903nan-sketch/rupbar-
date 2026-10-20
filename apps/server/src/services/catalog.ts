@@ -1,5 +1,5 @@
 import { DEFAULT_CATEGORIES, entryQtyMilli, packageBreakdown, stockLevel, theoreticalYield, type Measure } from '@rupbar/core';
-import { categorySchema, productSchema, supplierSchema, type ProductInput } from '@rupbar/core/schemas';
+import { categorySchema, optionGroupSchema, productSchema, supplierSchema, type ProductInput } from '@rupbar/core/schemas';
 import { bool, type Row } from '../db/db';
 import { allocateProductCode, peekProductCode } from '../db/product-codes';
 import { badRequest, conflict, notFound } from '../lib/errors';
@@ -196,7 +196,108 @@ export class CatalogService {
       updatedAt: p.updated_at,
       version: p.version,
       presentations,
+      optionGroupIds: this.ctx.db
+        .all<{ group_id: string }>('SELECT group_id FROM product_option_groups WHERE product_id = ? ORDER BY sort_order', String(p.id))
+        .map((r) => r.group_id),
     };
+  }
+
+  // ------------------------------------------------------- escolhas no pedido
+
+  /** Opção esgotada: o produto que ela baixa é controlado e não tem saldo para uma dose. */
+  private choiceSoldOut(productId: string | null, qty: number): boolean {
+    if (!productId || qty <= 0) return false;
+    const p = this.ctx.db.get<{ stock_tracked: number; stock_qty: number }>('SELECT stock_tracked, stock_qty FROM products WHERE id = ?', productId);
+    return !!p && p.stock_tracked === 1 && p.stock_qty < qty;
+  }
+
+  /** Escolhas do pedido (Energético, Gelo, Sabor do gin…) com as opções e os produtos que usam cada uma. */
+  optionGroups(actor: Actor) {
+    requirePerm(actor, 'products.view');
+    return this.ctx.db.all('SELECT * FROM option_groups ORDER BY active DESC, name COLLATE NOCASE').map((g) => ({
+      id: g.id,
+      name: g.name,
+      required: bool(g.required),
+      active: bool(g.active),
+      choices: this.ctx.db
+        .all(
+          `SELECT oc.*, p.name AS product_name, p.measure FROM option_choices oc LEFT JOIN products p ON p.id = oc.ingredient_product_id
+           WHERE oc.group_id = ? AND oc.active = 1 ORDER BY oc.sort_order, oc.name`,
+          String(g.id),
+        )
+        .map((c) => ({
+          id: c.id, name: c.name, priceDeltaCents: c.price_delta_cents, productId: c.ingredient_product_id, productName: c.product_name ?? null,
+          measure: (c.measure as Measure | null) ?? null, qty: c.qty, soldOut: this.choiceSoldOut(c.ingredient_product_id as string | null, Number(c.qty)),
+        })),
+      products: this.ctx.db
+        .all<{ id: string; name: string }>(
+          'SELECT p.id, p.name FROM product_option_groups pg JOIN products p ON p.id = pg.product_id WHERE pg.group_id = ? AND p.active = 1 ORDER BY p.name',
+          String(g.id),
+        ),
+    }));
+  }
+
+  /**
+   * Cria ou altera uma escolha. Opções alteradas mantêm o id; as removidas são
+   * desativadas (itens vendidos guardam o que foi escolhido).
+   */
+  saveOptionGroup(actor: Actor, id: string | null, raw: unknown) {
+    requirePerm(actor, 'products.manage');
+    const input = optionGroupSchema.parse(raw);
+    const groupId = id ?? this.ctx.id();
+    this.ctx.tx(() => {
+      const now = this.ctx.nowIso();
+      if (id) {
+        if (!this.ctx.db.run('UPDATE option_groups SET name=?, required=?, active=?, version=version+1, updated_at=? WHERE id=?', input.name, input.required, input.active, now, id).changes) {
+          throw notFound('Escolha');
+        }
+      } else {
+        this.ctx.db.run('INSERT INTO option_groups (id, name, required, active, created_at, updated_at) VALUES (?,?,?,?,?,?)', groupId, input.name, input.required, input.active, now, now);
+      }
+      const existing = new Set(this.ctx.db.all<{ id: string }>('SELECT id FROM option_choices WHERE group_id = ?', groupId).map((r) => r.id));
+      const kept = new Set<string>();
+      input.choices.forEach((c, idx) => {
+        if (c.productId && !this.ctx.db.value('SELECT id FROM products WHERE id = ?', c.productId)) throw notFound('Produto da opção');
+        const choiceId = c.id && existing.has(c.id) ? c.id : this.ctx.id();
+        kept.add(choiceId);
+        const qty = c.productId ? c.qty : 0;
+        if (existing.has(choiceId)) {
+          this.ctx.db.run(
+            'UPDATE option_choices SET name=?, price_delta_cents=?, ingredient_product_id=?, qty=?, sort_order=?, active=?, version=version+1, updated_at=? WHERE id=?',
+            c.name, c.priceDeltaCents, c.productId, qty, idx, c.active, now, choiceId,
+          );
+        } else {
+          this.ctx.db.run(
+            `INSERT INTO option_choices (id, group_id, name, price_delta_cents, ingredient_product_id, qty, sort_order, active, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?)`,
+            choiceId, groupId, c.name, c.priceDeltaCents, c.productId, qty, idx, c.active, now, now,
+          );
+        }
+      });
+      for (const old of existing) {
+        if (!kept.has(old)) this.ctx.db.run('UPDATE option_choices SET active = 0, version=version+1, updated_at=? WHERE id = ?', now, old);
+      }
+      this.ctx.audit(actor, id ? 'options.updated' : 'options.created', 'option_group', groupId, {
+        name: input.name, choices: input.choices.map((c) => ({ name: c.name, priceDeltaCents: c.priceDeltaCents })),
+      });
+      this.ctx.emit({ channel: 'stock', type: 'stock.changed' });
+    });
+    return { id: groupId };
+  }
+
+  /** Escolhas ativas do cardápio, com as opções disponíveis (por id). */
+  private menuOptionGroups() {
+    const groups: Record<string, { id: string; name: string; required: boolean; choices: { id: string; name: string; priceDeltaCents: number; soldOut: boolean }[] }> = {};
+    for (const g of this.ctx.db.all('SELECT * FROM option_groups WHERE active = 1')) {
+      const choices = this.ctx.db
+        .all('SELECT * FROM option_choices WHERE group_id = ? AND active = 1 ORDER BY sort_order, name', String(g.id))
+        .map((c) => ({
+          id: String(c.id), name: String(c.name), priceDeltaCents: Number(c.price_delta_cents),
+          soldOut: this.choiceSoldOut(c.ingredient_product_id as string | null, Number(c.qty)),
+        }));
+      if (choices.length) groups[String(g.id)] = { id: String(g.id), name: String(g.name), required: bool(g.required), choices };
+    }
+    return groups;
   }
 
   products(actor: Actor, filter: { q?: string; categoryId?: string; includeInactive?: boolean } = {}) {
@@ -243,6 +344,11 @@ export class CatalogService {
   menu(actor: Actor) {
     requirePerm(actor, 'menu.view');
     const categories = this.ctx.db.all('SELECT id, name, icon, station FROM categories WHERE active = 1 ORDER BY sort_order, name');
+    const optionGroups = this.menuOptionGroups();
+    const linked = new Map<string, string[]>();
+    for (const l of this.ctx.db.all<{ product_id: string; group_id: string }>('SELECT product_id, group_id FROM product_option_groups ORDER BY sort_order')) {
+      linked.set(l.product_id, [...(linked.get(l.product_id) ?? []), l.group_id]);
+    }
     const items = this.ctx.db
       .all(
         `SELECT pr.id AS presentation_id, pr.name AS presentation_name, pr.price_cents, p.id AS product_id, p.name AS product_name,
@@ -254,6 +360,7 @@ export class CatalogService {
       .map((r) => {
         const components = this.componentsOf(String(r.presentation_id), String(r.product_id));
         const available = this.availability(components);
+        const optionGroupIds = (linked.get(String(r.product_id)) ?? []).filter((g) => optionGroups[g]);
         return {
           presentationId: r.presentation_id, presentationName: r.presentation_name, priceCents: r.price_cents,
           productId: r.product_id, productName: r.product_name, description: r.description,
@@ -261,9 +368,11 @@ export class CatalogService {
           // Leitor de código de barras no caixa: bipar adiciona o produto.
           barcode: r.barcode, code: r.internal_code,
           available, soldOut: available === 0,
+          // Escolhas pedidas ao tocar no produto (sabor, energético, gelo…).
+          optionGroupIds,
         };
       });
-    return { categories, items };
+    return { categories, items, optionGroups };
   }
 
   private validateComponents(input: ProductInput, productId: string) {
@@ -367,6 +476,13 @@ export class CatalogService {
       });
       for (const old of existing) {
         if (!kept.has(old)) this.ctx.db.run('UPDATE presentations SET active = 0, version=version+1, updated_at=? WHERE id = ?', now, old);
+      }
+
+      if (input.optionGroupIds) {
+        const ids = [...new Set(input.optionGroupIds)];
+        for (const g of ids) if (!this.ctx.db.value('SELECT id FROM option_groups WHERE id = ?', g)) throw notFound('Escolha');
+        this.ctx.db.run('DELETE FROM product_option_groups WHERE product_id = ?', productId);
+        ids.forEach((g, i) => this.ctx.db.run('INSERT INTO product_option_groups (product_id, group_id, sort_order) VALUES (?,?,?)', productId, g, i));
       }
 
       this.ctx.audit(actor, id ? 'products.updated' : 'products.created', 'product', productId, {

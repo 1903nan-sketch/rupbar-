@@ -755,6 +755,45 @@ function singlePrinterIsCashier(db: Db) {
   if (active.length === 1) db.run('UPDATE printers SET cashier = 1, print_receipts = 1 WHERE id = ?', active[0]!.id);
 }
 
+/**
+ * Escolhas no pedido: o garçom escolhe, por exemplo, o sabor do gin, o
+ * energético e o gelo. Cada opção pode acrescentar ao preço e baixar um
+ * produto do estoque (a lata de Red Bull escolhida, a dose do gin).
+ */
+const M008 = /* sql */ `
+CREATE TABLE option_groups (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  required INTEGER NOT NULL DEFAULT 1,
+  active INTEGER NOT NULL DEFAULT 1,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE option_choices (
+  id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES option_groups(id),
+  name TEXT NOT NULL,
+  price_delta_cents INTEGER NOT NULL DEFAULT 0 CHECK (price_delta_cents >= 0),
+  ingredient_product_id TEXT REFERENCES products(id),
+  qty INTEGER NOT NULL DEFAULT 0 CHECK (qty >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX option_choices_group ON option_choices(group_id);
+CREATE TABLE product_option_groups (
+  product_id TEXT NOT NULL REFERENCES products(id),
+  group_id TEXT NOT NULL REFERENCES option_groups(id),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (product_id, group_id)
+);
+ALTER TABLE comanda_items ADD COLUMN options_label TEXT;
+ALTER TABLE comanda_items ADD COLUMN options_json TEXT;
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -771,6 +810,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 5, name: 'anúncios da TV de retirada', sql: M005 },
   { id: 6, name: 'código automático e unidade avulsa dos produtos', sql: M006, run: (db) => void backfillProductCodes(db, new Date().toISOString()) },
   { id: 7, name: 'impressora do caixa e entrega do pedido', sql: M007, run: singlePrinterIsCashier },
+  { id: 8, name: 'escolhas no pedido (sabor, energético, gelo)', sql: M008 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

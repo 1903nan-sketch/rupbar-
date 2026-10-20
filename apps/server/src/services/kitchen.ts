@@ -29,7 +29,7 @@ export class KitchenService {
 
   ticketView(t: Row) {
     const items = this.ctx.db.all(
-      `SELECT id, product_name, presentation_name, quantity, notes, status FROM comanda_items
+      `SELECT id, product_name, presentation_name, options_label, quantity, notes, status FROM comanda_items
        WHERE order_id = ? AND station = ? ORDER BY created_at`,
       String(t.order_id), String(t.station),
     );
@@ -58,6 +58,8 @@ export class KitchenService {
       callCount: t.call_count,
       items: items.map((i) => ({
         id: i.id, name: i.presentation_name === 'Unidade' ? i.product_name : `${i.product_name} — ${i.presentation_name}`,
+        // Escolhas do pedido: "Morango · Red Bull Tropical · Gelo de coco".
+        options: (i.options_label as string | null) ?? null,
         quantity: i.quantity, notes: i.notes, canceled: i.status !== 'active',
       })),
     };

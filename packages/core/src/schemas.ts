@@ -259,6 +259,8 @@ export const productSchema = z.object({
   station: zStation.nullable().optional().transform((v) => v ?? null),
   active: z.boolean().default(true),
   presentations: z.array(presentationSchema).default([]),
+  /** Escolhas pedidas ao lançar (na ordem). Sem o campo, mantém as atuais. */
+  optionGroupIds: z.array(zUuid).max(10).optional(),
   /**
    * Entrada opcional no cadastro inicial, registrada na mesma transação.
    * Informe `packages` (embalagens) OU `qty` (milli, ex.: 30 latas = 30_000).
@@ -344,11 +346,40 @@ export const comandaEditSchema = z
   })
   .refine((v) => v.customerName.length > 0 || v.cardNumber !== null, { message: 'Informe o nome do cliente ou o número do cartão', path: ['customerName'] });
 
+/** Escolha feita no pedido (ex.: Energético → Red Bull Tropical). */
+export const orderOptionSchema = z.object({ groupId: zUuid, choiceId: zUuid });
+
 export const orderItemSchema = z.object({
   presentationId: zUuid,
   quantity: z.number().int().min(1).max(99),
   notes: optionalText(140),
+  options: z.array(orderOptionSchema).max(10).default([]),
 });
+
+/**
+ * Opção de uma escolha do pedido: nome, acréscimo no preço e o que sai do
+ * estoque (ex.: 1 lata de Red Bull = 1.000; 50 ml de gin = 50.000).
+ */
+export const optionChoiceSchema = z
+  .object({
+    id: zUuid.optional(),
+    name: trimmed(40).min(1, 'Informe o nome da opção'),
+    priceDeltaCents: zCents.min(0).max(1_000_000).default(0),
+    productId: zUuid.nullable().optional().transform((v) => v ?? null),
+    qty: zMilli.min(0).default(0),
+    active: z.boolean().default(true),
+  })
+  .refine((c) => !c.productId || c.qty > 0, { message: 'Informe quanto sai do estoque', path: ['qty'] });
+
+/** Escolha do pedido (ex.: "Energético", "Gelo", "Sabor do gin"), usada em vários produtos. */
+export const optionGroupSchema = z.object({
+  name: trimmed(40).min(1, 'Informe o nome da escolha'),
+  /** Obrigatória: o pedido só entra com uma opção escolhida. */
+  required: z.boolean().default(true),
+  active: z.boolean().default(true),
+  choices: z.array(optionChoiceSchema).min(1, 'Cadastre ao menos uma opção').max(40),
+});
+export type OptionGroupInput = z.infer<typeof optionGroupSchema>;
 
 export const orderCreateSchema = z.object({
   comandaId: zUuid,

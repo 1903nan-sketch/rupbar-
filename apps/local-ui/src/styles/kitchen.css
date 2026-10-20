@@ -221,6 +221,13 @@
   font-size: 18px;
   background: var(--fill-2);
 }
+.kds-options {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--accent);
+}
 .kds-note {
   display: block;
   margin-top: 2px;

@@ -150,9 +150,10 @@ export class StockService {
    * Baixa de estoque de um item vendido (uma vez por item, garantido pelo índice
    * único). Retorna o custo total estimado.
    */
-  deductForSale(itemId: string, presentationId: string, quantity: number, userId: string | null): number {
+  deductForSale(itemId: string, presentationId: string, quantity: number, userId: string | null, extra: { productId: string; qty: number }[] = []): number {
     let cost = 0;
-    for (const [productId, qty] of consumptionFor(this.components(presentationId), quantity)) {
+    // A ficha técnica e as escolhas do pedido (ex.: a lata de Red Bull) numa baixa só.
+    for (const [productId, qty] of consumptionFor([...this.components(presentationId), ...extra], quantity)) {
       const p = this.ctx.db.get<{ stock_tracked: number; unit_cost_e4: number }>('SELECT stock_tracked, unit_cost_e4 FROM products WHERE id = ?', productId);
       if (!p) continue;
       if (p.stock_tracked !== 1) {
@@ -162,6 +163,17 @@ export class StockService {
       cost += this.move({ productId, type: 'sale', delta: -qty, refType: 'comanda_item', refId: itemId, userId }).costCents;
     }
     return cost;
+  }
+
+  /** O que as escolhas gravadas num item baixam do estoque (por unidade). */
+  static optionComponents(optionsJson: unknown): { productId: string; qty: number }[] {
+    if (typeof optionsJson !== 'string' || !optionsJson) return [];
+    try {
+      const list = JSON.parse(optionsJson) as { productId?: string | null; qty?: number }[];
+      return list.filter((o) => o.productId && Number(o.qty) > 0).map((o) => ({ productId: String(o.productId), qty: Number(o.qty) }));
+    } catch {
+      return [];
+    }
   }
 
   /** Estorna a baixa de um item cancelado (devolve ao estoque). */

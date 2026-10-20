@@ -161,6 +161,9 @@ textarea {
 .strong {
   font-weight: 600;
 }
+.accent-text {
+  color: var(--accent);
+}
 .danger-text {
   color: var(--red);
 }
