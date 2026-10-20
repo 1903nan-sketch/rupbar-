@@ -799,6 +799,29 @@ const M009 = /* sql */ `
 ALTER TABLE product_option_groups ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1);
 `;
 
+/**
+ * Escolhas de uma apresentação só: a "Dose com energético" pede o energético,
+ * a dose pura e a garrafa fechada do mesmo produto não. E o meio a meio
+ * (meia batata, meia polenta) ligado às porções de onde puxa.
+ */
+const M010 = /* sql */ `
+CREATE TABLE presentation_option_groups (
+  presentation_id TEXT NOT NULL REFERENCES presentations(id),
+  group_id TEXT NOT NULL REFERENCES option_groups(id),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+  PRIMARY KEY (presentation_id, group_id)
+);
+
+-- Meio a meio: as porções que podem ser metade (cobra a mais cara, baixa metade de cada).
+CREATE TABLE presentation_halves (
+  presentation_id TEXT NOT NULL REFERENCES presentations(id),
+  part_presentation_id TEXT NOT NULL REFERENCES presentations(id),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (presentation_id, part_presentation_id)
+);
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -817,6 +840,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 7, name: 'impressora do caixa e entrega do pedido', sql: M007, run: singlePrinterIsCashier },
   { id: 8, name: 'escolhas no pedido (sabor, energético, gelo)', sql: M008 },
   { id: 9, name: 'combos: quantidade da escolha', sql: M009 },
+  { id: 10, name: 'escolhas por apresentação e meio a meio', sql: M010 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

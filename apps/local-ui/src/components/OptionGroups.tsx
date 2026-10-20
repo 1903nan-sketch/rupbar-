@@ -44,10 +44,12 @@ const choiceText = (c: OptionGroupView['choices'][number]) => `${c.name}${c.pric
  * Cada opção tem o seu preço a mais e pode baixar um produto do estoque (a lata
  * de Red Bull, o gelo de coco). A mesma escolha serve para vários produtos.
  */
-export function OptionGroupsField({ value, onChange, qty, onQtyChange, example }: {
+export function OptionGroupsField({ value, onChange, qty, onQtyChange, example, emptyText }: {
   value: string[];
   /** Texto de exemplo no topo (o padrão fala de dose com energético e gelo). */
   example?: string;
+  /** Aviso quando não há nenhuma escolha. */
+  emptyText?: string;
   onChange: (ids: string[]) => void;
   /** Combos: quantas unidades da opção escolhida vão (ex.: 5 gelos, 4 latas). */
   qty?: Record<string, number>;
@@ -73,7 +75,7 @@ export function OptionGroupsField({ value, onChange, qty, onQtyChange, example }
       <p className="small muted">
         {example ?? `Ex.: dose de gin a ${formatBRL(1200)} → no pedido o garçom escolhe o energético (Red Bull +${formatBRL(800)}, Monster +${formatBRL(500)}) e o gelo (coco +${formatBRL(200)}). O preço soma sozinho e o estoque baixa o que foi escolhido.`}
       </p>
-      {attached.length === 0 && !editing && <div className="banner small"><ListChecks size={16} style={{ flex: 'none' }} /> Este produto entra direto no pedido, sem escolhas.</div>}
+      {attached.length === 0 && !editing && <div className="banner small"><ListChecks size={16} style={{ flex: 'none' }} /> {emptyText ?? 'Este produto entra direto no pedido, sem escolhas.'}</div>}
       {attached.map((g, i) => (
         <div key={g.id} className="card tight option-group-card">
           <div className="row between">

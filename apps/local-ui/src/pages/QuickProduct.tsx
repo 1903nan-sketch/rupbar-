@@ -61,6 +61,7 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
     if (!pres.ok) return toast.error(pres.error);
     if (min.amount !== null && min.amount < 0) return toast.error('O estoque mínimo não pode ser negativo.');
     const withStock = can('stock.entry') && (stock.amount ?? 0) > 0;
+    const doseOnly = sell.mode === 'dose' && pres.value.length > 1;
     if (stock.amount !== null && (stock.amount < 0 || (stock.amount > 0 && qty <= 0) || (stock.mode === 'pack' && stock.amount > 100_000))) {
       return toast.error('Confira a quantidade em estoque.');
     }
@@ -70,8 +71,10 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
       const result = await api.post<{ id: string; internalCode: string | null }>('/api/products', {
         name: name.trim(), categoryId: selectedCategory, internalCode: code.trim() || null, barcode: barcode.trim() || null,
         measure: pk.value.measure, packageQty: pk.value.packageQty, packageLabel: pk.value.packageLabel, unitLabel: pk.value.unitLabel,
-        stockTracked: true, minStock: minQty, menuVisible: sell.mode !== 'ingredient', presentations: pres.value,
-        optionGroupIds: sell.mode !== 'ingredient' ? optionGroupIds : [],
+        stockTracked: true, minStock: minQty, menuVisible: sell.mode !== 'ingredient',
+        // Dose + garrafa fechada: as escolhas (energético, gelo) ficam só na dose; a garrafa sai sem perguntar.
+        presentations: doseOnly ? pres.value.map((p, i) => (i === 0 ? { ...p, optionGroups: optionGroupIds.map((groupId) => ({ groupId })) } : p)) : pres.value,
+        optionGroupIds: sell.mode !== 'ingredient' && !doseOnly ? optionGroupIds : [],
         initialStock: withStock ? { ...entryPayload(stock, pk.value), totalCostCents: totalCost } : undefined,
       });
       const codeText = result.internalCode ? ` (código ${result.internalCode})` : '';
@@ -129,7 +132,8 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
 
       {sell.mode !== 'ingredient' && (
         <Card title={<h3><span className="step-number">5</span>Tem escolhas no pedido? <span className="muted small">(opcional)</span></h3>} className="form-section">
-          <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds} />
+          <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds}
+            example={sell.mode === 'dose' && sell.wholePriceCents ? 'As escolhas valem para a dose (ex.: energético e gelo); a garrafa fechada sai sem perguntar. Para garrafa com gelo e energético, use Produtos → Novo combo.' : undefined} />
         </Card>
       )}
     </div>}

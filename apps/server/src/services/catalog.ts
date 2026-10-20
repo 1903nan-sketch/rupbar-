@@ -15,6 +15,10 @@ export interface PresentationView {
   active: boolean;
   sortOrder: number;
   components: { productId: string; productName: string; qty: number; measure: Measure; isSelf: boolean }[];
+  /** Escolhas só desta apresentação (somadas às do produto). */
+  optionGroups: { groupId: string; quantity: number }[];
+  /** Meio a meio: apresentações que podem ser metade. */
+  halves: string[];
   /** Quantas unidades desta apresentação o estoque atual permite (null = não controlado). */
   available: number | null;
 }
@@ -135,6 +139,24 @@ export class CatalogService {
   }
 
   /** Quantas unidades de uma apresentação o estoque permite (menor razão entre ingredientes controlados). */
+  /** Porções que podem ser metade no meio a meio; esgotada quando não há estoque para meia porção. */
+  private halfParts(presentationId: string) {
+    const parts = this.ctx.db.all(
+      `SELECT pr.id, pr.name, pr.price_cents, pr.product_id, p.name AS product_name FROM presentation_halves h
+       JOIN presentations pr ON pr.id = h.part_presentation_id JOIN products p ON p.id = pr.product_id
+       WHERE h.presentation_id = ? AND pr.active = 1 AND p.active = 1 ORDER BY h.sort_order`,
+      presentationId,
+    );
+    if (!parts.length) return undefined;
+    return parts.map((part) => {
+      const half = this.componentsOf(String(part.id), String(part.product_id)).map((c) => ({ ...c, qty: Math.max(1, Math.round(c.qty / 2)) }));
+      return {
+        presentationId: String(part.id), name: String(part.product_name), presentationName: String(part.name),
+        priceCents: Number(part.price_cents), soldOut: this.availability(half) === 0,
+      };
+    });
+  }
+
   private availability(components: PresentationView['components']): number | null {
     let min: number | null = null;
     for (const c of components) {
@@ -154,6 +176,12 @@ export class CatalogService {
         return {
           id: String(pr.id), name: String(pr.name), priceCents: Number(pr.price_cents), menuVisible: bool(pr.menu_visible),
           active: bool(pr.active), sortOrder: Number(pr.sort_order), components, available: this.availability(components),
+          optionGroups: this.ctx.db
+            .all<{ group_id: string; quantity: number }>('SELECT group_id, quantity FROM presentation_option_groups WHERE presentation_id = ? ORDER BY sort_order', String(pr.id))
+            .map((l) => ({ groupId: l.group_id, quantity: l.quantity })),
+          halves: this.ctx.db
+            .all<{ part_presentation_id: string }>('SELECT part_presentation_id FROM presentation_halves WHERE presentation_id = ? ORDER BY sort_order', String(pr.id))
+            .map((h) => h.part_presentation_id),
         };
       });
   }
@@ -235,8 +263,11 @@ export class CatalogService {
         })),
       products: this.ctx.db
         .all<{ id: string; name: string }>(
-          'SELECT p.id, p.name FROM product_option_groups pg JOIN products p ON p.id = pg.product_id WHERE pg.group_id = ? AND p.active = 1 ORDER BY p.name',
-          String(g.id),
+          `SELECT DISTINCT p.id, p.name FROM products p
+           WHERE p.active = 1 AND (p.id IN (SELECT product_id FROM product_option_groups WHERE group_id = ?)
+             OR p.id IN (SELECT pr.product_id FROM presentation_option_groups po JOIN presentations pr ON pr.id = po.presentation_id WHERE po.group_id = ? AND pr.active = 1))
+           ORDER BY p.name`,
+          String(g.id), String(g.id),
         ),
     }));
   }
@@ -353,6 +384,10 @@ export class CatalogService {
     for (const l of this.ctx.db.all<{ product_id: string; group_id: string; quantity: number }>('SELECT product_id, group_id, quantity FROM product_option_groups ORDER BY sort_order')) {
       linked.set(l.product_id, [...(linked.get(l.product_id) ?? []), l]);
     }
+    const ownLinks = new Map<string, { group_id: string; quantity: number }[]>();
+    for (const l of this.ctx.db.all<{ presentation_id: string; group_id: string; quantity: number }>('SELECT presentation_id, group_id, quantity FROM presentation_option_groups ORDER BY sort_order')) {
+      ownLinks.set(l.presentation_id, [...(ownLinks.get(l.presentation_id) ?? []), l]);
+    }
     const items = this.ctx.db
       .all(
         `SELECT pr.id AS presentation_id, pr.name AS presentation_name, pr.price_cents, p.id AS product_id, p.name AS product_name,
@@ -364,7 +399,9 @@ export class CatalogService {
       .map((r) => {
         const components = this.componentsOf(String(r.presentation_id), String(r.product_id));
         const available = this.availability(components);
-        const links = (linked.get(String(r.product_id)) ?? []).filter((l) => optionGroups[l.group_id]);
+        // As do produto valem para todas as apresentações; depois vêm as só desta (ex.: Dose com energético).
+        const links = [...(linked.get(String(r.product_id)) ?? []), ...(ownLinks.get(String(r.presentation_id)) ?? [])]
+          .filter((l, i, all) => optionGroups[l.group_id] && all.findIndex((x) => x.group_id === l.group_id) === i);
         const optionGroupIds = links.map((l) => l.group_id);
         const optionQty = Object.fromEntries(links.filter((l) => l.quantity > 1).map((l) => [l.group_id, l.quantity]));
         return {
@@ -377,6 +414,8 @@ export class CatalogService {
           // Escolhas pedidas ao tocar no produto (sabor, energético, gelo…) e, nos combos, quantas unidades de cada.
           optionGroupIds,
           optionQty,
+          // Meio a meio: as porções que podem ser metade, com o preço de cada (cobra a mais cara).
+          halfParts: this.halfParts(String(r.presentation_id)),
         };
       });
     return { categories, items, optionGroups };
@@ -479,6 +518,30 @@ export class CatalogService {
             'INSERT INTO presentation_components (id, presentation_id, ingredient_product_id, qty) VALUES (?,?,?,?)',
             this.ctx.id(), prId, c.productId ?? productId, c.qty,
           );
+        }
+        if (pr.optionGroups) {
+          const seen = new Set<string>();
+          const own = pr.optionGroups.filter((l) => !seen.has(l.groupId) && seen.add(l.groupId));
+          for (const l of own) if (!this.ctx.db.value('SELECT id FROM option_groups WHERE id = ?', l.groupId)) throw notFound('Escolha');
+          this.ctx.db.run('DELETE FROM presentation_option_groups WHERE presentation_id = ?', prId);
+          own.forEach((l, k) => this.ctx.db.run(
+            'INSERT INTO presentation_option_groups (presentation_id, group_id, sort_order, quantity) VALUES (?,?,?,?)', prId, l.groupId, k, l.quantity,
+          ));
+        }
+        if (pr.halves) {
+          const parts = [...new Set(pr.halves)];
+          if (parts.length === 1) throw badRequest(`O meio a meio "${pr.name}" precisa de ao menos duas porções para combinar.`, 'HALVES_MIN');
+          for (const part of parts) {
+            const ok = this.ctx.db.get(
+              'SELECT pr.id FROM presentations pr WHERE pr.id = ? AND pr.id <> ? AND NOT EXISTS (SELECT 1 FROM presentation_halves h WHERE h.presentation_id = pr.id)',
+              part, prId,
+            );
+            if (!ok) throw badRequest(`Uma das porções do meio a meio "${pr.name}" não existe mais (ou também é meio a meio).`, 'HALVES_INVALID');
+          }
+          this.ctx.db.run('DELETE FROM presentation_halves WHERE presentation_id = ?', prId);
+          parts.forEach((part, k) => this.ctx.db.run(
+            'INSERT INTO presentation_halves (presentation_id, part_presentation_id, sort_order) VALUES (?,?,?)', prId, part, k,
+          ));
         }
       });
       for (const old of existing) {

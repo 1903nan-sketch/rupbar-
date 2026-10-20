@@ -212,6 +212,99 @@ describe('escolhas no pedido', () => {
     expect(await stockOf(gin.id)).toBe(900_000);
   });
 
+  it('mesma garrafa: dose pura, dose com energético (só ela pede a escolha) e garrafa fechada baixam do mesmo Jack', async () => {
+    const spirits = await category(owner, 'Destilados');
+    const drinks = await category(owner, 'Energéticos');
+    const redbull = await stocked('Red Bull lata', drinks, 'unit', 1000, 24_000);
+    const energy = await owner.ok('POST', '/api/option-groups', {
+      name: 'Energético', required: true, choices: [{ name: 'Red Bull', priceDeltaCents: 500, productId: redbull, qty: 1000 }, { name: 'Sem energético' }],
+    });
+    const jack = await owner.ok('POST', '/api/products', {
+      name: "Jack Daniel's 1 L", categoryId: spirits, measure: 'volume', packageQty: 1_000_000,
+      presentations: [
+        { name: 'Dose 50 ml', priceCents: 4000, components: [{ productId: null, qty: 50_000 }] },
+        { name: 'Dose com energético', priceCents: 4000, components: [{ productId: null, qty: 50_000 }], optionGroups: [{ groupId: energy.id }] },
+        { name: 'Garrafa fechada', priceCents: 40_000, components: [{ productId: null, qty: 1_000_000 }] },
+      ],
+      initialStock: { qty: 2_000_000, totalCostCents: 30_000 },
+    });
+    const view = await owner.ok('GET', `/api/products/${jack.id}`);
+    expect(view.optionGroupIds).toEqual([]);
+    expect(view.presentations.map((p: { name: string; optionGroups: unknown[] }) => [p.name, p.optionGroups.length])).toEqual([['Dose 50 ml', 0], ['Dose com energético', 1], ['Garrafa fechada', 0]]);
+
+    const menu = await owner.ok('GET', '/api/menu');
+    const item = (name: string) => menu.items.find((i: { productId: string; presentationName: string }) => i.productId === jack.id && i.presentationName === name);
+    expect(item('Dose 50 ml').optionGroupIds).toEqual([]);
+    expect(item('Dose com energético').optionGroupIds).toEqual([energy.id]);
+    expect(item('Garrafa fechada').optionGroupIds).toEqual([]);
+    expect((await owner.ok('GET', '/api/option-groups')).find((g: { id: string }) => g.id === energy.id).products.map((p: { name: string }) => p.name)).toEqual(["Jack Daniel's 1 L"]);
+
+    const c = await owner.ok('POST', '/api/comandas', { cardNumber: 9 });
+    const order = (name: string, options: { groupId: string; choiceId: string }[] = []) =>
+      owner.req('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: item(name).presentationId, quantity: 1, options }] });
+    expect((await order('Dose 50 ml')).statusCode).toBe(200);
+    expect((await order('Dose com energético')).json().error.code).toBe('OPTION_REQUIRED');
+    const redBullChoice = menu.optionGroups[energy.id].choices.find((x: { name: string }) => x.name === 'Red Bull');
+    expect((await order('Dose com energético', [{ groupId: energy.id, choiceId: redBullChoice.id }])).statusCode).toBe(200);
+    expect((await order('Garrafa fechada')).statusCode).toBe(200);
+    // Uma garrafa e duas doses do mesmo Jack; a lata só na dose com energético.
+    expect(await stockOf(jack.id)).toBe(2_000_000 - 50_000 - 50_000 - 1_000_000);
+    expect(await stockOf(redbull)).toBe(23_000);
+    const d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    expect(d.items.map((i: { totalCents: number }) => i.totalCents)).toEqual([4000, 4500, 40_000]);
+
+    // Editar o produto sem mandar as escolhas da apresentação mantém as atuais.
+    await owner.ok('PUT', `/api/products/${jack.id}`, {
+      name: "Jack Daniel's 1 L", categoryId: spirits, measure: 'volume', packageQty: 1_000_000,
+      presentations: view.presentations.map((p: { id: string; name: string; priceCents: number; components: { qty: number }[] }) => ({
+        id: p.id, name: p.name, priceCents: p.priceCents, components: [{ productId: null, qty: p.components[0]!.qty }],
+      })),
+    });
+    expect((await owner.ok('GET', `/api/products/${jack.id}`)).presentations[1].optionGroups).toEqual([{ groupId: energy.id, quantity: 1 }]);
+  });
+
+  it('meio a meio: cobra a porção mais cara e baixa metade de cada uma', async () => {
+    const portions = await category(owner, 'Porções');
+    const kg = (name: string) => owner.ok('POST', '/api/products', { name, categoryId: portions, measure: 'mass', packageQty: 1_000_000, menuVisible: false, initialStock: { qty: 5_000_000, totalCostCents: 10_000 } });
+    const batata = await kg('Batata');
+    const polenta = await kg('Polenta');
+    const cheddar = await kg('Cheddar');
+    const porcao = async (name: string, priceCents: number, components: { productId: string; qty: number }[]) => {
+      const p = await owner.ok('POST', '/api/products', { name, categoryId: portions, measure: 'unit', stockTracked: false, presentations: [{ name, priceCents, components }] });
+      return (await owner.ok('GET', `/api/products/${p.id}`)).presentations[0].id as string;
+    };
+    const batataP = await porcao('Porção de batata', 3500, [{ productId: batata.id, qty: 400_000 }, { productId: cheddar.id, qty: 100_000 }]);
+    const polentaP = await porcao('Porção de polenta', 3000, [{ productId: polenta.id, qty: 400_000 }]);
+    expect((await owner.fail('POST', '/api/products', {
+      name: 'Meio a meio ruim', categoryId: portions, measure: 'unit', stockTracked: false, presentations: [{ name: 'Meio a meio ruim', priceCents: 0, halves: [batataP] }],
+    })).code).toBe('HALVES_MIN');
+    const mix = await owner.ok('POST', '/api/products', {
+      name: 'Porção meio a meio', categoryId: portions, measure: 'unit', stockTracked: false,
+      presentations: [{ name: 'Porção meio a meio', priceCents: 0, halves: [batataP, polentaP] }],
+    });
+    const mixView = await owner.ok('GET', `/api/products/${mix.id}`);
+    expect(mixView.presentations[0].halves).toEqual([batataP, polentaP]);
+    const menu = await owner.ok('GET', '/api/menu');
+    const item = menu.items.find((i: { productId: string }) => i.productId === mix.id);
+    expect(item.halfParts.map((h: { name: string; priceCents: number; soldOut: boolean }) => [h.name, h.priceCents, h.soldOut])).toEqual([['Porção de batata', 3500, false], ['Porção de polenta', 3000, false]]);
+
+    const c = await owner.ok('POST', '/api/comandas', { cardNumber: 21 });
+    const order = (halves: string[]) => owner.req('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: item.presentationId, quantity: 2, halves }] });
+    expect((await order([batataP])).json().error.code).toBe('HALVES_REQUIRED');
+    expect((await order([batataP, uuid()])).json().error.code).toBe('OPTION_UNAVAILABLE');
+    expect((await order([polentaP, batataP])).statusCode).toBe(200);
+    const d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    expect(d.items[0]).toMatchObject({ name: 'Porção meio a meio', options: '½ Porção de polenta · ½ Porção de batata', unitPriceCents: 3500, totalCents: 7000 });
+    // 2 meio a meio = 1 porção inteira de cada: 400 g de batata, 100 g de cheddar e 400 g de polenta.
+    expect(await stockOf(batata.id)).toBe(5_000_000 - 400_000);
+    expect(await stockOf(cheddar.id)).toBe(5_000_000 - 100_000);
+    expect(await stockOf(polenta.id)).toBe(5_000_000 - 400_000);
+    // Cancelar devolve as duas metades.
+    await owner.ok('POST', `/api/comanda-items/${d.items[0].id}/cancel`, { reason: 'Cliente desistiu' });
+    expect(await stockOf(batata.id)).toBe(5_000_000);
+    expect(await stockOf(polenta.id)).toBe(5_000_000);
+  });
+
   it('pedido pronto sai sozinho da tela de produção depois do tempo configurado', async () => {
     const drinks = await category(owner, 'Drinks');
     const p = await owner.ok('POST', '/api/products', { name: 'Caipirinha', categoryId: drinks, measure: 'unit', stockTracked: false, station: 'bar', presentations: [{ name: 'Unidade', priceCents: 2000 }] });

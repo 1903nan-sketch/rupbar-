@@ -28,11 +28,15 @@ export interface MenuItem {
   optionGroupIds?: string[];
   /** Combos: quantas unidades da opção escolhida vão (5 gelos, 4 latas). */
   optionQty?: Record<string, number>;
+  /** Meio a meio: as porções que podem ser metade (cobra a mais cara). */
+  halfParts?: { presentationId: string; name: string; presentationName: string; priceCents: number; soldOut: boolean }[];
 }
 export interface OptionGroup {
   id: string;
   name: string;
   required: boolean;
+  /** Metade do meio a meio: a opção mostra o preço da porção (não um acréscimo). */
+  half?: boolean;
   choices: { id: string; name: string; priceDeltaCents: number; soldOut: boolean }[];
 }
 export interface Menu {
@@ -47,6 +51,8 @@ export interface CartOption {
   choiceId: string;
   choice: string;
   priceDeltaCents: number;
+  /** Metade do meio a meio: priceDeltaCents é o preço da porção inteira. */
+  half?: boolean;
 }
 export interface CartLine {
   /** Produto + escolhas: o mesmo drink com energéticos diferentes vira linhas diferentes. */
@@ -58,7 +64,22 @@ export interface CartLine {
 }
 
 export const lineKey = (item: MenuItem, options: CartOption[]) => [item.presentationId, ...options.map((o) => o.choiceId)].join('|');
-export const unitPriceOf = (l: Pick<CartLine, 'item' | 'options'>) => l.item.priceCents + l.options.reduce((a, o) => a + o.priceDeltaCents, 0);
+/** Preço da linha: meio a meio cobra a metade mais cara; as outras escolhas somam. */
+export const unitPriceOf = (l: Pick<CartLine, 'item' | 'options'>) => {
+  const halves = l.options.filter((o) => o.half).map((o) => o.priceDeltaCents);
+  const base = halves.length ? Math.max(l.item.priceCents, ...halves) : l.item.priceCents;
+  return base + l.options.filter((o) => !o.half).reduce((a, o) => a + o.priceDeltaCents, 0);
+};
+/** Menor preço possível (meio a meio com as duas metades mais baratas). */
+export const fromPriceOf = (i: MenuItem) => (i.halfParts?.length ? Math.max(i.priceCents, Math.min(...i.halfParts.map((h) => h.priceCents))) : i.priceCents);
+
+/** As duas metades do meio a meio viram dois grupos de escolha: 1ª e 2ª metade. */
+export const halfGroups = (i: MenuItem): OptionGroup[] => (i.halfParts?.length
+  ? [1, 2].map((n) => ({
+      id: `half:${n}`, name: `${n}ª metade`, required: true, half: true,
+      choices: i.halfParts!.map((h) => ({ id: h.presentationId, name: h.name, priceDeltaCents: h.priceCents, soldOut: h.soldOut })),
+    }))
+  : []);
 export const optionsLabel = (options: CartOption[]) => options.map((o) => o.choice).join(' · ');
 
 export const itemLabel = (i: { productName: string; presentationName: string }) =>
@@ -120,7 +141,8 @@ export function useCart() {
   const qtyOf = (id: string) => lines.filter((l) => l.item.presentationId === id).reduce((a, l) => a + l.quantity, 0);
   const payload = () => lines.map((l) => ({
     presentationId: l.item.presentationId, quantity: l.quantity, notes: l.notes || null,
-    options: l.options.map((o) => ({ groupId: o.groupId, choiceId: o.choiceId })),
+    options: l.options.filter((o) => !o.half).map((o) => ({ groupId: o.groupId, choiceId: o.choiceId })),
+    halves: l.options.filter((o) => o.half).map((o) => o.choiceId),
   }));
   return { lines, add, changeLine, removeOne, setNotes, clear, total, count, qtyOf, payload, requestKey };
 }
@@ -132,7 +154,7 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
   const { data: menu, error, reload } = useLoad(() => api.get<Menu>('/api/menu'));
   useRealtime('stock.changed', () => void reload());
   const [choosing, setChoosing] = useState<MenuItem | null>(null);
-  const groupsOf = (item: MenuItem) => (item.optionGroupIds ?? []).map((g) => menu?.optionGroups?.[g]).filter((g): g is OptionGroup => !!g);
+  const groupsOf = (item: MenuItem) => [...halfGroups(item), ...(item.optionGroupIds ?? []).map((g) => menu?.optionGroups?.[g]).filter((g): g is OptionGroup => !!g)];
   /** Toque no produto: com escolhas (sabor, energético, gelo), abre a escolha; sem, soma 1. */
   const pick = (item: MenuItem) => {
     if (groupsOf(item).length) setChoosing(item);
@@ -222,12 +244,12 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
                 className="menu-tile-main"
                 disabled={i.soldOut}
                 onClick={() => pick(i)}
-                aria-label={`Adicionar ${itemLabel(i)} (${formatBRL(i.priceCents)})`}
+                aria-label={`Adicionar ${itemLabel(i)} (${formatBRL(fromPriceOf(i))})`}
               >
                 {i.photoUrl && <img className="menu-tile-photo" src={i.photoUrl} alt="" loading="lazy" />}
                 <span className="menu-tile-name">{i.productName}</span>
                 {presentationSuffix(i.productName, i.presentationName) && <span className="menu-tile-pres">{i.presentationName}</span>}
-                <span className="menu-tile-price num">{groupsOf(i).length ? 'a partir de ' : ''}{formatBRL(i.priceCents)}</span>
+                <span className="menu-tile-price num">{groupsOf(i).length ? 'a partir de ' : ''}{formatBRL(fromPriceOf(i))}</span>
                 {i.soldOut ? <span className="menu-tile-flag danger">Esgotado</span> : i.available !== null && i.available <= 5 ? <span className="menu-tile-flag">restam {i.available}</span> : null}
               </button>
               {n > 0 && (
@@ -274,6 +296,7 @@ export function OptionChooser({ item, groups, onClose, onAdd }: {
   const options: CartOption[] = groups.flatMap((g) => {
     const c = g.choices.find((x) => x.id === picked[g.id]);
     const n = qtyOf(g);
+    if (c && g.half) return [{ groupId: g.id, choiceId: c.id, choice: `½ ${c.name}`, priceDeltaCents: c.priceDeltaCents, half: true }];
     return c ? [{ groupId: g.id, choiceId: c.id, choice: n > 1 ? `${n}× ${c.name}` : c.name, priceDeltaCents: c.priceDeltaCents * n }] : [];
   });
   const missing = groups.filter((g) => g.required && !picked[g.id]);
@@ -290,6 +313,7 @@ export function OptionChooser({ item, groups, onClose, onAdd }: {
       </>}
     >
       <div className="option-chooser stack">
+        {groups.some((g) => g.half) && <p className="small muted">Meio a meio: cobra o preço da metade mais cara.</p>}
         {groups.map((g) => (
           <div key={g.id} className="option-group" role="radiogroup" aria-label={g.name}>
             <div className="option-group-title">
@@ -313,7 +337,7 @@ export function OptionChooser({ item, groups, onClose, onAdd }: {
                   >
                     {on && <Check size={16} />}
                     <span className="option-choice-name">{c.name}</span>
-                    {c.soldOut ? <span className="tiny danger-text">esgotado</span> : c.priceDeltaCents > 0 ? <span className="option-choice-price num">+{formatBRL(c.priceDeltaCents * qtyOf(g))}</span> : null}
+                    {c.soldOut ? <span className="tiny danger-text">esgotado</span> : g.half ? <span className="option-choice-price num">{formatBRL(c.priceDeltaCents)}</span> : c.priceDeltaCents > 0 ? <span className="option-choice-price num">+{formatBRL(c.priceDeltaCents * qtyOf(g))}</span> : null}
                   </button>
                 );
               })}

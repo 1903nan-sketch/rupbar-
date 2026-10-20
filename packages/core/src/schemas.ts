@@ -233,6 +233,16 @@ export const presentationSchema = z.object({
   menuVisible: z.boolean().default(true),
   active: z.boolean().default(true),
   sortOrder: z.number().int().default(0),
+  /**
+   * Escolhas só desta apresentação, somadas às do produto (ex.: "Dose com
+   * energético" pede o energético; a dose pura não). Sem o campo, mantém as atuais.
+   */
+  optionGroups: z.array(z.object({ groupId: zUuid, quantity: z.number().int().min(1).max(50).default(1) })).max(10).optional(),
+  /**
+   * Meio a meio: as apresentações que podem ser metade (porção de batata,
+   * de polenta…). Cobra a mais cara e baixa metade de cada. Sem o campo, mantém.
+   */
+  halves: z.array(zUuid).max(30).optional(),
 });
 
 /** Entradas aceitam a quantidade em embalagens ou em unidades soltas, nunca as duas. */
@@ -375,6 +385,8 @@ export const orderItemSchema = z.object({
   quantity: z.number().int().min(1).max(99),
   notes: optionalText(140),
   options: z.array(orderOptionSchema).max(10).default([]),
+  /** Meio a meio: as duas metades escolhidas (apresentações). */
+  halves: z.array(zUuid).max(2).default([]),
 });
 
 /**

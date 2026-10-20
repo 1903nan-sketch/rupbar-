@@ -422,3 +422,55 @@
     grid-column: 1 / -1;
   }
 }
+
+/* Escolhas só de uma apresentação e meio a meio */
+.pres-options {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.pres-options > .option-groups-field {
+  width: 100%;
+}
+.half-parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.half-part {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, color-mix(in srgb, var(--text) 12%, transparent));
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.half-part.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.half-part-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1.5px solid color-mix(in srgb, var(--text) 30%, transparent);
+  color: #fff;
+}
+.half-part.active .half-part-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.half-part-name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

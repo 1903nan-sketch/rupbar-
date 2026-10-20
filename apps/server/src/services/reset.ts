@@ -11,7 +11,7 @@ const SALES_TABLES = [
   'payments', 'comanda_items', 'orders', 'comandas', 'cash_movements', 'cash_sessions', 'losses', 'notifications',
 ];
 const STOCK_TABLES = ['stock_lots', 'purchase_items', 'purchases', 'inventory_items', 'inventories', 'stock_alerts', 'stock_movements'];
-const PRODUCT_TABLES = ['product_option_groups', 'option_choices', 'option_groups', 'presentation_components', 'presentations', 'products'];
+const PRODUCT_TABLES = ['presentation_halves', 'presentation_option_groups', 'product_option_groups', 'option_choices', 'option_groups', 'presentation_components', 'presentations', 'products'];
 
 const SYNC_ON = "(SELECT value FROM meta WHERE key = 'sync_enabled') = '1'";
 /** Travas que impedem apagar pagamentos e movimentações; saem só durante a limpeza e voltam na mesma transação. */

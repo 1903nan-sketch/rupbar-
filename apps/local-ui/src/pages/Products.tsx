@@ -1,5 +1,5 @@
 import { BASE_UNIT, buyModeOf, costOf, packName, unitName, type Measure, type Packaging } from '@rupbar/core';
-import { Boxes, Camera, ImageOff, Plus, Search, Trash2, Wine } from 'lucide-react';
+import { Boxes, Camera, ImageOff, ListChecks, Plus, Search, SplitSquareHorizontal, Trash2, Wine } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
 import { OptionGroupsField } from '../components/OptionGroups';
 import { BuyModePicker, CodeTag, LevelChip, QtyEntry, StockQty } from '../components/stock-units';
@@ -12,6 +12,7 @@ import { useSession } from '../lib/session';
 import { draftFromPackaging, packagingFromDraft, previewPackaging, qtyDraftFrom, qtyOf, type PackDraft, type QtyDraft } from '../lib/stock-units';
 import '../styles/stock.css';
 import { ComboModal } from './ComboModal';
+import { HalfHalfModal, HalfPartsField } from './HalfHalfModal';
 import { QuickProductModal } from './QuickProduct';
 
 export interface Product {
@@ -51,6 +52,10 @@ export interface Product {
     active: boolean;
     components: { productId: string; productName: string; qty: number; measure: Measure; isSelf: boolean }[];
     available: number | null;
+    /** Escolhas só desta apresentação (ex.: Dose com energético). */
+    optionGroups?: { groupId: string; quantity: number }[];
+    /** Meio a meio: as porções que podem ser metade. */
+    halves?: string[];
   }[];
   /** Escolhas pedidas ao lançar (ex.: energético e gelo da dose). */
   optionGroupIds?: string[];
@@ -83,6 +88,7 @@ export function ProductsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<Product | 'new' | 'advanced' | null>(null);
   const [combo, setCombo] = useState(false);
+  const [halfHalf, setHalfHalf] = useState(false);
   const cats = useLoad(() => api.get<Category[]>('/api/categories'));
   const { data, error, reload } = useLoad(() => api.get<Product[]>(`/api/products${qs({ q, categoryId: cat, all: showInactive ? 1 : undefined })}`), [q, cat, showInactive]);
   useRealtime(['stock'], () => void reload());
@@ -92,7 +98,7 @@ export function ProductsPage() {
       <PageHeader
         title="Produtos"
         subtitle="Cadastro único: o mesmo produto é usado no cardápio, no estoque e nas fichas técnicas."
-        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button icon={<Boxes size={16} />} onClick={() => setCombo(true)}>Novo combo</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
+        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button icon={<Boxes size={16} />} onClick={() => setCombo(true)}>Novo combo</Button><Button icon={<SplitSquareHorizontal size={16} />} onClick={() => setHalfHalf(true)}>Novo meio a meio</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
       />
       <div className="row wrap">
         <div className="input-group" style={{ width: 300, maxWidth: '100%' }}>
@@ -139,6 +145,7 @@ export function ProductsPage() {
         </Card>
       )}
       {combo && <ComboModal onClose={() => setCombo(false)} onSaved={() => void reload()} />}
+      {halfHalf && <HalfHalfModal onClose={() => setHalfHalf(false)} onSaved={() => void reload()} />}
       {editing === 'new' ? <QuickProductModal onClose={() => setEditing(null)} onSaved={() => void reload()} /> : editing && <ProductEditor product={editing === 'advanced' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} />}
     </div>
   );
@@ -153,10 +160,16 @@ interface PresDraft {
   mode: 'self' | 'recipe';
   selfQty: number | null;
   components: { productId: string; qty: number | null }[];
+  /** Escolhas só desta apresentação, com a quantidade (combos). */
+  optionGroupIds: string[];
+  optionQty: Record<string, number>;
+  showOptions: boolean;
+  /** Meio a meio: porções que podem ser metade. */
+  halves?: string[];
 }
 
 function toDraft(p: Product | null): PresDraft[] {
-  if (!p) return [{ name: 'Unidade', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: 1, components: [] }];
+  if (!p) return [{ name: 'Unidade', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: 1, components: [], optionGroupIds: [], optionQty: {}, showOptions: false }];
   return p.presentations.map((pr) => {
     const self = pr.components.length === 1 && pr.components[0]!.isSelf;
     return {
@@ -164,6 +177,10 @@ function toDraft(p: Product | null): PresDraft[] {
       mode: self ? 'self' : 'recipe',
       selfQty: self ? pr.components[0]!.qty / 1000 : 1,
       components: self ? [] : pr.components.map((c) => ({ productId: c.productId, qty: c.qty / 1000 })),
+      optionGroupIds: (pr.optionGroups ?? []).map((g) => g.groupId),
+      optionQty: Object.fromEntries((pr.optionGroups ?? []).map((g) => [g.groupId, g.quantity])),
+      showOptions: !!pr.optionGroups?.length,
+      halves: pr.halves?.length ? pr.halves : undefined,
     };
   });
 }
@@ -213,6 +230,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
       if (!p.name.trim()) { setTab('apresentacoes'); return toast.error('Dê um nome para a apresentação (ex.: Unidade, Dose 50 ml).'); }
       if (p.priceCents === null) return toast.error(`Informe o preço de "${p.name}".`);
       if (p.mode === 'recipe' && p.components.some((c) => !c.productId || !c.qty)) return toast.error(`Complete a ficha técnica de "${p.name}".`);
+      if (p.halves && p.halves.length < 2) { setTab('apresentacoes'); return toast.error(`Escolha ao menos duas porções no meio a meio "${p.name}".`); }
     }
     const packageQty = pk.value.packageQty;
     setBusy(true);
@@ -227,6 +245,8 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
         presentations: pres.map((p, i) => ({
           id: p.id, name: p.name, priceCents: p.priceCents ?? 0, menuVisible: p.menuVisible, active: p.active, sortOrder: i,
           components: p.mode === 'self' ? [{ productId: null, qty: Math.round((p.selfQty ?? 1) * 1000) }] : p.components.map((c) => ({ productId: c.productId, qty: Math.round((c.qty ?? 0) * 1000) })),
+          optionGroups: p.optionGroupIds.map((groupId) => ({ groupId, quantity: p.optionQty[groupId] ?? 1 })),
+          ...(p.halves ? { halves: p.halves } : {}),
         })),
       };
       const r = product
@@ -251,7 +271,12 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
     <Modal title={product ? product.name : 'Novo produto'} wide onClose={onClose}
       footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!f.name.trim() || !f.categoryId} onClick={save}>Salvar</Button></>}>
       <Tabs value={tab} onChange={setTab} options={[{ value: 'geral', label: 'Geral' }, { value: 'estoque', label: 'Estoque e custo' }, { value: 'apresentacoes', label: `Apresentações e preços (${pres.length})` }, { value: 'escolhas', label: `Escolhas no pedido${optionGroupIds.length ? ` (${optionGroupIds.length})` : ''}` }]} />
-      {tab === 'escolhas' && <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds} qty={optionQty} onQtyChange={setOptionQty} />}
+      {tab === 'escolhas' && (
+        <div className="stack">
+          {pres.length > 1 && <p className="small banner">Estas escolhas valem para todas as apresentações ({pres.map((p) => p.name || 'sem nome').join(', ')}). Para pedir só numa (ex.: Dose com energético), use Apresentações e preços → Escolhas só desta apresentação.</p>}
+          <OptionGroupsField value={optionGroupIds} onChange={setOptionGroupIds} qty={optionQty} onQtyChange={setOptionQty} />
+        </div>
+      )}
       {tab === 'geral' && (
         <div className="stack">
           <div className="row top" style={{ gap: 16 }}>
@@ -335,10 +360,10 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
                 <div className="stack">
                   <div className="row top">
                     <Field label="Nome" className="grow"><Input value={p.name} onChange={(e) => updatePres(i, { name: e.target.value })} /></Field>
-                    <Field label="Preço de venda"><MoneyInput value={p.priceCents} onChange={(v) => updatePres(i, { priceCents: v })} /></Field>
+                    <Field label={p.halves ? 'Preço mínimo' : 'Preço de venda'} hint={p.halves ? 'Cobra a metade mais cara.' : undefined}><MoneyInput value={p.priceCents} onChange={(v) => updatePres(i, { priceCents: v })} /></Field>
                     <Button variant="plain" icon={<Trash2 size={16} />} aria-label="Remover" style={{ marginTop: 22 }} disabled={pres.length === 1} onClick={() => setPres(pres.filter((_, j) => j !== i))} />
                   </div>
-                  <div className="row wrap">
+                  {!p.halves && <div className="row wrap">
                     <span className="label">Consome:</span>
                     <div className="segmented">
                       <button type="button" className={p.mode === 'self' ? 'active' : ''} onClick={() => updatePres(i, { mode: 'self' })}>Deste produto</button>
@@ -347,7 +372,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
                     {p.mode === 'self' && <div style={{ width: 160 }}><DecimalInput value={p.selfQty} onChange={(v) => updatePres(i, { selfQty: v })} suffix={unit} /></div>}
                     <span className="grow" />
                     {cost !== null && p.priceCents ? <span className="small muted">Custo estimado {formatBRL(cost)} · margem {Math.round(((p.priceCents - cost) / p.priceCents) * 100)}%</span> : null}
-                  </div>
+                  </div>}
                   {p.mode === 'recipe' && (
                     <div className="col">
                       {p.components.map((c, k) => {
@@ -366,6 +391,22 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
                       <Button variant="plain" icon={<Plus size={15} />} style={{ alignSelf: 'flex-start' }} onClick={() => updatePres(i, { components: [...p.components, { productId: '', qty: null }] })}>Ingrediente</Button>
                     </div>
                   )}
+                  {p.halves && (
+                    <div className="stack pres-halves">
+                      <span className="label">Meio a meio: de quais porções puxa (cobra a mais cara, baixa metade de cada)</span>
+                      <HalfPartsField value={p.halves} exclude={p.id} onChange={(halves) => updatePres(i, { halves })} />
+                    </div>
+                  )}
+                  <div className="pres-options">
+                    <Button size="small" variant="plain" icon={<ListChecks size={15} />} aria-expanded={p.showOptions} onClick={() => updatePres(i, { showOptions: !p.showOptions })}>
+                      Escolhas só desta apresentação{p.optionGroupIds.length ? ` (${p.optionGroupIds.length})` : ''}
+                    </Button>
+                    {p.showOptions && (
+                      <OptionGroupsField value={p.optionGroupIds} onChange={(ids) => updatePres(i, { optionGroupIds: ids })} qty={p.optionQty} onQtyChange={(q) => updatePres(i, { optionQty: q })}
+                        emptyText="Esta apresentação usa só as escolhas do produto (aba Escolhas no pedido)."
+                        example="Ex.: “Dose com energético” pede o energético; a dose pura e a garrafa fechada do mesmo produto não pedem. Todas baixam da mesma garrafa." />
+                    )}
+                  </div>
                   <div className="row">
                     <label className="check small"><input type="checkbox" checked={p.menuVisible} onChange={(e) => updatePres(i, { menuVisible: e.target.checked })} /> No cardápio</label>
                     <label className="check small"><input type="checkbox" checked={p.active} onChange={(e) => updatePres(i, { active: e.target.checked })} /> Ativa</label>
@@ -380,7 +421,7 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
             const name = f.name.trim();
             // Ingrediente que passa a ser vendido: volta para o cardápio.
             if (!pres.length) setF({ ...f, menuVisible: true });
-            setPres([...pres, { name: name && !pres.some((p) => p.name.trim() === name) ? name : '', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: packaging.measure === 'volume' ? 50 : 1, components: [] }]);
+            setPres([...pres, { name: name && !pres.some((p) => p.name.trim() === name) ? name : '', priceCents: null, menuVisible: true, active: true, mode: 'self', selfQty: packaging.measure === 'volume' ? 50 : 1, components: [], optionGroupIds: [], optionQty: {}, showOptions: false }]);
           }}>Adicionar apresentação</Button>
         </div>
       )}
