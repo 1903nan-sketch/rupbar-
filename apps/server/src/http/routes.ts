@@ -331,6 +331,8 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/admin/stock-movements/:id/reverse', (req, a) => s.admin.reverseStockMovement(a, id(req), req.body));
   r('POST', '/api/admin/losses/:id/delete', (req, a) => s.admin.deleteLoss(a, id(req), req.body));
   r('POST', '/api/admin/hookah-sessions/:id/delete', (req, a) => s.admin.deleteHookahSession(a, id(req), req.body));
+  r('GET', '/api/admin/test-data', (_req, a) => s.reset.preview(a));
+  r('POST', '/api/admin/test-data/reset', (req, a) => s.reset.reset(a, req.body));
   r('GET', '/api/orders/mine', (_req, a) => s.comandas.myOrders(a));
   r('GET', '/api/orders/lookup', (req, a) => s.comandas.lookupOrders(a, q(req).q));
   r('POST', '/api/orders/:id/picked-up', (req, a) => s.comandas.markPickedUp(a, id(req)));

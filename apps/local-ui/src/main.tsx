@@ -37,6 +37,7 @@ const BackupSettings = lazy(() => import('./pages/settings/Settings').then((m) =
 const IdentitySettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.IdentitySettings })));
 const OperationSettings = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.OperationSettings })));
 const CorrectionsHistory = lazy(() => import('./pages/settings/Corrections').then((m) => ({ default: m.CorrectionsHistory })));
+const ResetTestData = lazy(() => import('./pages/settings/ResetTestData').then((m) => ({ default: m.ResetTestData })));
 const SettingsHome = lazy(() => import('./pages/settings/Settings').then((m) => ({ default: m.SettingsHome })));
 
 /** Garante que o servidor local responde; senão tenta reencontrá-lo na rede. */
@@ -138,6 +139,7 @@ function App() {
           <Route path="configuracoes/notificacoes" element={<Guard perm="settings.manage"><NotificationSettings /></Guard>} />
           <Route path="configuracoes/backup" element={<Guard perm="settings.manage"><BackupSettings /></Guard>} />
           <Route path="configuracoes/correcoes" element={<Guard perm="admin.override"><CorrectionsHistory /></Guard>} />
+          <Route path="configuracoes/apagar-testes" element={<Guard perm="admin.override"><ResetTestData /></Guard>} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

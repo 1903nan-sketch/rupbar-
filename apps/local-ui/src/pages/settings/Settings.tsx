@@ -1,4 +1,4 @@
-import { Bell, Building2, Cloud, Database, Printer, QrCode, SlidersHorizontal, Smartphone, Trash2, Tv, Upload, ShieldCheck } from 'lucide-react';
+import { Bell, Building2, Cloud, Database, Eraser, Printer, QrCode, SlidersHorizontal, Smartphone, Trash2, Tv, Upload, ShieldCheck } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../../components/brand';
@@ -20,6 +20,7 @@ export function SettingsHome() {
     { to: '/configuracoes/notificacoes', icon: <Bell size={22} />, title: 'Notificações', text: 'Alertas no WhatsApp: estoque baixo e fechamento de caixa.', show: can('settings.manage') },
     { to: '/configuracoes/backup', icon: <Database size={22} />, title: 'Backup', text: 'Cópias de segurança do banco de dados local.', show: can('settings.manage') },
     { to: '/configuracoes/correcoes', icon: <ShieldCheck size={22} />, title: 'Histórico de correções', text: 'Tudo o que a conta mestre editou ou excluiu, com motivo.', show: can('admin.override') },
+    { to: '/configuracoes/apagar-testes', icon: <Eraser size={22} />, title: 'Apagar dados de teste', text: 'Conta mestre: zera vendas, caixas, relatórios, estoque e produtos para começar do zero.', show: can('admin.override') },
   ];
   return (
     <div className="stack-l">

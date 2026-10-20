@@ -28,6 +28,7 @@ const LABEL: Record<string, string> = {
   'admin.stock_movement_reversed': 'Movimentação de estoque desfeita',
   'admin.loss_deleted': 'Perda excluída',
   'admin.hookah_session_deleted': 'Locação de narguilé excluída',
+  'admin.test_data_reset': 'Dados de teste apagados',
 };
 
 /** Resumo curto do que mudou (valores em centavos viram R$). */
@@ -46,6 +47,8 @@ function detail(d: Record<string, unknown> | null): string {
       parts.push(`${isMoney ? money(from[k]) : String(from[k] ?? '—')} → ${isMoney ? money(to[k]) : String(to[k] ?? '—')}`);
     }
   }
+  if (typeof d.comandas === 'number') parts.push(`${d.comandas} comandas`);
+  if (typeof d.salesCents === 'number') parts.push(`vendas de ${formatBRL(d.salesCents)}`);
   if (typeof d.amountCents === 'number') parts.push(formatBRL(d.amountCents));
   if (typeof d.totalCents === 'number') parts.push(formatBRL(d.totalCents));
   return parts.join(' · ');

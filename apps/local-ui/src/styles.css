@@ -1593,3 +1593,36 @@ body {
     display: none !important;
   }
 }
+
+/* Conta mestre: apagar dados de teste */
+.reset-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+.reset-warn {
+  margin-top: 10px;
+  color: var(--red);
+}
+.reset-keep {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+  color: color-mix(in srgb, var(--green) 70%, var(--text));
+}
+.reset-keep svg {
+  flex: none;
+  margin-top: 2px;
+}
+.reset-done {
+  align-items: center;
+  text-align: center;
+}
+.reset-done > svg {
+  color: var(--green);
+}

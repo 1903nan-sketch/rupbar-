@@ -209,7 +209,23 @@ try {
   assert.equal(water.categoryName, 'Outros');
   assert.deepEqual(water.presentations.map((p) => [p.name, p.priceCents]), [['Unidade', 500]]);
   await page.getByRole('row').filter({ hasText: 'Água com gás' }).getByText('20 unidades').waitFor();
+
+  // 7. Conta mestre: apagar os dados de teste (estoque, produtos e relatórios).
+  await page.goto(base + '/configuracoes');
+  await page.getByRole('link', { name: /Apagar dados de teste/ }).click();
+  await page.getByText(/produtos com preços, combos/).waitFor();
+  const eraseButton = page.getByRole('button', { name: 'Apagar dados de teste' });
+  assert(await eraseButton.isDisabled(), 'só libera com senha e APAGAR');
+  await page.getByLabel('Sua senha (proprietário)').fill('Lua-Cheia-2026');
+  await page.getByLabel('Digite APAGAR').fill('apagar');
+  await page.screenshot({ path: join(out, '08-apagar-testes.png') });
+  await eraseButton.click();
+  await page.getByText('Pronto: o sistema está zerado para começar').waitFor();
+  assert.deepEqual(await request('GET', '/api/products'), []);
+  assert.equal((await request('GET', '/api/admin/test-data')).stockMovements, 0);
+  await page.getByRole('link', { name: 'Importar a planilha do estoque' }).click();
+  await page.getByText('Vamos cadastrar seu estoque?').waitFor();
   assert.deepEqual(errors, []);
-  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular e importação de planilha. Capturas em ${out}`);
+  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular, importação de planilha e apagar dados de teste. Capturas em ${out}`);
 } catch (error) { console.error(error); process.exitCode = 1; }
 finally { await browser?.close(); server.stdin.write('shutdown\n'); setTimeout(() => server.kill(), 3000).unref(); }

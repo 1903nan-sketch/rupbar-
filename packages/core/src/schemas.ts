@@ -327,6 +327,14 @@ export const inventorySchema = z.object({
   items: z.array(z.object({ productId: zUuid, countedQty: zMilli.min(0) })).min(1),
 });
 
+/** Conta mestre: apagar os dados de teste (vendas, caixas, estoque e, se quiser, os produtos). */
+export const testDataResetSchema = z.object({
+  password: z.string().min(1, 'Digite a sua senha.').max(200),
+  confirm: z.string().transform((v) => v.trim().toUpperCase()).refine((v) => v === 'APAGAR', 'Digite APAGAR para confirmar.'),
+  /** Mantém o cadastro dos produtos e só zera o estoque. */
+  keepProducts: z.boolean().default(false),
+});
+
 /** Planilha de produtos e contagem (CSV). Sem `commit`, só confere e devolve a prévia. */
 export const stockImportSchema = z.object({
   csv: z.string().min(1, 'A planilha está vazia.').max(1_500_000, 'Planilha grande demais: divida em partes.'),

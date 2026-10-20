@@ -22,6 +22,7 @@ import { NetworkService } from './network';
 import { NotificationsService, type HttpSender } from './notifications';
 import { PrintingService, type PrinterTransport } from './printing';
 import { ReportsService } from './reports';
+import { ResetService } from './reset';
 import { SalesService } from './sales';
 import { SettingsService } from './settings';
 import { SetupService } from './setup';
@@ -93,6 +94,7 @@ export function createServices(opts: CreateOptions) {
   const attachments = new AttachmentsService(ctx);
   const setup = new SetupService(ctx, settings, users, catalog, auth);
   const imports = new ImportService(ctx, catalog, stock);
+  const reset = new ResetService(ctx);
 
   // Ligações entre módulos (evita dependências circulares).
   stock.onAlertOpened = (alertId, productId) => notifications.enqueueStockAlert(alertId, productId);
@@ -123,7 +125,7 @@ export function createServices(opts: CreateOptions) {
   let kitchenSweep: NodeJS.Timeout | null = null;
   return {
     ctx, db, settings, auth, users, catalog, stock, comandas, cash, sales, admin, kitchen, losses, hookah, printing, tv, tvMedia, notifications, sync,
-    network, reports, attachments, setup, imports,
+    network, reports, attachments, setup, imports, reset,
     startWorkers() {
       printing.start();
       kitchenSweep = setInterval(() => kitchen.sweepReady(), 30_000);
