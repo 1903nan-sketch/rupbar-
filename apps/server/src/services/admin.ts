@@ -166,7 +166,9 @@ export class AdminService {
           item.created_by, String(item.created_at), now,
         );
         // As escolhas do item (ex.: a lata de Red Bull) baixam de novo com a quantidade corrigida.
-        const cost = this.stock.deductForSale(newId, String(item.presentation_id), input.quantity, actor.userId, StockService.optionComponents(item.options_json));
+        const cost = this.stock.deductForSale(
+          newId, String(item.presentation_id), input.quantity, actor.userId, StockService.optionComponents(item.options_json), StockService.replacesBase(item.options_json),
+        );
         this.db.run('UPDATE comanda_items SET unit_cost_cents = ? WHERE id = ?', Math.round(cost / input.quantity), newId);
       }
       this.settle(comandaId);

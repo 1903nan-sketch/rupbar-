@@ -1,5 +1,5 @@
 import { BASE_UNIT, buyModeOf, costOf, packName, unitName, type Measure, type Packaging } from '@rupbar/core';
-import { Boxes, Camera, ImageOff, ListChecks, Plus, Search, SplitSquareHorizontal, Trash2, Wine } from 'lucide-react';
+import { Boxes, Camera, ImageOff, ListChecks, Plus, Search, Trash2, Wine } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
 import { OptionGroupsField } from '../components/OptionGroups';
 import { BuyModePicker, CodeTag, LevelChip, QtyEntry, StockQty } from '../components/stock-units';
@@ -12,7 +12,7 @@ import { useSession } from '../lib/session';
 import { draftFromPackaging, packagingFromDraft, previewPackaging, qtyDraftFrom, qtyOf, type PackDraft, type QtyDraft } from '../lib/stock-units';
 import '../styles/stock.css';
 import { ComboModal } from './ComboModal';
-import { HalfHalfModal, HalfPartsField } from './HalfHalfModal';
+import { HalfPartsField } from './HalfParts';
 import { QuickProductModal } from './QuickProduct';
 
 export interface Product {
@@ -88,7 +88,6 @@ export function ProductsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<Product | 'new' | 'advanced' | null>(null);
   const [combo, setCombo] = useState(false);
-  const [halfHalf, setHalfHalf] = useState(false);
   const cats = useLoad(() => api.get<Category[]>('/api/categories'));
   const { data, error, reload } = useLoad(() => api.get<Product[]>(`/api/products${qs({ q, categoryId: cat, all: showInactive ? 1 : undefined })}`), [q, cat, showInactive]);
   useRealtime(['stock'], () => void reload());
@@ -98,7 +97,7 @@ export function ProductsPage() {
       <PageHeader
         title="Produtos"
         subtitle="Cadastro único: o mesmo produto é usado no cardápio, no estoque e nas fichas técnicas."
-        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button icon={<Boxes size={16} />} onClick={() => setCombo(true)}>Novo combo</Button><Button icon={<SplitSquareHorizontal size={16} />} onClick={() => setHalfHalf(true)}>Novo meio a meio</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
+        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button icon={<Boxes size={16} />} onClick={() => setCombo(true)}>Novo combo</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
       />
       <div className="row wrap">
         <div className="input-group" style={{ width: 300, maxWidth: '100%' }}>
@@ -145,7 +144,6 @@ export function ProductsPage() {
         </Card>
       )}
       {combo && <ComboModal onClose={() => setCombo(false)} onSaved={() => void reload()} />}
-      {halfHalf && <HalfHalfModal onClose={() => setHalfHalf(false)} onSaved={() => void reload()} />}
       {editing === 'new' ? <QuickProductModal onClose={() => setEditing(null)} onSaved={() => void reload()} /> : editing && <ProductEditor product={editing === 'advanced' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} />}
     </div>
   );

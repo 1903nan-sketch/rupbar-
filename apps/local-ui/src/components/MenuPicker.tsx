@@ -1,5 +1,5 @@
 import { presentationSuffix } from '@rupbar/core';
-import { Check, Flame, Minus, Plus, Search, StickyNote, Trash2, X } from 'lucide-react';
+import { Check, Flame, Minus, Plus, Search, SplitSquareHorizontal, StickyNote, Trash2, X } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { formatBRL } from '../lib/format';
@@ -73,6 +73,19 @@ export const unitPriceOf = (l: Pick<CartLine, 'item' | 'options'>) => {
 /** Menor preço possível (meio a meio com as duas metades mais baratas). */
 export const fromPriceOf = (i: MenuItem) => (i.halfParts?.length ? Math.max(i.priceCents, Math.min(...i.halfParts.map((h) => h.priceCents))) : i.priceCents);
 
+/** Comida (cozinha) pode ser pedida meio a meio na hora: meia batata, meia polenta. */
+export const canHalf = (i: MenuItem) => i.station === 'kitchen' && !i.halfParts?.length;
+
+/** Linha "Meio a meio": cobra a metade mais cara e baixa metade de cada no servidor. */
+export function halfLine(a: MenuItem, b: MenuItem): { item: MenuItem; options: CartOption[] } {
+  const main = b.priceCents > a.priceCents ? b : a;
+  const half = (i: MenuItem, n: number): CartOption => ({ groupId: `half:${n}`, choiceId: i.presentationId, choice: `½ ${itemLabel(i).replace(' · ', ' ')}`, priceDeltaCents: i.priceCents, half: true });
+  return {
+    item: { ...main, productName: 'Meio a meio', presentationName: 'Unidade', available: null, optionGroupIds: [], halfParts: undefined },
+    options: [half(a, 1), half(b, 2)],
+  };
+}
+
 /** As duas metades do meio a meio viram dois grupos de escolha: 1ª e 2ª metade. */
 export const halfGroups = (i: MenuItem): OptionGroup[] => (i.halfParts?.length
   ? [1, 2].map((n) => ({
@@ -122,7 +135,7 @@ export function useCart() {
   const removeOne = useCallback((presentationId: string) => {
     requestKey.current = null;
     setLines((c) => {
-      const idx = c.map((l) => l.item.presentationId).lastIndexOf(presentationId);
+      const idx = c.map((l) => (l.options.some((o) => o.half) ? '' : l.item.presentationId)).lastIndexOf(presentationId);
       if (idx < 0) return c;
       const l = c[idx]!;
       return l.quantity <= 1 ? c.filter((_, i) => i !== idx) : c.map((x, i) => (i === idx ? { ...x, quantity: x.quantity - 1 } : x));
@@ -138,7 +151,8 @@ export function useCart() {
   }, []);
   const total = lines.reduce((a, l) => a + l.quantity * unitPriceOf(l), 0);
   const count = lines.reduce((a, l) => a + l.quantity, 0);
-  const qtyOf = (id: string) => lines.filter((l) => l.item.presentationId === id).reduce((a, l) => a + l.quantity, 0);
+  const isHalf = (l: CartLine) => l.options.some((o) => o.half);
+  const qtyOf = (id: string) => lines.filter((l) => l.item.presentationId === id && !isHalf(l)).reduce((a, l) => a + l.quantity, 0);
   const payload = () => lines.map((l) => ({
     presentationId: l.item.presentationId, quantity: l.quantity, notes: l.notes || null,
     options: l.options.filter((o) => !o.half).map((o) => ({ groupId: o.groupId, choiceId: o.choiceId })),
@@ -154,9 +168,18 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
   const { data: menu, error, reload } = useLoad(() => api.get<Menu>('/api/menu'));
   useRealtime('stock.changed', () => void reload());
   const [choosing, setChoosing] = useState<MenuItem | null>(null);
+  /** Meio a meio na hora: null = desligado; { first } = esperando as metades. */
+  const [halving, setHalving] = useState<{ first: MenuItem | null } | null>(null);
   const groupsOf = (item: MenuItem) => [...halfGroups(item), ...(item.optionGroupIds ?? []).map((g) => menu?.optionGroups?.[g]).filter((g): g is OptionGroup => !!g)];
   /** Toque no produto: com escolhas (sabor, energético, gelo), abre a escolha; sem, soma 1. */
   const pick = (item: MenuItem) => {
+    if (halving) {
+      if (!halving.first) return setHalving({ first: item });
+      const { item: line, options } = halfLine(halving.first, item);
+      cart.add(line, 1, options);
+      toast.success(`+1 meio a meio: ${options.map((o) => o.choice).join(' + ')}`);
+      return setHalving(null);
+    }
     if (groupsOf(item).length) setChoosing(item);
     else cart.add(item, 1);
   };
@@ -197,6 +220,8 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
     }
     return menu.items.filter((i) => effectiveCat === 'all' || i.categoryId === effectiveCat);
   }, [menu, effectiveCat, q, popular]);
+  const shown = halving ? items.filter(canHalf) : items;
+  const hasFood = !!menu?.items.some(canHalf);
 
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!menu) return <Loading />;
@@ -231,14 +256,28 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
           {cats.map((c) => (
             <button key={c.id} type="button" role="tab" aria-selected={effectiveCat === c.id} className={`chip ${effectiveCat === c.id ? 'active' : ''}`} onClick={() => setCat(c.id)}>{c.name}</button>
           ))}
+          {hasFood && (
+            <button type="button" aria-pressed={!!halving} className={`chip half-chip ${halving ? 'active' : ''}`} onClick={() => setHalving(halving ? null : { first: null })}>
+              <SplitSquareHorizontal size={14} /> Meio a meio
+            </button>
+          )}
+        </div>
+      )}
+      {halving && (
+        <div className="half-banner pop-in" role="status">
+          <SplitSquareHorizontal size={18} />
+          <span className="grow">
+            {halving.first ? <>1ª metade: <strong>{itemLabel(halving.first)}</strong>. Toque na 2ª metade.</> : <>Meio a meio: toque na <strong>1ª metade</strong>. Cobra a porção mais cara.</>}
+          </span>
+          <Button size="small" variant="plain" onClick={() => setHalving(null)}>Cancelar</Button>
         </div>
       )}
       <div className="menu-grid">
-        {items.length === 0 && <Empty title="Nada encontrado">Tente outro nome ou categoria.</Empty>}
-        {items.map((i) => {
+        {shown.length === 0 && <Empty title="Nada encontrado">{halving ? 'Meio a meio é só para comida (porções da cozinha).' : 'Tente outro nome ou categoria.'}</Empty>}
+        {shown.map((i) => {
           const n = cart.qtyOf(i.presentationId);
           return (
-            <div key={i.presentationId} className={`menu-tile ${n ? 'in-cart' : ''} ${i.soldOut ? 'sold-out' : ''}`}>
+            <div key={i.presentationId} className={`menu-tile ${n ? 'in-cart' : ''} ${i.soldOut ? 'sold-out' : ''} ${halving?.first?.presentationId === i.presentationId ? 'half-first' : ''}`}>
               <button
                 type="button"
                 className="menu-tile-main"

@@ -12,8 +12,9 @@ import { ComandaDetailPage } from './pages/ComandaDetail';
 import { ComandasPage } from './pages/Comandas';
 import { DashboardPage } from './pages/Dashboard';
 import { KitchenPage } from './pages/Kitchen';
-import { ChangePasswordPage, LoginPage } from './pages/Login';
+import { ChangePasswordPage, homeFor, LoginPage } from './pages/Login';
 import { MobileComanda, MobileComandas, MobileOrders, MobileShell } from './pages/mobile/Mobile';
+import { MobileQuickSale } from './pages/mobile/MobileQuickSale';
 import './styles.css';
 import './styles/premium.css';
 
@@ -98,7 +99,8 @@ function LoginRoute() {
   const { user, branding, loading } = useSession();
   if (loading || !branding) return <Loading />;
   if (!branding.configured) return <Navigate to="/setup" replace />;
-  if (user && !user.mustChangePassword) return <Navigate to="/" replace />;
+  // Já entrou: o celular do garçom vai para /m, o PC para o início.
+  if (user && !user.mustChangePassword) return <Navigate to={homeFor(user.permissions)} replace />;
   return <LoginPage />;
 }
 
@@ -115,6 +117,7 @@ function App() {
           <Route index element={<Guard perm="comandas.view"><MobileComandas /></Guard>} />
           <Route path="comanda/:id" element={<Guard perm="comandas.view"><MobileComanda /></Guard>} />
           <Route path="pedidos" element={<Guard perm="orders.view"><MobileOrders /></Guard>} />
+          <Route path="venda" element={<Guard perm="orders.create"><MobileQuickSale /></Guard>} />
         </Route>
         <Route element={<DesktopShell />}>
           <Route index element={<DashboardPage />} />

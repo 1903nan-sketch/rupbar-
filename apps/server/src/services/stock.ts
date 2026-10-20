@@ -150,10 +150,11 @@ export class StockService {
    * Baixa de estoque de um item vendido (uma vez por item, garantido pelo índice
    * único). Retorna o custo total estimado.
    */
-  deductForSale(itemId: string, presentationId: string, quantity: number, userId: string | null, extra: { productId: string; qty: number }[] = []): number {
+  deductForSale(itemId: string, presentationId: string, quantity: number, userId: string | null, extra: { productId: string; qty: number }[] = [], skipBase = false): number {
     let cost = 0;
     // A ficha técnica e as escolhas do pedido (ex.: a lata de Red Bull) numa baixa só.
-    for (const [productId, qty] of consumptionFor([...this.components(presentationId), ...extra], quantity)) {
+    // No meio a meio na hora, só as metades (skipBase): a porção base não sai inteira.
+    for (const [productId, qty] of consumptionFor([...(skipBase ? [] : this.components(presentationId)), ...extra], quantity)) {
       const p = this.ctx.db.get<{ stock_tracked: number; unit_cost_e4: number }>('SELECT stock_tracked, unit_cost_e4 FROM products WHERE id = ?', productId);
       if (!p) continue;
       if (p.stock_tracked !== 1) {
@@ -173,6 +174,16 @@ export class StockService {
       return list.filter((o) => o.productId && Number(o.qty) > 0).map((o) => ({ productId: String(o.productId), qty: Number(o.qty) }));
     } catch {
       return [];
+    }
+  }
+
+  /** Meio a meio na hora: as metades substituem a ficha da porção base. */
+  static replacesBase(optionsJson: unknown): boolean {
+    if (typeof optionsJson !== 'string' || !optionsJson) return false;
+    try {
+      return (JSON.parse(optionsJson) as { free?: boolean }[]).some((o) => o.free === true);
+    } catch {
+      return false;
     }
   }
 

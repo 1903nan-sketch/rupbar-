@@ -77,6 +77,12 @@ export const CASHIER_EXTRA: readonly Permission[] = [
   'cash.view', 'cash.open', 'cash.close', 'cash.payment', 'cash.withdrawal', 'cash.supply', 'comandas.close',
 ];
 
+/**
+ * "Cobra no celular": o garçom recebe (Pix, dinheiro, cartão), encerra a
+ * comanda paga e faz venda rápida, sem abrir nem fechar o caixa.
+ */
+export const CHARGE_EXTRA: readonly Permission[] = ['cash.payment', 'comandas.close'];
+
 export const SENSITIVE: readonly Permission[] = ['reports.financial', 'cash.payment_reverse', 'comandas.cancel', 'stock.adjust'];
 
 export type SystemRoleKey = 'owner' | 'manager' | 'cashier' | 'waiter' | 'kitchen';

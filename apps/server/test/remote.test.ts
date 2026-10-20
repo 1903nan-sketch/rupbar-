@@ -270,6 +270,8 @@ describe('narguilé sem devolução', () => {
     await owner.ok('POST', '/api/stock/purchases', { items: [{ productId: coal.id, packages: 1, packageQty: 72_000, totalCostCents: 3_600 }] });
     const n1 = await owner.ok('POST', '/api/hookahs', { code: 'N-01' });
     await owner.ok('POST', '/api/cash/open', { openingBalanceCents: 0 });
+    // Comida em gramas (porção) nunca aparece como sabor de narguilé.
+    await owner.ok('POST', '/api/products', { name: 'Batata', categoryId: await category(owner, 'Porções'), measure: 'mass', packageQty: 1_000_000, menuVisible: false });
 
     const waiter = await createStaff(env, owner, 'waiter', 'Davi', 'davi@bar.com');
     const c = await waiter.ok('POST', '/api/comandas', { cardNumber: 7, customerName: 'Rafa' });

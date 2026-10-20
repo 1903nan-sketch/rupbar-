@@ -1,4 +1,4 @@
-import { CASHIER_EXTRA } from '@rupbar/core';
+import { CASHIER_EXTRA, CHARGE_EXTRA } from '@rupbar/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { category, Client, createEnv, createStaff, setupEstablishment, uuid, type TestEnv } from './helpers';
 
@@ -305,6 +305,46 @@ describe('escolhas no pedido', () => {
     expect(await stockOf(polenta.id)).toBe(5_000_000);
   });
 
+  it('meio a meio na hora do pedido: duas porções quaisquer de comida, sem cadastro; cobra a mais cara', async () => {
+    const portions = await category(owner, 'Porções');
+    const batata = await owner.ok('POST', '/api/products', { name: 'Batata', categoryId: portions, measure: 'mass', packageQty: 1_000_000, menuVisible: false, initialStock: { qty: 5_000_000, totalCostCents: 10_000 } });
+    const polenta = await owner.ok('POST', '/api/products', { name: 'Polenta', categoryId: portions, measure: 'mass', packageQty: 1_000_000, menuVisible: false, initialStock: { qty: 5_000_000, totalCostCents: 10_000 } });
+    // Batata grande e pequena são apresentações do mesmo produto de venda.
+    const porcaoBatata = await owner.ok('POST', '/api/products', {
+      name: 'Porção de batata', categoryId: portions, measure: 'unit', stockTracked: false,
+      presentations: [
+        { name: 'Grande', priceCents: 4000, components: [{ productId: batata.id, qty: 600_000 }] },
+        { name: 'Pequena', priceCents: 2500, components: [{ productId: batata.id, qty: 300_000 }] },
+      ],
+    });
+    const porcaoPolenta = await owner.ok('POST', '/api/products', {
+      name: 'Porção de polenta', categoryId: portions, measure: 'unit', stockTracked: false,
+      presentations: [{ name: 'Grande', priceCents: 3500, components: [{ productId: polenta.id, qty: 600_000 }] }],
+    });
+    const pres = async (id: string, name: string) => (await owner.ok('GET', `/api/products/${id}`)).presentations.find((p: { name: string }) => p.name === name).id as string;
+    const batataG = await pres(porcaoBatata.id, 'Grande');
+    const polentaG = await pres(porcaoPolenta.id, 'Grande');
+    const drinks = await category(owner, 'Drinks');
+    const agua = await owner.ok('POST', '/api/products', { name: 'Água', categoryId: drinks, measure: 'unit', stockTracked: false, presentations: [{ name: 'Unidade', priceCents: 500 }] });
+    const aguaP = await pres(agua.id, 'Unidade');
+
+    const c = await owner.ok('POST', '/api/comandas', { cardNumber: 22 });
+    const order = (presentationId: string, halves: string[], quantity = 1) =>
+      owner.req('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId, quantity, halves }] });
+    expect((await order(batataG, [batataG, aguaP])).json().error.code).toBe('HALVES_NOT_FOOD');
+    expect((await order(aguaP, [batataG, polentaG])).json().error.code).toBe('HALVES_INVALID');
+    expect((await order(batataG, [polentaG, batataG])).statusCode).toBe(200);
+    const d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    expect(d.items[0]).toMatchObject({ name: 'Meio a meio', options: '½ Porção de polenta Grande · ½ Porção de batata Grande', unitPriceCents: 4000 });
+    // Metade de cada: 300 g de batata e 300 g de polenta (a porção base não sai inteira).
+    expect(await stockOf(batata.id)).toBe(5_000_000 - 300_000);
+    expect(await stockOf(polenta.id)).toBe(5_000_000 - 300_000);
+    // Corrigir a quantidade pela conta mestre continua baixando só as metades.
+    await owner.ok('PUT', `/api/admin/comanda-items/${d.items[0].id}`, { quantity: 2, unitPriceCents: 4000, reason: 'Eram duas porções' });
+    expect(await stockOf(batata.id)).toBe(5_000_000 - 600_000);
+    expect(await stockOf(polenta.id)).toBe(5_000_000 - 600_000);
+  });
+
   it('pedido pronto sai sozinho da tela de produção depois do tempo configurado', async () => {
     const drinks = await category(owner, 'Drinks');
     const p = await owner.ok('POST', '/api/products', { name: 'Caipirinha', categoryId: drinks, measure: 'unit', stockTracked: false, station: 'bar', presentations: [{ name: 'Unidade', priceCents: 2000 }] });
@@ -348,5 +388,25 @@ describe('escolhas no pedido', () => {
     await again.ok('POST', '/api/payments', { comandaId: c.id, method: 'pix', amountCents: 500, clientRequestId: uuid() });
     const d = await again.ok('GET', `/api/comandas/${c.id}`);
     await again.ok('POST', `/api/comandas/${c.id}/close`, { expectedVersion: d.version });
+  });
+
+  it('garçom que cobra no celular: recebe, encerra e faz venda rápida, mas não abre nem fecha o caixa', async () => {
+    await createStaff(env, owner, 'waiter', 'Lia', 'lia@bar.com');
+    const lia = (await owner.ok('GET', '/api/users')).find((u: { email: string }) => u.email === 'lia@bar.com');
+    await owner.ok('PATCH', `/api/users/${lia.id}`, { name: lia.name, roleId: lia.roleId, status: 'active', grants: [...CHARGE_EXTRA], denies: [] });
+    const waiter = new Client(env.app, '192.168.0.52');
+    await waiter.ok('POST', '/api/auth/login', { email: 'lia@bar.com', password: 'Senha-Forte-99' });
+    expect((await waiter.fail('POST', '/api/cash/open', { openingBalanceCents: 0 })).status).toBe(403);
+    await owner.ok('POST', '/api/cash/open', { openingBalanceCents: 0 });
+    const drinks = await category(owner, 'Drinks');
+    const p = await owner.ok('POST', '/api/products', { name: 'Água', categoryId: drinks, measure: 'unit', stockTracked: false, presentations: [{ name: 'Unidade', priceCents: 500 }] });
+    const pres = (await owner.ok('GET', `/api/products/${p.id}`)).presentations[0].id;
+    const sale = await waiter.ok('POST', '/api/quick-sales', { clientRequestId: uuid(), customerName: 'Ana', items: [{ presentationId: pres, quantity: 2 }], payments: [{ method: 'cash', amountCents: 1000, receivedCents: 2000 }] });
+    expect(sale).toMatchObject({ totalCents: 1000, changeCents: 1000 });
+    const c = await waiter.ok('POST', '/api/comandas', { cardNumber: 41 });
+    await waiter.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: pres, quantity: 1 }] });
+    const paid = await waiter.ok('POST', '/api/payments', { comandaId: c.id, method: 'pix', amountCents: 500, clientRequestId: uuid() });
+    await waiter.ok('POST', `/api/comandas/${c.id}/close`, { expectedVersion: paid.comanda.version });
+    expect((await waiter.fail('POST', '/api/cash/close', { countedCashCents: 1000 })).status).toBe(403);
   });
 });

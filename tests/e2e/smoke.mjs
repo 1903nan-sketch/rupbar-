@@ -318,6 +318,35 @@ try {
   assert(c30.items.some((i) => i.kind === 'product' && i.totalCents === 4500), 'pacote fechado deveria entrar como item do cardápio');
   assert((await api('GET', `/api/products/${essence.id}`)).stockQty === 200_000 - 24_000 - 50_000, 'essência: 12 g por rosh e 50 g do pacote');
 
+  // Dono liga "Cobra no celular" para o garçom: aparece a Venda rápida no celular.
+  await page.goto(B + '/funcionarios');
+  await page.locator('.list-item', { hasText: 'João Garçom' }).getByRole('button', { name: 'Editar' }).click();
+  await page.locator('.modal').getByText('Cobra no celular', { exact: true }).click();
+  assert(await page.getByRole('checkbox', { name: /Cobra no celular/ }).isChecked(), 'liga Cobra no celular');
+  await page.locator('.modal').getByRole('button', { name: 'Salvar' }).click();
+  await page.locator('.modal').waitFor({ state: 'hidden' });
+  // Permissões mudaram: a sessão do celular cai; entra de novo.
+  await m.goto(B + '/login');
+  await m.locator('input[type=email]').fill('joao@adega.com');
+  await m.locator('input[type=password]').fill('Garcom-Veloz-88');
+  await m.getByRole('button', { name: 'Entrar' }).click();
+  await m.waitForURL('**/m');
+  await m.getByRole('link', { name: 'Venda rápida' }).click();
+  await m.getByRole('button', { name: /Adicionar Whisky/ }).first().click();
+  await m.getByRole('button', { name: 'Cobrar', exact: true }).click();
+  await m.getByPlaceholder('Ex.: Juliana').fill('Bia');
+  await m.getByRole('radio', { name: 'Dinheiro' }).click();
+  await m.locator('.chip', { hasText: 'R$ 50,00' }).click();
+  await m.locator('.quick-change').waitFor();
+  await m.screenshot({ path: join(out, '05d-celular-venda-rapida.png') });
+  await m.getByRole('button', { name: /^Recebi R\$/ }).click();
+  await m.getByText('Venda concluída').waitFor();
+  await m.getByText('Bia', { exact: true }).waitFor();
+  await m.screenshot({ path: join(out, '05e-celular-venda-concluida.png') });
+  // A comanda 30 agora pode ser cobrada no próprio celular.
+  await m.goto(B + `/m/comanda/${card30.id}?aba=cobrar`);
+  await m.getByRole('button', { name: /^Recebi R\$/ }).waitFor();
+
   assert(errors.length === 0, `erros no navegador:\n${errors.join('\n')}`);
   console.log(`E2E OK — capturas em ${out}`);
 } catch (err) {

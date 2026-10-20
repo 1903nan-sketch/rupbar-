@@ -1,7 +1,7 @@
 import { presentationSuffix } from '@rupbar/core';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, ClipboardList, Delete, ListChecks, LogOut, Plus, Search, UserRound, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, ClipboardList, Delete, ListChecks, LogOut, Plus, Search, UserRound, X, Zap } from 'lucide-react';
 import { useState } from 'react';
-import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ConnectionBanner, Logo } from '../../components/brand';
 import { OrderComposer } from '../../components/OrderComposer';
 import { Badge, Button, Empty, ErrorBox, Input, Loading, useToast } from '../../components/ui';
@@ -18,7 +18,8 @@ import type { ComandaDetail } from '../ComandaDetail';
 
 /** Layout do celular/tablet do garçom: barra superior e barra de abas inferior. */
 export function MobileShell() {
-  const { branding, user, logout } = useSession();
+  const { branding, user, logout, can } = useSession();
+  const quick = can('orders.create') && can('cash.payment');
   return (
     <div className="mobile">
       <header className="mobile-top glass">
@@ -31,8 +32,9 @@ export function MobileShell() {
       </header>
       <ConnectionBanner />
       <Outlet />
-      <nav className="tabbar glass" style={{ ['--tabs' as string]: 2 }}>
+      <nav className="tabbar glass" style={{ ['--tabs' as string]: quick ? 3 : 2 }}>
         <NavLink to="/m" end className={({ isActive }) => (isActive ? 'active' : '')}><ClipboardList size={22} />Comandas</NavLink>
+        {quick && <NavLink to="/m/venda" className={({ isActive }) => (isActive ? 'active' : '')}><Zap size={22} />Venda rápida</NavLink>}
         <NavLink to="/m/pedidos" className={({ isActive }) => (isActive ? 'active' : '')}><ListChecks size={22} />Pedidos</NavLink>
       </nav>
     </div>
@@ -144,7 +146,8 @@ export function MobileComanda() {
   const { id = '' } = useParams();
   const nav = useNavigate();
   const { can } = useSession();
-  const [view, setView] = useState<'lancar' | 'narguile' | 'cobrar'>('lancar');
+  const [params] = useSearchParams();
+  const [view, setView] = useState<'lancar' | 'narguile' | 'cobrar'>(params.get('aba') === 'cobrar' ? 'cobrar' : 'lancar');
   const { data: c, error, reload } = useLoad(() => api.get<ComandaDetail>(`/api/comandas/${id}`), [id]);
   useRealtime(['comanda.changed', 'order.status'], () => void reload());
   if (error) return <div className="mobile-body"><ErrorBox error={error} onRetry={reload} /></div>;

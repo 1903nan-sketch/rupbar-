@@ -1,5 +1,6 @@
 import {
-  billTotals, comandaDisplayNumber, comandaLabel, displayName, firstName, maskCpf, maskPhone, parsePickupCode, pickupCode, splitEqually, type Station,
+  billTotals, comandaDisplayNumber, comandaLabel, displayName, firstName, maskCpf, maskPhone, parsePickupCode, pickupCode, presentationSuffix, splitEqually,
+  type Station,
 } from '@rupbar/core';
 import {
   cancelComandaSchema, cancelItemSchema, closeComandaSchema, comandaEditSchema, comandaOpenSchema, discountSchema, moveItemsSchema, orderCreateSchema,
@@ -295,21 +296,24 @@ export class ComandasService {
         const itemId = this.ctx.id();
         const station = String(pr.station) as Station;
         const halves = this.resolveHalves(String(pr.id), String(pr.product_name), item.halves);
-        const chosen = [...halves.entries, ...this.resolveOptions(String(pr.product_id), String(pr.id), String(pr.product_name), item.options)];
+        // Meio a meio na hora (duas porções quaisquer): só as metades, sem as escolhas da porção.
+        const chosen = [...halves.entries, ...(halves.free ? [] : this.resolveOptions(String(pr.product_id), String(pr.id), String(pr.product_name), item.options))];
         // Meio a meio cobra a metade mais cara (ou o preço do item, se for maior).
         const unitPrice = Math.max(Number(pr.price_cents), halves.priceCents) + chosen.reduce((a, o) => a + o.priceDeltaCents, 0);
         this.ctx.db.run(
           `INSERT INTO comanda_items (id, comanda_id, order_id, kind, presentation_id, product_id, product_name, presentation_name, category_id,
              quantity, unit_price_cents, notes, station, options_label, options_json, created_by, created_at, updated_at)
            VALUES (?,?,?,'product',?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          itemId, input.comandaId, orderId, item.presentationId, pr.product_id as string, pr.product_name as string, pr.name as string,
+          itemId, input.comandaId, orderId, item.presentationId, pr.product_id as string,
+          halves.free ? 'Meio a meio' : (pr.product_name as string), halves.free ? 'Unidade' : (pr.name as string),
           pr.category_id as string, item.quantity, unitPrice, item.notes, station,
           chosen.length || halves.labels.length ? [...halves.labels, ...chosen.filter((o) => !o.half).map((o) => o.choice)].join(' · ') : null,
           chosen.length ? JSON.stringify(chosen) : null,
           actor.userId ?? 'system', nowIso, nowIso,
         );
         const extra = chosen.filter((o) => o.productId && o.qty > 0).map((o) => ({ productId: o.productId!, qty: o.qty }));
-        const cost = this.stock.deductForSale(itemId, item.presentationId, item.quantity, actor.userId, extra);
+        // No meio a meio na hora a porção base não baixa inteira: só as duas metades.
+        const cost = this.stock.deductForSale(itemId, item.presentationId, item.quantity, actor.userId, extra, halves.free);
         this.ctx.db.run('UPDATE comanda_items SET unit_cost_cents = ? WHERE id = ?', Math.round(cost / item.quantity), itemId);
         if (station !== 'none') stations.add(station);
       }
@@ -329,31 +333,40 @@ export class ComandasService {
   }
 
   /**
-   * Meio a meio: as duas metades têm de ser porções ligadas a este item. Cobra
-   * a mais cara e baixa metade da ficha de cada uma (meia batata, meia polenta).
+   * Meio a meio: cobra a metade mais cara e baixa metade da ficha de cada uma
+   * (meia batata, meia polenta). Na hora do pedido vale para quaisquer duas
+   * porções de comida (cozinha); um item "meio a meio" cadastrado só aceita as
+   * porções ligadas a ele.
    */
   private resolveHalves(presentationId: string, productName: string, picked: string[]) {
-    const allowed = this.ctx.db.all<{ id: string; price_cents: number; product_name: string }>(
-      `SELECT pr.id, pr.price_cents, p.name AS product_name FROM presentation_halves h
-       JOIN presentations pr ON pr.id = h.part_presentation_id JOIN products p ON p.id = pr.product_id
-       WHERE h.presentation_id = ? AND pr.active = 1 AND p.active = 1`,
-      presentationId,
-    );
-    const none = { entries: [] as ReturnType<ComandasService['resolveOptions']>, labels: [] as string[], priceCents: 0 };
-    if (!allowed.length) {
-      if (picked.length) throw conflict(`${productName} não é meio a meio. Atualize o cardápio.`, 'OPTION_UNAVAILABLE');
+    const none = { entries: [] as ReturnType<ComandasService['resolveOptions']>, labels: [] as string[], priceCents: 0, free: false };
+    const configured = this.ctx.db.all<{ part_presentation_id: string }>('SELECT part_presentation_id FROM presentation_halves WHERE presentation_id = ?', presentationId)
+      .map((h) => h.part_presentation_id);
+    if (!picked.length) {
+      if (configured.length) throw badRequest(`Escolha as duas metades de ${productName}.`, 'HALVES_REQUIRED');
       return none;
     }
     if (picked.length !== 2) throw badRequest(`Escolha as duas metades de ${productName}.`, 'HALVES_REQUIRED');
-    const parts = picked.map((id) => allowed.find((a) => a.id === id));
-    if (parts.some((p) => !p)) throw conflict(`Uma das metades de ${productName} não está mais disponível. Atualize o cardápio.`, 'OPTION_UNAVAILABLE');
+    const free = !configured.length;
+    if (free && !picked.includes(presentationId)) throw badRequest('O item do meio a meio tem de ser uma das metades.', 'HALVES_INVALID');
+    const parts = picked.map((id) => this.ctx.db.get<{ id: string; name: string; price_cents: number; product_name: string; station: string }>(
+      `SELECT pr.id, pr.name, pr.price_cents, p.name AS product_name, COALESCE(p.station, c.station) AS station
+       FROM presentations pr JOIN products p ON p.id = pr.product_id JOIN categories c ON c.id = p.category_id
+       WHERE pr.id = ? AND pr.active = 1 AND p.active = 1`,
+      id,
+    ));
+    if (parts.some((p, i) => !p || (!free && !configured.includes(picked[i]!)))) {
+      throw conflict(`Uma das metades de ${productName} não está mais disponível. Atualize o cardápio.`, 'OPTION_UNAVAILABLE');
+    }
+    if (free && parts.some((p) => p!.station !== 'kitchen')) throw badRequest('Meio a meio só para comida (porções da cozinha).', 'HALVES_NOT_FOOD');
+    const label = (p: NonNullable<(typeof parts)[number]>) => `½ ${presentationSuffix(p.product_name, p.name) ? `${p.product_name} ${p.name}` : p.product_name}`;
     const entries = parts.flatMap((p) => this.ctx.db
       .all<{ ingredient_product_id: string; qty: number }>('SELECT ingredient_product_id, qty FROM presentation_components WHERE presentation_id = ?', p!.id)
       .map((c) => ({
-        groupId: presentationId, group: 'Meio a meio', choiceId: p!.id, choice: `½ ${p!.product_name}`, quantity: 1, priceDeltaCents: 0,
-        productId: c.ingredient_product_id, qty: Math.max(1, Math.round(Number(c.qty) / 2)), half: true,
+        groupId: presentationId, group: 'Meio a meio', choiceId: p!.id, choice: label(p!), quantity: 1, priceDeltaCents: 0,
+        productId: c.ingredient_product_id, qty: Math.max(1, Math.round(Number(c.qty) / 2)), half: true, ...(free ? { free: true } : {}),
       })));
-    return { entries, labels: parts.map((p) => `½ ${p!.product_name}`), priceCents: Math.max(...parts.map((p) => Number(p!.price_cents))) };
+    return { entries, labels: parts.map((p) => label(p!)), priceCents: Math.max(...parts.map((p) => Number(p!.price_cents))), free };
   }
 
   /**
@@ -377,7 +390,7 @@ export class ComandasService {
       throw conflict(`As escolhas de ${productName} mudaram. Atualize o cardápio e escolha de novo.`, 'OPTION_UNAVAILABLE');
     }
     // Nos combos a escolha vale várias unidades: preço e baixa multiplicados (4× Red Bull = 4 latas).
-    const chosen: { groupId: string; group: string; choiceId: string; choice: string; quantity: number; priceDeltaCents: number; productId: string | null; qty: number; half?: boolean }[] = [];
+    const chosen: { groupId: string; group: string; choiceId: string; choice: string; quantity: number; priceDeltaCents: number; productId: string | null; qty: number; half?: boolean; free?: boolean }[] = [];
     for (const g of groups) {
       const picks = selected.filter((s) => s.groupId === g.id);
       if (picks.length > 1) throw badRequest(`Escolha só uma opção em "${g.name}" (${productName}).`, 'OPTION_MULTIPLE');

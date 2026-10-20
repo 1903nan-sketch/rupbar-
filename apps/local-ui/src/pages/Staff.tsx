@@ -1,5 +1,5 @@
-import { CASHIER_EXTRA } from '@rupbar/core';
-import { Copy, History, KeyRound, Plus, ShieldCheck, UserPlus, Wallet } from 'lucide-react';
+import { CASHIER_EXTRA, CHARGE_EXTRA } from '@rupbar/core';
+import { Copy, History, KeyRound, Plus, ShieldCheck, Smartphone, UserPlus, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, Confirm, ErrorBox, Field, Input, Loading, Modal, PageHeader, Select, Switch, Tabs, Textarea, useToast } from '../components/ui';
 import { api } from '../lib/api';
@@ -136,18 +136,21 @@ function UserModal({ roles, user, onClose, onSaved }: { roles: Role[]; user?: St
     else setGrants(grants.includes(p) ? grants.filter((x) => x !== p) : [...grants, p]);
   };
   const effective = (p: string) => (role?.permissions.includes(p) && !denies.includes(p)) || grants.includes(p);
-  // Atalho "Também trabalha no caixa": liga/desliga o pacote de permissões do caixa para esta pessoa.
-  const cashier = CASHIER_EXTRA.every(effective);
-  const roleHasCash = CASHIER_EXTRA.every((p) => role?.permissions.includes(p));
-  const setCashier = (on: boolean) => {
+  // Atalhos "Também trabalha no caixa" e "Cobra no celular": ligam/desligam um pacote de permissões para esta pessoa.
+  const setPack = (pack: readonly string[], on: boolean) => {
     if (on) {
-      setDenies(denies.filter((p) => !CASHIER_EXTRA.includes(p as (typeof CASHIER_EXTRA)[number])));
-      setGrants([...new Set([...grants, ...CASHIER_EXTRA.filter((p) => !role?.permissions.includes(p))])]);
+      setDenies(denies.filter((p) => !pack.includes(p)));
+      setGrants([...new Set([...grants, ...pack.filter((p) => !role?.permissions.includes(p))])]);
     } else {
-      setGrants(grants.filter((p) => !CASHIER_EXTRA.includes(p as (typeof CASHIER_EXTRA)[number])));
-      setDenies([...new Set([...denies, ...CASHIER_EXTRA.filter((p) => role?.permissions.includes(p))])]);
+      setGrants(grants.filter((p) => !pack.includes(p)));
+      setDenies([...new Set([...denies, ...pack.filter((p) => role?.permissions.includes(p))])]);
     }
   };
+  const cashier = CASHIER_EXTRA.every(effective);
+  const roleHasCash = CASHIER_EXTRA.every((p) => role?.permissions.includes(p));
+  const setCashier = (on: boolean) => setPack(CASHIER_EXTRA, on);
+  const charges = CHARGE_EXTRA.every(effective);
+  const roleCharges = CHARGE_EXTRA.every((p) => role?.permissions.includes(p));
 
   return (
     <Modal title={user ? `Editar ${user.name}` : 'Novo funcionário'} wide onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} onClick={async () => {
@@ -173,6 +176,10 @@ function UserModal({ roles, user, onClose, onSaved }: { roles: Role[]; user?: St
         {role?.description && <p className="small muted">{role.description}</p>}
         {!roleHasCash && (
           <Card tight>
+            {!roleCharges && !cashier && (
+              <Switch checked={charges} onChange={(on) => setPack(CHARGE_EXTRA, on)} label={<span className="row"><Smartphone size={16} /> Cobra no celular</span>}
+                description="Recebe na mesa (Pix, dinheiro, cartão), encerra a comanda paga e faz venda rápida pelo celular. Não abre nem fecha o caixa." />
+            )}
             <Switch checked={cashier} onChange={setCashier} label={<span className="row"><Wallet size={16} /> Também trabalha no caixa</span>}
               description="Abre e fecha o caixa, recebe pagamentos (Pix, dinheiro, cartão), faz venda rápida, encerra comandas, sangria e suprimento. Pelo PC ou pelo celular." />
           </Card>

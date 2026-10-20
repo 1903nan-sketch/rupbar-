@@ -454,8 +454,9 @@ export class HookahService {
   }
 
   /**
-   * Sabores (produtos em gramas da categoria Essências ou com "essência" no nome)
-   * e carvões. Sem nenhum sabor assim, oferece todos os produtos em gramas.
+   * Sabores (produtos em gramas da categoria Essências — ou de narguilé/tabaco —
+   * ou com "essência" no nome) e carvões. Comida em gramas (batata, calabresa)
+   * nunca aparece como sabor.
    */
   supplies() {
     const product = (r: Row) => ({ id: r.id, name: r.name, stockQty: r.stock_qty, stockTracked: r.stock_tracked === 1 });
@@ -463,8 +464,9 @@ export class HookahService {
       `SELECT p.id, p.name, p.stock_qty, p.stock_tracked, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id
        WHERE p.active = 1 AND p.measure = 'mass' ORDER BY p.name COLLATE NOCASE`,
     );
-    const isEssence = (r: Row) => String(r.category) === 'Essências' || /ess[eê]ncia/i.test(String(r.name));
-    const essences = mass.some(isEssence) ? mass.filter(isEssence) : mass;
+    const plain = (v: unknown) => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const isEssence = (r: Row) => /essenc|narguil|tabac|fumo/.test(plain(r.category)) || /essenc/.test(plain(r.name));
+    const essences = mass.filter(isEssence);
     const coals = this.ctx.db.all(
       `SELECT p.id, p.name, p.stock_qty, p.stock_tracked, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id
        WHERE p.active = 1 AND p.measure = 'unit' ORDER BY p.name COLLATE NOCASE`,

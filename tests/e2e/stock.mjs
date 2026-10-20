@@ -246,42 +246,35 @@ try {
   await page.screenshot({ path: join(out, '07b-escolha-so-da-dose.png') });
   await modal.getByRole('button', { name: 'Salvar', exact: true }).click();
   await modal.waitFor({ state: 'hidden' });
-  let menu = await request('GET', '/api/menu');
+  const menu = await request('GET', '/api/menu');
   const whiskyItem = (name) => menu.items.find((i) => i.productId === whisky.id && i.presentationName === name);
   assert.deepEqual(whiskyItem('Dose 50 ml').optionGroupIds, []);
   assert.deepEqual(whiskyItem('Dose com energético').optionGroupIds, [energy.id]);
 
-  // 6d. Meio a meio: meia batata e meia polenta, cobra a porção mais cara.
+  // 6d. Meio a meio na hora do pedido (sem cadastro): meia polenta + meia batata, cobra a mais cara.
   const portionsCat = cats.find((c) => c.name === 'Porções').id;
   const portion = async (name, priceCents) => {
     const base = await request('POST', '/api/products', { name: `${name} crua`, categoryId: portionsCat, measure: 'mass', packageQty: 1_000_000, menuVisible: false, initialStock: { qty: 2_000_000, totalCostCents: 2_000 } });
-    return request('POST', '/api/products', { name, categoryId: portionsCat, measure: 'unit', stockTracked: false, presentations: [{ name, priceCents, components: [{ productId: base.id, qty: 400_000 }] }] });
+    await request('POST', '/api/products', { name, categoryId: portionsCat, measure: 'unit', stockTracked: false, presentations: [{ name, priceCents, components: [{ productId: base.id, qty: 400_000 }] }] });
+    return base;
   };
-  await portion('Porção batata', 3500);
+  const batataCrua = await portion('Porção batata', 3500);
   await portion('Porção polenta', 3000);
   await page.reload();
-  await page.getByRole('button', { name: 'Novo meio a meio' }).click();
-  const parts = modal.getByRole('group', { name: 'Porções do meio a meio' });
-  await parts.getByRole('button', { name: /Porção batata/ }).click();
-  await parts.getByRole('button', { name: /Porção polenta/ }).click();
-  await page.screenshot({ path: join(out, '07c-novo-meio-a-meio.png') });
-  await modal.getByRole('button', { name: 'Criar meio a meio' }).click();
-  await modal.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Venda rápida' }).first().click();
-  await modal.getByLabel('Buscar produto').fill('meio a meio');
-  await modal.locator('.menu-tile', { hasText: 'Porção meio a meio' }).getByText('a partir de R$ 30,00').waitFor();
-  await modal.locator('.menu-tile', { hasText: 'Porção meio a meio' }).locator('.menu-tile-main').click();
-  const chooser = page.locator('.modal', { has: page.locator('.option-chooser') });
-  await chooser.getByRole('radiogroup', { name: '1ª metade' }).getByRole('radio', { name: /Porção polenta/ }).click();
-  await chooser.getByRole('radiogroup', { name: '2ª metade' }).getByRole('radio', { name: /Porção batata/ }).click();
-  await page.screenshot({ path: join(out, '07d-meio-a-meio-no-pedido.png') });
-  await chooser.getByRole('button', { name: 'Adicionar R$ 35,00' }).click();
+  await modal.getByRole('button', { name: 'Meio a meio' }).click();
+  await modal.getByText('toque na 1ª metade', { exact: false }).waitFor();
+  assert.equal(await modal.locator('.menu-tile', { hasText: 'Whisky teste' }).count(), 0, 'meio a meio mostra só comida');
+  await modal.getByRole('button', { name: /Adicionar Porção polenta/ }).click();
+  await modal.getByText('Toque na 2ª metade', { exact: false }).waitFor();
+  await page.screenshot({ path: join(out, '07c-meio-a-meio-na-hora.png') });
+  await modal.getByRole('button', { name: /Adicionar Porção batata/ }).click();
   await page.locator('.cart-line', { hasText: '½ Porção polenta · ½ Porção batata' }).getByText('R$ 35,00').waitFor();
+  await page.screenshot({ path: join(out, '07d-meio-a-meio-no-carrinho.png') });
   await page.locator('.cart-line').getByRole('button', { name: 'Remover' }).click();
   await page.keyboard.press('Escape');
   await modal.waitFor({ state: 'hidden' });
-  menu = await request('GET', '/api/menu');
-  assert.deepEqual(menu.items.find((i) => i.productName === 'Porção meio a meio').halfParts.map((h) => [h.name, h.priceCents]), [['Porção batata', 3500], ['Porção polenta', 3000]]);
+  assert.equal((await request('GET', `/api/products/${batataCrua.id}`)).stockQty, 2_000_000, 'carrinho não baixa estoque');
 
   // 7. Conta mestre: apagar os dados de teste (estoque, produtos e relatórios).
   await page.goto(base + '/configuracoes');
@@ -299,6 +292,6 @@ try {
   await page.getByRole('link', { name: 'Importar a planilha do estoque' }).click();
   await page.getByText('Vamos cadastrar seu estoque?').waitFor();
   assert.deepEqual(errors, []);
-  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular, importação de planilha, escolha só da dose, meio a meio e apagar dados de teste. Capturas em ${out}`);
+  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular, importação de planilha, escolha só da dose, meio a meio na hora e apagar dados de teste. Capturas em ${out}`);
 } catch (error) { console.error(error); process.exitCode = 1; }
 finally { await browser?.close(); server.stdin.write('shutdown\n'); setTimeout(() => server.kill(), 3000).unref(); }

@@ -185,7 +185,7 @@ function LaunchSheet({ sheet, panel, comandaId, onCancel, onDone }: {
       <div className="stack-s">
         <div className="section-label">Sabor{flavors.length > 1 ? 'es (mistura)' : ''}</div>
         {panel.essences.length === 0 ? (
-          <p className="small muted">Nenhuma essência no estoque. O valor é lançado do mesmo jeito.</p>
+          <p className="small muted">Nenhuma essência cadastrada (categoria Essências). O valor é lançado do mesmo jeito.</p>
         ) : (
           <div className="mhookah-flavors" role="group" aria-label="Sabores">
             {panel.essences.map((e) => {

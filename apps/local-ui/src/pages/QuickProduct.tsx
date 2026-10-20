@@ -39,6 +39,12 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
   const minQty = qtyOf(min, packaging);
   const totalCost = totalCostOf(cost, qty, packaging);
   const dose = sell.mode === 'dose' && sell.dose ? Math.round(sell.dose * MILLI) : null;
+  // Essência: o narguilé só oferece como sabor os produtos da categoria Essências (ou com "essência" no nome).
+  const plain = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const categoryName = categories.data?.find((c) => c.id === selectedCategory)?.name ?? '';
+  const essenceCategory = categories.data?.find((c) => /essenc/.test(plain(c.name)));
+  const looksEssence = /essenc|ziggy|zomo|adalya|narguil/.test(plain(name));
+  const hookahHint = packaging.measure === 'mass' && sell.mode !== 'dose' && !/essenc|narguil|tabac|fumo/.test(plain(categoryName)) && !/essenc/.test(plain(name));
 
   const changePack = (next: PackDraft) => {
     if (next.buyMode !== pack.buyMode) {
@@ -96,6 +102,12 @@ export function QuickProductModal({ onClose, onSaved }: { onClose: () => void; o
           <Field label="Nome do produto"><Input autoFocus placeholder="Ex.: Heineken lata 350 ml" value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="Categoria"><Select value={selectedCategory} onChange={(e) => setCategoryId(e.target.value)}>{categories.data.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
         </div>
+        {hookahHint && essenceCategory && (looksEssence || sell.mode === 'unit') && (
+          <div className="banner small" style={{ marginTop: 10 }}>
+            <span className="grow">É essência de narguilé? Na categoria <strong>{essenceCategory.name}</strong> o mesmo produto vende o pacote fechado no cardápio e aparece como sabor no rosh, baixando por grama do mesmo estoque.</span>
+            <Button size="small" onClick={() => setCategoryId(essenceCategory.id)}>Usar {essenceCategory.name}</Button>
+          </div>
+        )}
         <details className="optional-fields" style={{ marginTop: 14 }}>
           <summary>Código interno e código de barras (opcional)</summary>
           <div className="grid-2">

@@ -32,7 +32,7 @@ function bills(total: number): number[] {
  * Caixa fechado no momento de cobrar: quem pode (ex.: garçom que também
  * trabalha no caixa) abre ali mesmo, informando o troco inicial.
  */
-function CashGate() {
+export function CashGate() {
   const { can } = useSession();
   const toast = useToast();
   const { data, reload } = useLoad(() => (can('cash.view') ? api.get<{ open: boolean }>('/api/cash/current') : Promise.resolve(null)));
@@ -134,7 +134,7 @@ export function MobileCharge({ comanda, onChanged, onClosed }: { comanda: Comand
 
       {!can('cash.payment') ? (
         <div className="stack">
-          <div className="banner">Você não recebe pagamentos. Peça a conta impressa e leve o cliente ao caixa.</div>
+          <div className="banner">Você não recebe pagamentos. Peça a conta impressa e leve o cliente ao caixa. (O dono libera em Funcionários → “Cobra no celular”.)</div>
           <Button size="large" block icon={<Printer size={18} />} onClick={printBill}>Imprimir conta</Button>
         </div>
       ) : comanda.remaining <= 0 ? (

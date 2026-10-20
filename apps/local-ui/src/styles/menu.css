@@ -344,3 +344,25 @@
   gap: 8px;
   align-items: center;
 }
+
+/* Meio a meio na hora do pedido */
+.half-chip {
+  border-style: dashed;
+}
+.half-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text);
+}
+.half-banner > svg {
+  color: var(--accent);
+  flex: none;
+}
+.menu-tile.half-first {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
