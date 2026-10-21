@@ -1,5 +1,6 @@
-import { Check, Info, Package, Plus, RefreshCw, Users, Wind } from 'lucide-react';
+import { ArrowLeft, Check, Info, Leaf, Package, Plus, RefreshCw, Users, Wind } from 'lucide-react';
 import { useState } from 'react';
+import { FlavorToggles } from '../../components/FlavorToggles';
 import type { Menu, MenuItem } from '../../components/MenuPicker';
 import { Button, ErrorBox, Input, Loading, Switch, useToast } from '../../components/ui';
 import { api, requestId } from '../../lib/api';
@@ -28,7 +29,7 @@ interface Panel {
 const COAL_START = 3;
 const COAL_SWAP = 2;
 
-type Sheet = { kind: 'rent' } | { kind: 'own' } | { kind: 'rosh'; sessionId: string; title: string; own: boolean } | { kind: 'pack' };
+type Sheet = { kind: 'rent' } | { kind: 'own' } | { kind: 'rosh'; sessionId: string; title: string; own: boolean } | { kind: 'pack' } | { kind: 'flavors' };
 
 /** Divide a porção da casa entre os sabores escolhidos (em milésimos de grama). */
 function essencesPayload(ids: string[], gramsPerRosh: number) {
@@ -57,6 +58,21 @@ export function MobileHookah({ comandaId, onChanged }: { comandaId: string; onCh
     void reload();
     onChanged();
   };
+
+  if (sheet?.kind === 'flavors') {
+    return (
+      <div className="mhookah stack">
+        <div className="row">
+          <Button variant="plain" icon={<ArrowLeft size={20} />} aria-label="Voltar ao narguilé" onClick={done} />
+          <div>
+            <strong>Sabores do aluguel</strong>
+            <div className="tiny muted">Ligue as essências que estão disponíveis; desligue a que acabou.</div>
+          </div>
+        </div>
+        <FlavorToggles />
+      </div>
+    );
+  }
 
   if (sheet) {
     return sheet.kind === 'pack'
@@ -112,6 +128,13 @@ export function MobileHookah({ comandaId, onChanged }: { comandaId: string; onCh
           <span>{packs.length ? 'O cliente leva o pacote' : 'Nenhum pacote à venda no cardápio'}</span>
         </span>
       </button>
+      <button type="button" className="mhookah-action" onClick={() => setSheet({ kind: 'flavors' })}>
+        <span className="mhookah-icon"><Leaf size={22} /></span>
+        <span className="grow">
+          <strong>Sabores do aluguel</strong>
+          <span>{data.essences.length ? `${data.essences.length} sabores disponíveis: ligar ou desligar` : 'Nenhum sabor ligado: toque para escolher'}</span>
+        </span>
+      </button>
       <p className="small muted row" style={{ alignItems: 'flex-start' }}>
         <Info size={15} style={{ flex: 'none', marginTop: 2 }} />
         <span>Não precisa devolver nem encerrar o narguilé: ele termina sozinho quando a comanda for encerrada.</span>
@@ -122,7 +145,7 @@ export function MobileHookah({ comandaId, onChanged }: { comandaId: string; onCh
 
 /** Aluguel, narguilé do cliente ou troca de rosh: escolhe o sabor e lança. */
 function LaunchSheet({ sheet, panel, comandaId, onCancel, onDone }: {
-  sheet: Exclude<Sheet, { kind: 'pack' }>; panel: Panel; comandaId: string; onCancel: () => void; onDone: () => void;
+  sheet: Exclude<Sheet, { kind: 'pack' } | { kind: 'flavors' }>; panel: Panel; comandaId: string; onCancel: () => void; onDone: () => void;
 }) {
   const toast = useToast();
   const [flavors, setFlavors] = useState<string[]>([]);
@@ -185,7 +208,7 @@ function LaunchSheet({ sheet, panel, comandaId, onCancel, onDone }: {
       <div className="stack-s">
         <div className="section-label">Sabor{flavors.length > 1 ? 'es (mistura)' : ''}</div>
         {panel.essences.length === 0 ? (
-          <p className="small muted">Nenhuma essência cadastrada (categoria Essências). O valor é lançado do mesmo jeito.</p>
+          <p className="small muted">Nenhum sabor no aluguel. Ligue em “Sabores do aluguel”. O valor é lançado do mesmo jeito.</p>
         ) : (
           <div className="mhookah-flavors" role="group" aria-label="Sabores">
             {panel.essences.map((e) => {

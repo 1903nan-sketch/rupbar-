@@ -318,6 +318,27 @@ try {
   assert(c30.items.some((i) => i.kind === 'product' && i.totalCents === 4500), 'pacote fechado deveria entrar como item do cardápio');
   assert((await api('GET', `/api/products/${essence.id}`)).stockQty === 200_000 - 24_000 - 50_000, 'essência: 12 g por rosh e 50 g do pacote');
 
+  // Sabores do aluguel: o garçom desliga a essência que acabou e liga de novo, no celular.
+  await m.getByRole('button', { name: /Sabores do aluguel/ }).click();
+  const mentaSwitch = m.getByRole('checkbox', { name: 'No aluguel: Ziggy Menta' });
+  assert(await mentaSwitch.isChecked(), 'Ziggy Menta começa no aluguel');
+  await m.locator('.flavor-item', { hasText: 'Ziggy Menta' }).locator('.switch').click();
+  await m.getByText('Ziggy Menta fora do aluguel').waitFor();
+  await m.screenshot({ path: join(out, '05f-celular-sabores-do-aluguel.png') });
+  await m.getByRole('button', { name: 'Voltar ao narguilé' }).click();
+  await m.getByRole('button', { name: /Alugar narguilé/ }).click();
+  await m.getByText('Nenhum sabor no aluguel', { exact: false }).waitFor();
+  await m.getByRole('button', { name: 'Cancelar' }).click();
+  await m.getByRole('button', { name: /Sabores do aluguel/ }).click();
+  await m.locator('.flavor-item', { hasText: 'Ziggy Menta' }).locator('.switch').click();
+  await m.getByText('Ziggy Menta no aluguel').waitFor();
+  await m.getByRole('button', { name: 'Voltar ao narguilé' }).click();
+  // No PC, a mesma lista em Narguilés → Sabores do aluguel.
+  await page.goto(B + '/narguiles');
+  await page.locator('.tabs').getByRole('button', { name: 'Sabores do aluguel' }).click();
+  assert(await page.getByRole('checkbox', { name: 'No aluguel: Ziggy Menta' }).isChecked(), 'PC mostra a mesma lista');
+  await page.screenshot({ path: join(out, '05g-pc-sabores-do-aluguel.png') });
+
   // Dono liga "Cobra no celular" para o garçom: aparece a Venda rápida no celular.
   await page.goto(B + '/funcionarios');
   await page.locator('.list-item', { hasText: 'João Garçom' }).getByRole('button', { name: 'Editar' }).click();

@@ -1,13 +1,22 @@
 import { hookahCharge, HOOKAH_STATUS, type HookahPricing, type HookahStatus } from '@rupbar/core';
 import {
-  hookahFinishSchema, hookahPricingSchema, hookahRoshSchema, hookahSchema, hookahStartSchema, hookahStatusSchema, type HookahPricingTable,
+  hookahFinishSchema, hookahFlavorsSchema, hookahFlavorToggleSchema, hookahPricingSchema, hookahRoshSchema, hookahSchema, hookahStartSchema, hookahStatusSchema, type HookahPricingTable,
 } from '@rupbar/core/schemas';
 import { json, type Row } from '../db/db';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import type { ComandasService } from './comandas';
-import { requirePerm, type Actor, type Ctx } from './context';
+import { hasPerm, requirePerm, type Actor, type Ctx } from './context';
 import type { SettingsService } from './settings';
 import type { StockService } from './stock';
+
+/** A lista de sabores do aluguel já foi montada (vazia = nenhum sabor). */
+const FLAVORS_SET = 'hookah_flavors_set';
+
+const plain = (v: unknown) => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/** Essência pela categoria (Essências, narguilé, tabaco) ou pelo nome. */
+const isEssenceRow = (r: Row) => /essenc|narguil|tabac|fumo/.test(plain(r.category)) || /essenc/.test(plain(r.name));
+/** "Ziggy Menta 50 g" → "Ziggy Menta": o sabor sem o tamanho do pacote. */
+const flavorName = (name: string) => name.replace(/\s*\d+([.,]\d+)?\s*(g|gr|kg)\b\.?$/i, '').trim() || name;
 
 export class HookahService {
   constructor(
@@ -453,20 +462,117 @@ export class HookahService {
     return { pricing: this.pricing(), sessions, devices, ...this.supplies() };
   }
 
+  // ------------------------------------------------------- sabores do aluguel
+
+  /** Sabores do aluguel, cada um ligado à essência de venda de onde sai o grama. */
+  flavors(actor: Actor) {
+    requirePerm(actor, 'hookah.view');
+    return this.ctx.db.all(
+      `SELECT f.id, f.name, f.product_id, p.name AS product_name, p.stock_qty, p.stock_tracked, p.active FROM hookah_flavors f
+       JOIN products p ON p.id = f.product_id ORDER BY f.sort_order, f.name COLLATE NOCASE`,
+    ).map((f) => ({
+      id: f.id, name: f.name, productId: f.product_id, productName: f.product_name, stockQty: f.stock_qty,
+      stockTracked: f.stock_tracked === 1, active: f.active === 1,
+    }));
+  }
+
   /**
-   * Sabores (produtos em gramas da categoria Essências — ou de narguilé/tabaco —
-   * ou com "essência" no nome) e carvões. Comida em gramas (batata, calabresa)
-   * nunca aparece como sabor.
+   * Todas as essências que podem ir para o aluguel (em gramas, fora a comida da
+   * cozinha), com "on" para as que estão na lista. Antes da primeira escolha,
+   * valem as da categoria Essências.
+   */
+  flavorOptions(actor: Actor) {
+    requirePerm(actor, 'hookah.view');
+    const linked = new Map(this.ctx.db.all<{ product_id: string; name: string }>('SELECT product_id, name FROM hookah_flavors').map((f) => [f.product_id, f.name]));
+    const configured = this.ctx.meta(FLAVORS_SET) === '1';
+    return this.flavorCandidates().map((p) => ({
+      productId: String(p.id), productName: String(p.name), category: String(p.category), stockQty: Number(p.stock_qty), stockTracked: p.stock_tracked === 1,
+      on: configured ? linked.has(String(p.id)) : isEssenceRow(p), name: linked.get(String(p.id)) ?? flavorName(String(p.name)),
+    }));
+  }
+
+  private flavorCandidates() {
+    return this.ctx.db.all(
+      `SELECT p.id, p.name, p.stock_qty, p.stock_tracked, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id
+       WHERE p.active = 1 AND p.measure = 'mass' AND COALESCE(p.station, c.station) <> 'kitchen' ORDER BY p.name COLLATE NOCASE`,
+    );
+  }
+
+  /**
+   * Põe ou tira uma essência da lista do aluguel num toque (acabou a menta,
+   * chegou sabor novo). Quem aluga narguilé pode; o nome vem da essência.
+   */
+  toggleFlavor(actor: Actor, raw: unknown) {
+    if (!hasPerm(actor, 'hookah.manage')) requirePerm(actor, 'hookah.rent');
+    const input = hookahFlavorToggleSchema.parse(raw);
+    this.ctx.tx(() => {
+      const p = this.ctx.db.get<{ name: string; measure: string; active: number }>('SELECT name, measure, active FROM products WHERE id = ?', input.productId);
+      if (!p || p.active !== 1) throw notFound('Essência');
+      if (p.measure !== 'mass') throw badRequest('Só essências controladas em gramas vão para o aluguel.', 'FLAVOR_NOT_MASS');
+      const now = this.ctx.nowIso();
+      // Primeira escolha: parte das essências que já apareciam no aluguel.
+      if (this.ctx.meta(FLAVORS_SET) !== '1') {
+        this.ctx.db.run('DELETE FROM hookah_flavors');
+        this.flavorCandidates().filter(isEssenceRow).forEach((r, i) => this.ctx.db.run(
+          'INSERT INTO hookah_flavors (id, name, product_id, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?)', this.ctx.id(), flavorName(String(r.name)), String(r.id), i, now, now,
+        ));
+        this.ctx.setMeta(FLAVORS_SET, '1');
+      }
+      const has = this.ctx.db.value('SELECT id FROM hookah_flavors WHERE product_id = ?', input.productId);
+      if (input.on && !has) {
+        const next = Number(this.ctx.db.value('SELECT COALESCE(MAX(sort_order), -1) + 1 FROM hookah_flavors') ?? 0);
+        this.ctx.db.run(
+          'INSERT INTO hookah_flavors (id, name, product_id, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?)', this.ctx.id(), flavorName(p.name), input.productId, next, now, now,
+        );
+      }
+      if (!input.on && has) this.ctx.db.run('DELETE FROM hookah_flavors WHERE product_id = ?', input.productId);
+      this.ctx.audit(actor, input.on ? 'hookah.flavor_on' : 'hookah.flavor_off', 'product', input.productId, { name: p.name });
+      this.ctx.emit({ channel: 'hookah', type: 'hookah.flavors' });
+    });
+    return this.flavorOptions(actor);
+  }
+
+  /**
+   * Grava a lista de sabores do aluguel (na ordem). Cada sabor aponta para uma
+   * essência em gramas, a mesma vendida em pacote fechado no cardápio.
+   */
+  saveFlavors(actor: Actor, raw: unknown) {
+    requirePerm(actor, 'hookah.manage');
+    const input = hookahFlavorsSchema.parse(raw);
+    const seen = new Set<string>();
+    for (const f of input.flavors) {
+      if (seen.has(f.productId)) throw badRequest(`"${f.name}": a mesma essência está ligada a dois sabores.`, 'FLAVOR_DUPLICATE');
+      seen.add(f.productId);
+      const p = this.ctx.db.get<{ measure: string; active: number }>('SELECT measure, active FROM products WHERE id = ?', f.productId);
+      if (!p || p.active !== 1) throw notFound('Essência');
+      if (p.measure !== 'mass') throw badRequest(`"${f.name}": ligue a uma essência controlada em gramas.`, 'FLAVOR_NOT_MASS');
+    }
+    this.ctx.tx(() => {
+      const now = this.ctx.nowIso();
+      this.ctx.db.run('DELETE FROM hookah_flavors');
+      this.ctx.setMeta(FLAVORS_SET, '1');
+      input.flavors.forEach((f, i) => this.ctx.db.run(
+        'INSERT INTO hookah_flavors (id, name, product_id, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?)', this.ctx.id(), f.name, f.productId, i, now, now,
+      ));
+      this.ctx.audit(actor, 'hookah.flavors', 'settings', 'hookahFlavors', { count: input.flavors.length });
+      this.ctx.emit({ channel: 'hookah', type: 'hookah.flavors' });
+    });
+    return this.flavors(actor);
+  }
+
+  /**
+   * Sabores e carvões do aluguel. Com sabores ligados, só eles (com o nome do
+   * sabor); sem nenhum, as essências em gramas da categoria Essências (ou de
+   * narguilé/tabaco, ou com "essência" no nome). Comida em gramas nunca aparece.
    */
   supplies() {
     const product = (r: Row) => ({ id: r.id, name: r.name, stockQty: r.stock_qty, stockTracked: r.stock_tracked === 1 });
-    const mass = this.ctx.db.all(
-      `SELECT p.id, p.name, p.stock_qty, p.stock_tracked, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id
-       WHERE p.active = 1 AND p.measure = 'mass' ORDER BY p.name COLLATE NOCASE`,
+    const linked = this.ctx.db.all(
+      `SELECT p.id, f.name, p.stock_qty, p.stock_tracked FROM hookah_flavors f JOIN products p ON p.id = f.product_id
+       WHERE p.active = 1 AND p.measure = 'mass' ORDER BY f.sort_order, f.name COLLATE NOCASE`,
     );
-    const plain = (v: unknown) => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const isEssence = (r: Row) => /essenc|narguil|tabac|fumo/.test(plain(r.category)) || /essenc/.test(plain(r.name));
-    const essences = mass.filter(isEssence);
+    // Depois da primeira escolha vale só a lista (mesmo vazia); antes, as essências da categoria.
+    const essences = this.ctx.meta(FLAVORS_SET) === '1' ? linked : this.flavorCandidates().filter(isEssenceRow);
     const coals = this.ctx.db.all(
       `SELECT p.id, p.name, p.stock_qty, p.stock_tracked, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id
        WHERE p.active = 1 AND p.measure = 'unit' ORDER BY p.name COLLATE NOCASE`,

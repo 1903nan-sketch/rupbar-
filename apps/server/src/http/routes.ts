@@ -378,6 +378,14 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
     return s.hookah.pricing();
   });
   r('PUT', '/api/hookah/pricing', (req, a) => s.hookah.updatePricing(a, req.body));
+  r('GET', '/api/hookah/flavors', (_req, a) => s.hookah.flavors(a));
+  r('PUT', '/api/hookah/flavors', (req, a) => s.hookah.saveFlavors(a, req.body));
+  r('GET', '/api/hookah/flavor-options', (_req, a) => s.hookah.flavorOptions(a));
+  r('POST', '/api/hookah/flavors/toggle', (req, a) => s.hookah.toggleFlavor(a, req.body));
+  r('GET', '/api/hookah/supplies', (_req, a) => {
+    requirePerm(a, 'hookah.view');
+    return s.hookah.supplies();
+  });
   r('POST', '/api/hookahs', (req, a) => s.hookah.save(a, null, req.body));
   r('PUT', '/api/hookahs/:id', (req, a) => s.hookah.save(a, id(req), req.body));
   r('POST', '/api/hookahs/:id/status', (req, a) => s.hookah.changeStatus(a, id(req), req.body));

@@ -1,5 +1,5 @@
 import { HOOKAH_STATUS, type HookahStatus } from '@rupbar/core';
-import { History, Pencil, Plus, RotateCcw, Sparkles, Timer, Trash2, Users, Wind, Wrench } from 'lucide-react';
+import { History, Leaf, Pencil, Plus, RotateCcw, Sparkles, Timer, Trash2, Users, Wind, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Stat, Switch, Tabs, useToast } from '../components/ui';
 import { api, requestId } from '../lib/api';
@@ -7,6 +7,7 @@ import { dayRange, elapsed, fmtDateTime, formatBRL, formatQty } from '../lib/for
 import { useLoad, useNow } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
+import { FlavorToggles } from '../components/FlavorToggles';
 import { ReasonModal } from '../components/OwnerActions';
 import '../styles/hookah.css';
 import type { ComandaSummary } from './Comandas';
@@ -73,13 +74,14 @@ const STATUS_COLOR: Record<HookahStatus, 'green' | 'orange' | 'blue' | 'red' | u
 };
 
 export function HookahsPage() {
-  const [tab, setTab] = useState<'aparelhos' | 'historico' | 'indicadores'>('aparelhos');
+  const [tab, setTab] = useState<'aparelhos' | 'sabores' | 'historico' | 'indicadores'>('aparelhos');
   const { can } = useSession();
   return (
     <div className="stack">
       <PageHeader title="Narguilés" subtitle="Aluguel com essência e carvão inclusos, trocas de rosh e narguilé próprio do cliente. Não precisa devolver: termina junto com a comanda." />
-      <Tabs value={tab} onChange={setTab} options={[{ value: 'aparelhos', label: 'Em uso e aparelhos' }, { value: 'historico', label: 'Locações' }, { value: 'indicadores', label: 'Indicadores', hidden: !can('reports.operational') }]} />
+      <Tabs value={tab} onChange={setTab} options={[{ value: 'aparelhos', label: 'Em uso e aparelhos' }, { value: 'sabores', label: 'Sabores do aluguel' }, { value: 'historico', label: 'Locações' }, { value: 'indicadores', label: 'Indicadores', hidden: !can('reports.operational') }]} />
       {tab === 'aparelhos' && <Devices />}
+      {tab === 'sabores' && <Flavors />}
       {tab === 'historico' && <SessionsHistory />}
       {tab === 'indicadores' && <Indicators />}
     </div>
@@ -272,15 +274,36 @@ function HookahEditor({ hookah, onClose, onDone }: { hookah: Hookah | null; onCl
   );
 }
 
+/** Sabores (os ligados em "Sabores do aluguel" ou as essências) e carvões, do servidor. */
 function useHookahSupplies() {
   return useLoad(async () => {
-    const [ps, op] = await Promise.all([api.get<Product[]>('/api/products'), api.get<{ defaultGramsPerRosh: number }>('/api/settings/operation/public').catch(() => ({ defaultGramsPerRosh: 12_000 }))]);
-    return {
-      essences: ps.filter((p) => p.measure === 'mass' && (p.categoryName === 'Essências' || /ess[eê]ncia/i.test(p.name))),
-      coals: ps.filter((p) => p.measure === 'unit' && (p.categoryName === 'Carvão' || /carv[aã]o/i.test(p.name))),
-      gramsPerRosh: op.defaultGramsPerRosh / 1000,
-    };
+    const r = await api.get<{ essences: Product[]; coals: Product[]; gramsPerRosh: number }>('/api/hookah/supplies');
+    return { ...r, gramsPerRosh: r.gramsPerRosh / 1000 };
   });
+}
+
+/**
+ * Sabores do aluguel: as essências são cadastradas para venda (pacote
+ * fechado) e aqui cada uma é ligada ou desligada do aluguel num toque.
+ */
+function Flavors() {
+  return (
+    <div className="stack">
+      <Card>
+        <div className="stack">
+          <div className="row"><Leaf size={18} className="accent-text" /><strong>Como funciona</strong></div>
+          <ol className="small flavor-steps">
+            <li>Cadastre as essências para venda normal (pacote fechado), na categoria Essências.</li>
+            <li>Aqui, ligue as que vão para o aluguel. Acabou um sabor? Desligue; chegou outro? Ligue. Dá para fazer também no celular do garçom (aba Narguilé → Sabores).</li>
+            <li>No aluguel e na troca de rosh, o estoque baixa os gramas do mesmo pacote vendido no cardápio.</li>
+          </ol>
+        </div>
+      </Card>
+      <Card title={<h3>Sabores do aluguel</h3>}>
+        <FlavorToggles renamable />
+      </Card>
+    </div>
+  );
 }
 
 /** Seleção de sabores (mistura com gramas por sabor) e carvão. */

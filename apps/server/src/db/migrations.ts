@@ -822,6 +822,22 @@ CREATE TABLE presentation_halves (
 );
 `;
 
+/**
+ * Sabores do aluguel de narguilé: cada sabor liga a uma essência de venda
+ * (pacote fechado) e o rosh baixa os gramas do mesmo produto.
+ */
+const M011 = /* sql */ `
+CREATE TABLE hookah_flavors (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  product_id TEXT NOT NULL REFERENCES products(id),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX hookah_flavors_product ON hookah_flavors(product_id);
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -841,6 +857,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 8, name: 'escolhas no pedido (sabor, energético, gelo)', sql: M008 },
   { id: 9, name: 'combos: quantidade da escolha', sql: M009 },
   { id: 10, name: 'escolhas por apresentação e meio a meio', sql: M010 },
+  { id: 11, name: 'sabores do aluguel de narguilé', sql: M011 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

@@ -74,7 +74,7 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 - **Dose pura, dose com energético e garrafa da mesma garrafa**: escolhas (energético, gelo) podem valer só para uma apresentação; todas baixam do mesmo produto.
 - **Meio a meio na hora do pedido**: na venda rápida, no lançar na comanda ou no celular, toque em “Meio a meio” e escolha duas porções (ex.: meia batata grande + meia polenta). Cobra a mais cara e baixa metade de cada, sem cadastrar nada.
 - **Venda rápida no celular do garçom** e opção “Cobra no celular” em Funcionários: recebe, encerra a comanda e faz venda rápida sem abrir nem fechar o caixa.
-- **Narguilé só com essências**: os sabores do rosh vêm da categoria Essências (comida em gramas não aparece); o mesmo produto vende o pacote fechado no cardápio.
+- **Sabores do aluguel** (Narguilés → Sabores do aluguel, e no celular: aba Narguilé → Sabores): as essências são cadastradas para venda (pacote fechado) e cada uma é ligada ou desligada do aluguel num toque. O rosh baixa os gramas do mesmo pacote; comida em gramas nunca aparece como sabor.
 - **Apagar dados de teste** (conta mestre, em Configurações): zera vendas, caixas, relatórios, estoque e, se quiser, os produtos, para começar a operação do zero. Pede a senha do proprietário, faz uma cópia de segurança antes e apaga também do painel online.
 - **Importar planilha do estoque**: em Estoque → Importar planilha, baixe o modelo, preencha a contagem no Excel (fechados + soltos, custo, preço, dose) e salve como CSV. O sistema mostra linha a linha o que vai acontecer; produtos novos entram com saldo, custo e preço, e os já cadastrados recebem a contagem como inventário.
 

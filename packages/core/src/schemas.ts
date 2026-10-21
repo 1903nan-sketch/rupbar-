@@ -549,6 +549,14 @@ export const essenceUseSchema = z.object({ productId: zUuid, qty: zMilli.positiv
  *  - rosh do narguilé próprio: cliente traz o aparelho e compra essência + carvão.
  * Essências não têm preço de venda: só controlam estoque e custo.
  */
+/** Liga/desliga uma essência na lista do aluguel (PC e celular). */
+export const hookahFlavorToggleSchema = z.object({ productId: zUuid, on: z.boolean() });
+
+/** Sabores do aluguel, na ordem, cada um ligado a uma essência de venda. */
+export const hookahFlavorsSchema = z.object({
+  flavors: z.array(z.object({ productId: zUuid, name: trimmed(60).min(1, 'Dê um nome para o sabor.') })).max(300),
+});
+
 export const hookahPricingSchema = z.object({
   rentalCents: zCents.min(0).default(2000),
   roshSwapCents: zCents.min(0).default(1000),

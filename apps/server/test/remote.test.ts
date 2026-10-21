@@ -254,6 +254,70 @@ describe('narguilés', () => {
   });
 });
 
+describe('sabores do aluguel de narguilé', () => {
+  it('ligados às essências de venda: o rosh baixa os gramas do mesmo pacote vendido no cardápio', async () => {
+    env = await createEnv();
+    const owner = await setupEstablishment(env);
+    const essCat = await category(owner, 'Essências');
+    const essence = async (name: string) => {
+      const p = await owner.ok('POST', '/api/products', {
+        name, categoryId: essCat, measure: 'mass', packageQty: 50_000,
+        presentations: [{ name: 'Pacote fechado', priceCents: 4_500, components: [{ productId: null, qty: 50_000 }] }],
+        initialStock: { packages: 4, totalCostCents: 10_000 },
+      });
+      return p.id as string;
+    };
+    const menta = await essence('Ziggy Menta 50 g');
+    const uva = await essence('Zomo Uva 50 g');
+    await essence('Adalya Love 66 50 g');
+    // Sem sabores ligados, o aluguel oferece todas as essências.
+    expect((await owner.ok('GET', '/api/hookah/supplies')).essences).toHaveLength(3);
+
+    const waiter = await createStaff(env, owner, 'waiter', 'Davi', 'davi@bar.com');
+    expect((await waiter.fail('PUT', '/api/hookah/flavors', { flavors: [] })).status).toBe(403);
+    expect((await owner.fail('PUT', '/api/hookah/flavors', { flavors: [{ productId: menta, name: 'Menta' }, { productId: menta, name: 'Menta 2' }] })).code).toBe('FLAVOR_DUPLICATE');
+    const saved = await owner.ok('PUT', '/api/hookah/flavors', { flavors: [{ productId: uva, name: 'Uva' }, { productId: menta, name: 'Menta' }] });
+    expect(saved.map((f: { name: string; productName: string }) => [f.name, f.productName])).toEqual([['Uva', 'Zomo Uva 50 g'], ['Menta', 'Ziggy Menta 50 g']]);
+
+    // O aluguel mostra só os sabores ligados, com o nome do sabor.
+    await owner.ok('POST', '/api/cash/open', { openingBalanceCents: 0 });
+    const c = await waiter.ok('POST', '/api/comandas', { cardNumber: 8 });
+    const panel = await waiter.ok('GET', `/api/comandas/${c.id}/hookah`);
+    expect(panel.essences.map((x: { id: string; name: string }) => [x.id, x.name])).toEqual([[uva, 'Uva'], [menta, 'Menta']]);
+    await waiter.ok('POST', '/api/hookah-sessions', { comandaId: c.id, clientRequestId: uuid(), essences: [{ productId: menta, qty: 12_000 }] });
+    expect((await owner.ok('GET', `/api/products/${menta}`)).stockQty).toBe(200_000 - 12_000);
+    // O mesmo produto continua à venda em pacote fechado e baixa do mesmo estoque.
+    const pack = (await owner.ok('GET', `/api/products/${menta}`)).presentations[0].id;
+    await waiter.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: pack, quantity: 1 }] });
+    expect((await owner.ok('GET', `/api/products/${menta}`)).stockQty).toBe(200_000 - 12_000 - 50_000);
+
+    // No celular, o garçom tira e põe sabores num toque (acabou a uva, chegou Love 66).
+    const love = (await owner.ok('GET', '/api/products')).find((p: { name: string }) => p.name === 'Adalya Love 66 50 g').id;
+    await waiter.ok('POST', '/api/hookah/flavors/toggle', { productId: uva, on: false });
+    const options = await waiter.ok('POST', '/api/hookah/flavors/toggle', { productId: love, on: true });
+    expect(options.filter((o: { on: boolean }) => o.on).map((o: { name: string }) => o.name).sort()).toEqual(['Adalya Love 66', 'Menta']);
+    expect((await waiter.ok('GET', `/api/comandas/${c.id}/hookah`)).essences.map((x: { name: string }) => x.name)).toEqual(['Menta', 'Adalya Love 66']);
+    // Lista vazia vale como "nenhum sabor" (não volta a mostrar tudo).
+    await owner.ok('PUT', '/api/hookah/flavors', { flavors: [] });
+    expect((await waiter.ok('GET', `/api/comandas/${c.id}/hookah`)).essences).toEqual([]);
+  });
+
+  it('primeiro toque parte das essências que já apareciam no aluguel', async () => {
+    env = await createEnv();
+    const owner = await setupEstablishment(env);
+    const essCat = await category(owner, 'Essências');
+    const mk = async (name: string) => (await owner.ok('POST', '/api/products', { name, categoryId: essCat, measure: 'mass', packageQty: 50_000, menuVisible: false })).id as string;
+    const a = await mk('Ziggy Menta 50 g');
+    await mk('Zomo Uva 50 g');
+    // Comida em gramas não entra nem como opção.
+    await owner.ok('POST', '/api/products', { name: 'Batata', categoryId: await category(owner, 'Porções'), measure: 'mass', packageQty: 1_000_000, menuVisible: false });
+    let options = await owner.ok('GET', '/api/hookah/flavor-options');
+    expect(options.map((o: { productName: string; on: boolean }) => [o.productName, o.on])).toEqual([['Ziggy Menta 50 g', true], ['Zomo Uva 50 g', true]]);
+    options = await owner.ok('POST', '/api/hookah/flavors/toggle', { productId: a, on: false });
+    expect(options.map((o: { name: string; on: boolean }) => [o.name, o.on])).toEqual([['Ziggy Menta', false], ['Zomo Uva', true]]);
+  });
+});
+
 describe('narguilé sem devolução', () => {
   it('aluguel rápido sem aparelho, troca, pacote de essência fechado e encerramento junto com a comanda', async () => {
     env = await createEnv();
