@@ -38,6 +38,7 @@
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-auto-rows: max-content;
   gap: 10px;
   align-content: start;
   overflow-y: auto;
@@ -48,11 +49,13 @@
 }
 .menu-tile {
   position: relative;
+  display: flex;
   min-height: 96px;
 }
+/* Altura pelo conteúdo (sem height: 100%): com a grade de altura fixa da venda rápida, o bloco não corta o nome. */
 .menu-tile-main {
   width: 100%;
-  height: 100%;
+  flex: 1;
   min-height: 96px;
   display: flex;
   flex-direction: column;
@@ -103,20 +106,28 @@
   opacity: 0.22;
   pointer-events: none;
 }
+/* O bloco cresce com o texto: nada encolhe nem fica por cima do nome. */
+.menu-tile-main > * {
+  flex-shrink: 0;
+  max-width: 100%;
+}
 .menu-tile-name {
   position: relative;
   font-weight: 650;
   font-size: 14.5px;
-  line-height: 1.2;
+  line-height: 1.25;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .menu-tile-pres {
   position: relative;
   font-size: 12px;
+  line-height: 1.3;
   color: var(--text-2);
+  overflow-wrap: anywhere;
 }
 .menu-tile-price {
   position: relative;
@@ -125,15 +136,20 @@
   font-size: 15px;
   color: var(--accent);
 }
+/* "Esgotado" / "restam 3" em cima do nome, no fluxo do bloco. */
 .menu-tile-flag {
-  position: absolute;
-  top: 8px;
-  left: 10px;
+  position: relative;
+  order: -1;
+  margin-bottom: 2px;
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--orange);
+}
+/* No carrinho: espaço para o número (em cima) e o "−" (embaixo) à direita. */
+.menu-tile.in-cart .menu-tile-main {
+  padding-right: 46px;
 }
 .menu-tile-flag.danger {
   color: var(--red);
