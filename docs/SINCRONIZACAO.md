@@ -9,7 +9,7 @@ escrita em tabela sincronizada
   └─ gatilho → sync_outbox (mesma transação)
 worker (a cada 5 s, backoff até 5 min)
   1. push   ─── rupbar_device_push ───────────►  upsert por versão em sync_records
-  2. pull   ◄── rupbar_device_pull ────────────  comandos pendentes (perdas)
+  2. pull   ◄── rupbar_device_pull ────────────  comandos pendentes (perdas e ações do painel)
      aplica cada comando 1× (remote_commands_applied)
   3. ack    ─── rupbar_device_ack ────────────►  status: applied / conflict / rejected
   4. heartbeat ─ rupbar_device_heartbeat ─────►  last_sync_at, pendências, versão
@@ -38,6 +38,21 @@ worker (a cada 5 s, backoff até 5 min)
    - produto inexistente/sem controle ou dados inválidos → `rejected`.
 5. O PC confirma (`ack`); o painel mostra o resultado. A perda aplicada e o novo saldo chegam pela réplica normal.
 6. Enquanto não entregue, o proprietário pode cancelar o comando.
+
+### Ações do painel (operar o bar pela internet)
+
+`rupbar_owner_command(establishment, tipo, dados)` usa a mesma fila para as ações do proprietário. A função só confere o dono, o tipo e o tamanho; o PC valida tudo de novo com as mesmas regras da tela local e age como o proprietário, registrando no histórico o nome de quem enviou com “(painel online)”.
+
+| Tipo | No PC |
+|---|---|
+| `comanda.open` | abre a comanda (cartão, nome, mesa); o id do comando evita abrir duas vezes |
+| `order.create` | lança o pedido na comanda (baixa estoque, manda para a produção) |
+| `comanda_item.cancel` | cancela o item com motivo e devolve ao estoque |
+| `cash.open` / `cash.close` | abre o caixa com o troco / fecha com o dinheiro contado |
+| `user.remove` | exclui o funcionário (bloqueia, encerra as sessões, libera o e-mail) |
+| `product.set_active` | tira o produto da venda ou devolve |
+
+Dado inválido ou regra violada (caixa já aberto, cartão em uso, item já cancelado, excluir o proprietário) → `rejected` com o motivo, sem aplicar nada. O painel mostra “Aguardando o PC”, “Feito” ou “Recusado” com a mensagem.
 
 ## Estados exibidos
 

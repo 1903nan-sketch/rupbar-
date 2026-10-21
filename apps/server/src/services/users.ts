@@ -102,7 +102,7 @@ export class UsersService {
       .all(
         `SELECT u.id, u.name, u.email, u.status, u.must_change_password, u.last_login_at, u.created_at, u.grants_json, u.denies_json,
                 r.id AS role_id, r.name AS role_name, r.key AS role_key
-         FROM users u JOIN roles r ON r.id = u.role_id ORDER BY u.status, u.name`,
+         FROM users u JOIN roles r ON r.id = u.role_id WHERE u.deleted_at IS NULL ORDER BY u.status, u.name`,
       )
       .map((u) => ({
         id: u.id, name: u.name, email: u.email, status: u.status, mustChangePassword: u.must_change_password === 1,
@@ -114,7 +114,7 @@ export class UsersService {
   /** Lista enxuta para seleção de responsável/atendente (sem e-mail). */
   staff() {
     return this.ctx.db.all(
-      `SELECT u.id, u.name, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.status = 'active' ORDER BY u.name`,
+      `SELECT u.id, u.name, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.status = 'active' AND u.deleted_at IS NULL ORDER BY u.name`,
     );
   }
 
@@ -173,6 +173,28 @@ export class UsersService {
       this.ctx.audit(actor, statusChanged ? `users.${input.status}` : 'users.updated', 'user', id, {
         roleId: input.roleId, grants, denies, status: input.status,
       });
+    });
+  }
+
+  /**
+   * Exclui o funcionário: sai da lista, não entra mais e o e-mail fica livre
+   * para um novo cadastro. Vendas, caixas e histórico continuam com o nome.
+   */
+  remove(actor: Actor, id: string) {
+    requirePerm(actor, 'users.manage');
+    return this.ctx.tx(() => {
+      const u = this.ctx.db.get('SELECT u.*, r.key AS role_key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.deleted_at IS NULL', id);
+      if (!u) throw notFound('Funcionário');
+      if (u.role_key === 'owner') throw forbidden('O proprietário não pode ser excluído.');
+      if (id === actor.userId) throw forbidden('Você não pode excluir a si mesmo.');
+      const now = this.ctx.nowIso();
+      this.ctx.db.run(
+        `UPDATE users SET status = 'blocked', deleted_at = ?, email = ?, token_version = token_version + 1, version = version + 1, updated_at = ? WHERE id = ?`,
+        now, `removido-${id}@rupbar.local`, now, id,
+      );
+      this.auth.revokeUserSessions(id, 'removed');
+      this.ctx.audit(actor, 'users.removed', 'user', id, { name: u.name, email: u.email });
+      return { id, name: String(u.name) };
     });
   }
 

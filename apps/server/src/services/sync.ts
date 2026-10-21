@@ -1,6 +1,7 @@
 import { backoffMs, RUPBAR_CLOUD, type CommandResult, type PushResponse, type RemoteCommand, type SyncRecord, type SyncStatus } from '@rupbar/core';
 import { cloudConnectSchema } from '@rupbar/core/schemas';
 import { SYNCED_TABLES, TABLE_BY_ENTITY } from '../db/sync-tables';
+import { ZodError } from 'zod';
 import { AppError, badRequest } from '../lib/errors';
 import { requirePerm, type Actor, type Ctx } from './context';
 import type { LossesService } from './losses';
@@ -129,7 +130,14 @@ function rpcHeaders(anonKey: string) {
   return { apikey: anonKey, Authorization: `Bearer ${anonKey}`, 'Content-Type': 'application/json' };
 }
 
-type CommandHandler = (commandId: string, payload: unknown) => { status: CommandResult['status']; message: string; [k: string]: unknown };
+export type CommandHandler = (commandId: string, payload: unknown) => { status: CommandResult['status']; message: string; [k: string]: unknown };
+
+/** Motivo legível de um comando recusado (erro de negócio ou dado inválido). */
+function rejection(err: unknown): string {
+  if (err instanceof ZodError) return err.issues[0]?.message ?? 'Dados inválidos.';
+  if (err instanceof AppError) return err.message;
+  return 'Não foi possível aplicar no PC do bar.';
+}
 
 export class SyncService {
   private timer: NodeJS.Timeout | null = null;
@@ -151,6 +159,11 @@ export class SyncService {
         return { status: r.status, message: r.message, lossId: r.lossId };
       },
     };
+  }
+
+  /** Liga um tipo de comando do painel online ao serviço que o aplica no PC. */
+  register(type: string, handler: CommandHandler): void {
+    this.handlers[type] = handler;
   }
 
   private config(): CloudConfig | null {
@@ -343,7 +356,14 @@ export class SyncService {
         return { commandId: cmd.id, status: done.status as CommandResult['status'], message: String(done.message), appliedAt: String(done.applied_at) };
       }
       const handler = this.handlers[cmd.type];
-      const r = handler ? handler(cmd.id, cmd.payload) : { status: 'rejected' as const, message: `Comando desconhecido: ${cmd.type}` };
+      let r: ReturnType<CommandHandler>;
+      try {
+        // Cada comando numa transação própria: recusado, nada dele fica no PC.
+        r = handler ? this.ctx.tx(() => handler(cmd.id, cmd.payload)) : { status: 'rejected' as const, message: `Comando desconhecido: ${cmd.type}` };
+      } catch (err) {
+        if (!(err instanceof AppError) && !(err instanceof ZodError)) this.ctx.log.warn('comando remoto falhou', { type: cmd.type, error: (err as Error).message });
+        r = { status: 'rejected', message: rejection(err) };
+      }
       const appliedAt = this.ctx.nowIso();
       const { status, message, ...rest } = r;
       this.ctx.db.run(

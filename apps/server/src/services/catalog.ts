@@ -578,6 +578,21 @@ export class CatalogService {
     return { id: productId, internalCode };
   }
 
+  /** Tira o produto da venda (some do cardápio e das listas) ou devolve; o histórico fica. */
+  setActive(actor: Actor, id: string, active: boolean) {
+    requirePerm(actor, 'products.manage');
+    return this.ctx.tx(() => {
+      const p = this.ctx.db.get<{ name: string; active: number }>('SELECT name, active FROM products WHERE id = ?', id);
+      if (!p) throw notFound('Produto');
+      if (p.active !== (active ? 1 : 0)) {
+        this.ctx.db.run('UPDATE products SET active = ?, version = version + 1, updated_at = ? WHERE id = ?', active ? 1 : 0, this.ctx.nowIso(), id);
+        this.ctx.audit(actor, active ? 'products.activated' : 'products.deactivated', 'product', id, { name: p.name });
+        this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId: id } });
+      }
+      return { id, name: p.name, active };
+    });
+  }
+
   /** Prévia do próximo código automático (não reserva). */
   nextProductCode(actor: Actor) {
     requirePerm(actor, 'products.view');

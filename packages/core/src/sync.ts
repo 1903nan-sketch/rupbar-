@@ -57,7 +57,25 @@ export interface PushResponse {
   rejected: { outboxId: string; reason: string }[];
 }
 
-export type RemoteCommandType = 'loss.register';
+/**
+ * Comandos do painel online que o PC do bar aplica (uma única vez) e confirma.
+ * O PC é a fonte da verdade: valida tudo de novo e pode recusar com o motivo.
+ */
+export const REMOTE_COMMAND_TYPES = [
+  'loss.register', 'comanda.open', 'order.create', 'comanda_item.cancel', 'cash.open', 'cash.close', 'user.remove', 'product.set_active',
+] as const;
+export type RemoteCommandType = (typeof REMOTE_COMMAND_TYPES)[number];
+
+export const REMOTE_COMMAND_LABELS: Record<RemoteCommandType, string> = {
+  'loss.register': 'Registrar perda',
+  'comanda.open': 'Abrir comanda',
+  'order.create': 'Lançar itens',
+  'comanda_item.cancel': 'Tirar item',
+  'cash.open': 'Abrir caixa',
+  'cash.close': 'Fechar caixa',
+  'user.remove': 'Excluir funcionário',
+  'product.set_active': 'Produto à venda / fora de venda',
+};
 
 export interface RemoteCommand {
   id: string;

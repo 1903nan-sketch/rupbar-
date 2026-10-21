@@ -1,5 +1,5 @@
 import { CASHIER_EXTRA, CHARGE_EXTRA } from '@rupbar/core';
-import { Copy, History, KeyRound, Plus, ShieldCheck, Smartphone, UserPlus, Wallet } from 'lucide-react';
+import { Copy, History, KeyRound, Plus, ShieldCheck, Smartphone, Trash2, UserPlus, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, Confirm, ErrorBox, Field, Input, Loading, Modal, PageHeader, Select, Switch, Tabs, Textarea, useToast } from '../components/ui';
 import { api } from '../lib/api';
@@ -68,6 +68,7 @@ function Users() {
   const [temp, setTemp] = useState<{ name: string; password: string } | null>(null);
   const [resetFor, setResetFor] = useState<StaffUser | null>(null);
   const [history, setHistory] = useState<StaffUser | null>(null);
+  const [removing, setRemoving] = useState<StaffUser | null>(null);
 
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
@@ -89,6 +90,7 @@ function Users() {
                   <Button size="small" variant="plain" icon={<History size={15} />} aria-label="Histórico de acessos" onClick={() => setHistory(u)} />
                   <Button size="small" variant="plain" icon={<KeyRound size={15} />} aria-label="Redefinir senha" onClick={() => setResetFor(u)} />
                   <Button size="small" onClick={() => setEditing(u)}>Editar</Button>
+                  <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label={`Excluir ${u.name}`} onClick={() => setRemoving(u)} />
                 </>
               )}
             </div>
@@ -112,6 +114,11 @@ function Users() {
       {resetFor && (
         <Confirm title={`Redefinir senha de ${resetFor.name}?`} message="Uma nova senha temporária será gerada e todas as sessões do funcionário serão encerradas." confirmLabel="Redefinir" onClose={() => setResetFor(null)}
           onConfirm={async () => { const r = await api.post<{ temporaryPassword: string }>(`/api/users/${resetFor.id}/reset-password`); setTemp({ name: resetFor.name, password: r.temporaryPassword }); void reload(); }} />
+      )}
+      {removing && (
+        <Confirm title={`Excluir ${removing.name}?`} confirmLabel="Excluir funcionário" danger onClose={() => setRemoving(null)}
+          message="Sai da lista e não entra mais no sistema (nem no celular). As vendas, caixas e o histórico continuam com o nome. O e-mail fica livre para um novo cadastro."
+          onConfirm={async () => { await api.post(`/api/users/${removing.id}/remove`); toast.success(`${removing.name} excluído(a)`); void reload(); }} />
       )}
       {temp && <TempPassword name={temp.name} password={temp.password} onClose={() => setTemp(null)} />}
       {history && <AccessHistory user={history} onClose={() => setHistory(null)} />}

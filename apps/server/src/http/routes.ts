@@ -203,6 +203,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/users', (req, a) => s.users.create(a, req.body));
   r('PATCH', '/api/users/:id', (req, a) => s.users.update(a, id(req), req.body));
   r('POST', '/api/users/:id/reset-password', (req, a) => s.users.resetPassword(a, id(req)));
+  r('POST', '/api/users/:id/remove', (req, a) => s.users.remove(a, id(req)));
   r('GET', '/api/users/:id/access', (req, a) => s.users.accessHistory(a, id(req)));
   r('DELETE', '/api/users/:id/sessions/:sid', (req, a) => s.users.revokeSession(a, id(req), (req.params as { sid: string }).sid));
   r('GET', '/api/roles', (_req, a) => s.users.listRoles(a));
@@ -267,6 +268,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('GET', '/api/products/next-code', (_req, a) => s.catalog.nextProductCode(a));
   r('GET', '/api/products/:id', (req, a) => s.catalog.product(a, id(req)));
   r('POST', '/api/products', (req, a) => s.catalog.saveProduct(a, null, req.body));
+  r('POST', '/api/products/:id/active', (req, a) => s.catalog.setActive(a, id(req), (req.body as { active?: unknown })?.active === true));
   r('PUT', '/api/products/:id', (req, a) => s.catalog.saveProduct(a, id(req), req.body));
   r('POST', '/api/products/:id/photo', async (req, a) => {
     requirePerm(a, 'products.manage');

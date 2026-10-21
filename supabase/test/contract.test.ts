@@ -148,4 +148,55 @@ describe('contrato PC ⇄ Supabase', () => {
     const dev = await as('authenticated', OWNER_ID, () => pg.query<{ last_sync_at: string | null; pending_count: number }>('select last_sync_at, pending_count from devices where revoked_at is null'));
     expect(dev.rows[0]!.last_sync_at).not.toBeNull();
   });
+
+  it('painel operando: abre caixa e comanda, lança e tira item, exclui funcionário e tira produto da venda', async () => {
+    const est = (await call('GET', '/api/branding')).establishmentId as string;
+    const owner = (type: string, payload: Record<string, unknown>) =>
+      as('authenticated', OWNER_ID, () => rpc<string>('rupbar_owner_command', { p_establishment_id: est, p_type: type, p_payload: payload }));
+    const statusOf = async (id: string) => (await pg.query<{ status: string; result: { message: string } }>('select status, result from remote_commands where id = $1', [id])).rows[0]!;
+
+    // O site lista as apresentações à venda (nome e preço) a partir do que o PC enviou.
+    await s.sync.runOnce();
+    const pres = await as('authenticated', OWNER_ID, () => pg.query<{ id: string; name: string; price_cents: string }>('select id, name, price_cents from v_presentations where active'));
+    const dose = pres.rows.find((r) => r.name === 'Dose 50 ml')!;
+    expect(Number(dose.price_cents)).toBe(2500);
+
+    const cash = await owner('cash.open', { openingBalanceCents: 5_000, label: 'Abrir caixa' });
+    const open = await owner('comanda.open', { customerName: 'Rita', cardNumber: 33, table: null, label: 'Cartão 33 · Rita' });
+    await s.sync.runOnce(); // PC recebe, aplica e confirma
+    expect(await statusOf(cash)).toMatchObject({ status: 'applied', result: { message: 'Caixa 1 aberto.' } });
+    expect(await statusOf(open)).toMatchObject({ status: 'applied', result: { message: 'Comanda 33 aberta.' } });
+    await s.sync.runOnce(); // a comanda nova chega à nuvem
+    const comanda = (await as('authenticated', OWNER_ID, () => pg.query<{ id: string; status: string }>("select id, status from v_comandas where card_number = 33"))).rows[0]!;
+    expect(comanda.status).toBe('open');
+
+    const order = await owner('order.create', { comandaId: comanda.id, items: [{ presentationId: dose.id, quantity: 2 }], label: 'Cartão 33: 2× Gin' });
+    await s.sync.runOnce();
+    expect((await statusOf(order)).status).toBe('applied');
+    await s.sync.runOnce();
+    const items = await as('authenticated', OWNER_ID, () => pg.query<{ id: string; quantity: number; status: string }>('select id, quantity, status from v_comanda_items where comanda_id = $1', [comanda.id]));
+    expect(items.rows).toMatchObject([{ quantity: 2, status: 'active' }]);
+
+    const cancel = await owner('comanda_item.cancel', { itemId: items.rows[0]!.id, reason: 'Lançado errado' });
+    await s.sync.runOnce();
+    expect((await statusOf(cancel)).status).toBe('applied');
+
+    // Recusa com o motivo, sem aplicar nada (cartão já em uso).
+    const dup = await owner('comanda.open', { customerName: 'Outra', cardNumber: 33 });
+    await s.sync.runOnce();
+    expect(await statusOf(dup)).toMatchObject({ status: 'rejected' });
+
+    const staff = await call('POST', '/api/users', { name: 'Caio', email: 'caio@bar.com', roleId: (await call('GET', '/api/roles')).find((r: { key: string }) => r.key === 'waiter').id });
+    await s.sync.runOnce();
+    const removed = await owner('user.remove', { userId: staff.id });
+    const productOff = await owner('product.set_active', { productId: (await call('GET', '/api/products'))[0].id, active: false });
+    await s.sync.runOnce();
+    await s.sync.runOnce();
+    expect((await statusOf(removed)).status).toBe('applied');
+    expect((await statusOf(productOff)).status).toBe('applied');
+    const users = await as('authenticated', OWNER_ID, () => pg.query<{ name: string; status: string }>("select name, status from v_users where status <> 'removed' order by name"));
+    expect(users.rows.map((u) => u.name)).toEqual(['Dona Lu']);
+    const products = await as('authenticated', OWNER_ID, () => pg.query<{ active: boolean }>('select active from v_products'));
+    expect(products.rows[0]!.active).toBe(false);
+  });
 });

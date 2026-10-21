@@ -838,6 +838,11 @@ CREATE TABLE hookah_flavors (
 CREATE UNIQUE INDEX hookah_flavors_product ON hookah_flavors(product_id);
 `;
 
+/** Funcionário excluído: some das listas e não entra mais (o histórico continua com o nome). */
+const M012 = /* sql */ `
+ALTER TABLE users ADD COLUMN deleted_at TEXT;
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -858,6 +863,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 9, name: 'combos: quantidade da escolha', sql: M009 },
   { id: 10, name: 'escolhas por apresentação e meio a meio', sql: M010 },
   { id: 11, name: 'sabores do aluguel de narguilé', sql: M011 },
+  { id: 12, name: 'excluir funcionário', sql: M012 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

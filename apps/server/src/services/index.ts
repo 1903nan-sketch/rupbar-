@@ -1,6 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  remoteCashCloseSchema, remoteCashOpenSchema, remoteComandaOpenSchema, remoteItemCancelSchema, remoteOrderSchema, remoteProductActiveSchema,
+  remoteUserRemoveSchema,
+} from '@rupbar/core/schemas';
 import { Db } from '../db/db';
 import { migrate, pendingMigrations } from '../db/migrations';
 import { SecretBox } from '../lib/crypto';
@@ -121,6 +125,47 @@ export function createServices(opts: CreateOptions) {
     }
     return tickets;
   };
+
+  // Comandos do painel online: aplicados pelo proprietário (nome de quem enviou no histórico).
+  const remote = (payload: unknown) => {
+    const name = typeof (payload as { registeredByName?: unknown })?.registeredByName === 'string' ? String((payload as { registeredByName: string }).registeredByName) : '';
+    return auth.ownerActor(name);
+  };
+  sync.register('comanda.open', (commandId, payload) => {
+    const input = remoteComandaOpenSchema.parse(payload);
+    const c = comandas.open(remote(payload), { ...input, clientRequestId: commandId });
+    return { status: 'applied', message: `Comanda ${c.displayNumber ?? c.number} aberta.`, comandaId: c.id };
+  });
+  sync.register('order.create', (commandId, payload) => {
+    const input = remoteOrderSchema.parse(payload);
+    const o = comandas.createOrder(remote(payload), { comandaId: input.comandaId, clientRequestId: commandId, items: input.items, notes: null });
+    return { status: 'applied', message: `Pedido ${o.number} lançado na comanda ${o.comandaDisplayNumber ?? o.comandaNumber}.`, orderId: o.id };
+  });
+  sync.register('comanda_item.cancel', (_commandId, payload) => {
+    const input = remoteItemCancelSchema.parse(payload);
+    comandas.cancelItem(remote(payload), input.itemId, { reason: input.reason, returnToStock: true });
+    return { status: 'applied', message: 'Item tirado da comanda (estoque devolvido).' };
+  });
+  sync.register('cash.open', (_commandId, payload) => {
+    const input = remoteCashOpenSchema.parse(payload);
+    const s = cash.open(remote(payload), input);
+    return { status: 'applied', message: `Caixa ${s.number} aberto.`, sessionId: s.id };
+  });
+  sync.register('cash.close', (_commandId, payload) => {
+    const input = remoteCashCloseSchema.parse(payload);
+    cash.close(remote(payload), input);
+    return { status: 'applied', message: 'Caixa fechado.' };
+  });
+  sync.register('user.remove', (_commandId, payload) => {
+    const input = remoteUserRemoveSchema.parse(payload);
+    const u = users.remove(remote(payload), input.userId);
+    return { status: 'applied', message: `${u.name} excluído(a).` };
+  });
+  sync.register('product.set_active', (_commandId, payload) => {
+    const input = remoteProductActiveSchema.parse(payload);
+    const p = catalog.setActive(remote(payload), input.productId, input.active);
+    return { status: 'applied', message: input.active ? `${p.name} voltou à venda.` : `${p.name} saiu da venda.` };
+  });
 
   let kitchenSweep: NodeJS.Timeout | null = null;
   return {

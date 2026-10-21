@@ -1,9 +1,13 @@
 import { COMANDA_STATUS, comandaLabel, formatBRL, PAYMENT_METHODS, type ComandaStatus, type PaymentMethod } from '@rupbar/core';
-import { CircleDollarSign, ClipboardList, Receipt, ShieldCheck, X, Zap } from 'lucide-react';
+import { CircleDollarSign, ClipboardList, ClipboardPlus, PlusCircle, Receipt, ShieldCheck, X, Zap } from 'lucide-react';
 import Link from 'next/link';
+import { ActionForm } from '@/components/ActionForm';
+import { CommandFeed } from '@/components/CommandFeed';
 import { Badge, Card, Empty, PageHeader, PeriodForm, Stat } from '@/components/ui';
 import { currentEstablishment, periodFrom } from '@/lib/data';
 import { fmtShort, fmtTime } from '@/lib/format';
+import { openComanda } from '../acoes';
+import { CancelItemButton, ItemLauncher, type SaleOption } from './ItemLauncher';
 
 export const metadata = { title: 'Comandas' };
 
@@ -40,7 +44,9 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
   const status = typeof params.status === 'string' && ['open', 'closed', 'canceled'].includes(params.status) ? params.status : '';
   const tipo = typeof params.tipo === 'string' && ['regular', 'quick'].includes(params.tipo) ? params.tipo : '';
   const selected = typeof params.id === 'string' ? params.id : null;
-  let q = sb.from('v_comandas').select('*').eq('establishment_id', est.id).gte('opened_at', p.from).lt('opened_at', p.to).order('number', { ascending: false }).limit(300);
+  let q = sb.from('v_comandas').select('*').eq('establishment_id', est.id).order('number', { ascending: false }).limit(300);
+  // "Abertas" mostra todas as abertas agora, de qualquer dia.
+  if (status !== 'open') q = q.gte('opened_at', p.from).lt('opened_at', p.to);
   if (status) q = q.eq('status', status);
   if (tipo) q = q.eq('kind', tipo);
   const { data } = await q;
@@ -61,6 +67,25 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
     detail = { items: di ?? [], payments: dp ?? [] };
   }
   const sel = comandas.find((c) => c.id === selected);
+  const { count: openNow } = await sb.from('v_comandas').select('id', { count: 'exact', head: true }).eq('establishment_id', est.id).eq('status', 'open').eq('kind', 'regular');
+  // Itens à venda para lançar na comanda aberta (nome, apresentação e preço).
+  let saleOptions: SaleOption[] = [];
+  if (sel && sel.status === 'open' && sel.kind !== 'quick') {
+    const [{ data: pres }, { data: prods }, { data: cats }] = await Promise.all([
+      sb.from('v_presentations').select('id, product_id, name, price_cents, sort_order').eq('establishment_id', est.id).eq('active', true).eq('menu_visible', true),
+      sb.from('v_products').select('id, name, category_id').eq('establishment_id', est.id).eq('active', true),
+      sb.from('v_categories').select('id, name').eq('establishment_id', est.id),
+    ]);
+    const prod = new Map((prods ?? []).map((x) => [x.id as string, x as { name: string; category_id: string }]));
+    const cat = new Map((cats ?? []).map((x) => [x.id as string, x.name as string]));
+    saleOptions = (pres ?? []).flatMap((x) => {
+      const pr = prod.get(x.product_id as string);
+      if (!pr) return [];
+      const pn = String(x.name);
+      const name = pn === 'Unidade' || pn.toLocaleLowerCase('pt-BR') === pr.name.toLocaleLowerCase('pt-BR') ? pr.name : `${pr.name} · ${pn}`;
+      return [{ presentationId: x.id as string, name, category: cat.get(pr.category_id) ?? '', priceCents: Number(x.price_cents) }];
+    }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }
   const qs = (extra: Record<string, string>) => {
     const u = new URLSearchParams({ de: p.de, ate: p.ate, ...(status ? { status } : {}), ...(tipo ? { tipo } : {}), ...extra });
     return `?${u.toString()}`;
@@ -78,7 +103,7 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
         title="Comandas"
         eyebrow="Atendimento"
         icon={ClipboardList}
-        subtitle="Consulta (somente leitura). Dados pessoais dos clientes permanecem apenas no PC do bar."
+        subtitle="Veja as comandas, abra comanda e lance ou tire itens daqui: o PC do bar aplica em segundos. Dados pessoais dos clientes ficam só no PC."
         actions={
           <PeriodForm
             de={p.de}
@@ -111,8 +136,32 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
 
       <div className="grid-3 stagger">
         <Stat label="Atendimentos" value={comandas.length.toLocaleString('pt-BR')} hint={`${quickCount} venda${quickCount === 1 ? '' : 's'} rápida${quickCount === 1 ? '' : 's'}`} icon={ClipboardList} />
-        <Stat label="Abertas agora" value={openCount.toLocaleString('pt-BR')} hint="no período filtrado" icon={Receipt} tone="teal" />
+        <Link href="?status=open" className="stat-link" aria-label="Ver comandas abertas agora">
+          <Stat label="Abertas agora" value={(openNow ?? openCount).toLocaleString('pt-BR')} hint="toque para ver todas as abertas" icon={Receipt} tone="teal" />
+        </Link>
         <Stat label="Total lançado" value={formatBRL(sum)} hint="itens ativos das comandas listadas" icon={CircleDollarSign} tone="violet" />
+      </div>
+
+      <div className="split-form">
+        <Card title="Abrir comanda" subtitle="Pelo cartão, nome ou mesa" icon={ClipboardPlus} tone="teal">
+          <ActionForm action={openComanda} submit="Abrir comanda" icon={PlusCircle} block>
+            <div className="grid-2 tight">
+              <div className="field">
+                <label htmlFor="cardNumber">Nº do cartão</label>
+                <input id="cardNumber" name="cardNumber" className="input" inputMode="numeric" pattern="[0-9]*" placeholder="Ex.: 12" />
+              </div>
+              <div className="field">
+                <label htmlFor="table">Mesa</label>
+                <input id="table" name="table" className="input" maxLength={20} placeholder="Opcional" />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="customerName">Nome do cliente</label>
+              <input id="customerName" name="customerName" className="input" maxLength={80} placeholder="Opcional" />
+            </div>
+          </ActionForm>
+        </Card>
+        <CommandFeed types={['comanda.open', 'order.create', 'comanda_item.cancel']} path="/comandas" />
       </div>
 
       <div className={`split ${sel ? 'has-detail' : ''}`}>
@@ -196,6 +245,7 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
                       {!active && <div className="tiny danger-text">Cancelado: {(i.cancel_reason as string) ?? 'sem motivo'}</div>}
                     </div>
                     <span className="num">{formatBRL(Number(i.quantity) * Number(i.unit_price_cents))}</span>
+                    {active && sel.status === 'open' && <CancelItemButton itemId={i.id as string} itemLabel={`${i.quantity}× ${i.product_name as string}`} />}
                   </li>
                 );
               })}
@@ -213,6 +263,12 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
                 </li>
               ))}
             </ul>
+            {sel.status === 'open' && sel.kind !== 'quick' && (
+              <div className="detail-launch">
+                <h3 className="mini-label">Lançar itens</h3>
+                <ItemLauncher comandaId={sel.id} comandaLabel={comandaLabel({ number: sel.number, cardNumber: sel.card_number ?? null, kind: sel.kind ?? 'regular' })} options={saleOptions} />
+              </div>
+            )}
             <div className="detail-total">
               <div>
                 <span className="muted small">Total dos itens</span>

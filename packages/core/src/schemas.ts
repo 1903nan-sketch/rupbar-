@@ -743,3 +743,21 @@ export type WhatsAppInput = z.infer<typeof whatsappSchema>;
 
 /** Mensagem de teste: telefone digitado na tela ou, em branco, o do proprietário. */
 export const whatsappSendTestSchema = z.object({ phone: zOptionalPhone }).partial();
+
+// ------------------------------------------------ comandos do painel online
+// O PC confere de novo cada comando vindo da nuvem (dados de fora).
+
+export const remoteComandaOpenSchema = z.object({
+  customerName: trimmed(80).default(''),
+  cardNumber: zCardNumber.nullable().optional().transform((v) => v ?? null),
+  table: optionalText(20),
+});
+export const remoteOrderSchema = z.object({
+  comandaId: zUuid,
+  items: z.array(z.object({ presentationId: zUuid, quantity: z.number().int().min(1).max(99), notes: optionalText(140) })).min(1).max(30),
+});
+export const remoteItemCancelSchema = z.object({ itemId: zUuid, reason: trimmed(200).min(3, 'Informe o motivo') });
+export const remoteCashOpenSchema = z.object({ openingBalanceCents: zCents.min(0) });
+export const remoteCashCloseSchema = z.object({ countedCashCents: zCents.min(0), notes: optionalText(400) });
+export const remoteUserRemoveSchema = z.object({ userId: zUuid });
+export const remoteProductActiveSchema = z.object({ productId: zUuid, active: z.boolean() });

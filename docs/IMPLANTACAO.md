@@ -90,6 +90,8 @@ Em produção, o RupBar foi instalado no projeto Supabase já usado pelo Barberf
 | 20261013012346 | `rupbar_04_owner_rpc` | RPCs do painel (perda remota, cancelar comando, revogar PC) |
 | 20261013012520 | `rupbar_05_views_reports` | visões `v_*`, relatórios, permissões e publicação em tempo real |
 | 20261013013809 | `rupbar_06_revokes` | retirada de privilégios de escrita e do papel anônimo |
+| 20261013041205 | `rupbar_07_cards_quick_sale` | cartões numerados e venda rápida nas visões |
+| 20261021023359 | `rupbar_08_owner_actions` | ações do painel (comanda, itens, caixa, equipe, produtos) e visão `v_presentations` |
 
 Consequências de compartilhar o projeto:
 

@@ -63,7 +63,8 @@ export const SYNCED_TABLES: SyncedTable[] = [
     serialize: (db, row) => ({
       id: row.id,
       name: row.name,
-      status: row.status,
+      // Excluído some do painel online.
+      status: row.deleted_at ? 'removed' : row.status,
       role_id: row.role_id,
       role_name: db.value('SELECT name FROM roles WHERE id = ?', row.role_id as string) ?? null,
       created_at: row.created_at,

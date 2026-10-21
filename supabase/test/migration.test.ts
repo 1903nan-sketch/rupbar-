@@ -118,6 +118,35 @@ describe('nuvem RupBar', () => {
     expect(empty).toHaveLength(0);
   });
 
+  it('ações do painel (abrir comanda, lançar item, caixa…): só o proprietário, tipos conhecidos, entregues ao PC em ordem', async () => {
+    const cmd = (type: string, payload: unknown, who = OWNER) => as('authenticated', who, () => rpc<string>('rupbar_owner_command', { p_establishment_id: EST, p_type: type, p_payload: payload }));
+    await expect(cmd('comanda.open', { customerName: 'Lia' }, OTHER)).rejects.toThrow(/proprietário/);
+    await expect(as('anon', null, () => rpc('rupbar_owner_command', { p_establishment_id: EST, p_type: 'cash.open', p_payload: {} }))).rejects.toThrow();
+    await expect(cmd('loss.register', { qty: 1 })).rejects.toThrow(/Ação inválida/);
+    await expect(cmd('db.drop', {})).rejects.toThrow(/Ação inválida/);
+    await expect(cmd('cash.open', { big: 'x'.repeat(21_000) })).rejects.toThrow(/Dados inválidos/);
+    const a = await cmd('cash.open', { openingBalanceCents: 10_000 });
+    const b = await cmd('comanda.open', { customerName: 'Lia', cardNumber: 12 });
+    const pulled = await as('anon', null, () => rpc<{ id: string; type: string; payload: Record<string, unknown> }[]>('rupbar_device_pull', { p_device_id: device.device_id, p_secret: device.device_secret, p_limit: 10 }));
+    expect(pulled.map((c) => c.id)).toEqual([a, b]);
+    expect(pulled[1]).toMatchObject({ type: 'comanda.open', payload: { customerName: 'Lia', cardNumber: 12, registeredByName: 'marina@bar.com (painel online)' } });
+    await as('anon', null, () => rpc('rupbar_device_ack', {
+      p_device_id: device.device_id, p_secret: device.device_secret,
+      p_results: [
+        { commandId: a, status: 'applied', message: 'Caixa 1 aberto.', appliedAt: new Date().toISOString() },
+        { commandId: b, status: 'rejected', message: 'Cartão 12 já está em uso.', appliedAt: new Date().toISOString() },
+      ],
+    }));
+    const done = await as('authenticated', OWNER, () => db.query<{ id: string; status: string; result: { message: string } }>('select id, status, result from remote_commands where id in ($1, $2)', [a, b]));
+    expect(Object.fromEntries(done.rows.map((r) => [r.id, [r.status, r.result.message]]))).toEqual({ [a]: ['applied', 'Caixa 1 aberto.'], [b]: ['rejected', 'Cartão 12 já está em uso.'] });
+    // Outra conta não vê os comandos do bar.
+    const other = await as('authenticated', OTHER, () => db.query('select id from remote_commands'));
+    expect(other.rows).toHaveLength(0);
+    // Apresentações à venda para lançar itens.
+    const pres = await as('authenticated', OWNER, () => db.query('select * from v_presentations'));
+    expect(pres.rows).toEqual([]);
+  });
+
   it('heartbeat registra última sincronização; novo registro revoga o PC anterior', async () => {
     await as('anon', null, () => rpc('rupbar_device_heartbeat', { p_device_id: device.device_id, p_secret: device.device_secret, p_status: { pending: 3, version: '0.1.0' } }));
     const d = await as('authenticated', OWNER, () => db.query<{ pending_count: number; last_sync_at: string | null }>('select pending_count, last_sync_at from devices where id = $1', [device.device_id]));

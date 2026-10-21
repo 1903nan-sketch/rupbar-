@@ -1,9 +1,12 @@
 import { formatBRL, PAYMENT_METHODS, type PaymentMethod } from '@rupbar/core';
-import { ArrowDownToLine, ArrowUpFromLine, Banknote, Paperclip, Scale, Vault, Wallet, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Banknote, Lock, LockOpen, Paperclip, Scale, Vault, Wallet, X } from 'lucide-react';
 import Link from 'next/link';
+import { ActionForm } from '@/components/ActionForm';
+import { CommandFeed } from '@/components/CommandFeed';
 import { Badge, Card, Empty, PageHeader, PeriodForm, Stat, stagger } from '@/components/ui';
 import { currentEstablishment, periodFrom } from '@/lib/data';
 import { fmtShort } from '@/lib/format';
+import { closeCash, openCash } from '../acoes';
 
 export const metadata = { title: 'Caixas e sangrias' };
 
@@ -19,6 +22,9 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
     sb.from('v_cash_movements').select('*').eq('establishment_id', est.id).gte('created_at', p.from).lt('created_at', p.to).order('created_at', { ascending: false }),
   ]);
   const name = new Map((users ?? []).map((u) => [u.id as string, u.name as string]));
+  // Caixa aberto agora (de qualquer dia), para fechar pelo painel.
+  const { data: openRows } = await sb.from('v_cash_sessions').select('*').eq('establishment_id', est.id).eq('status', 'open').order('opened_at', { ascending: false }).limit(1);
+  const openSession = openRows?.[0] ?? null;
   const sel = (sessions ?? []).find((s) => s.id === selected);
   const summary = sel?.summary as null | { byMethod: Record<string, number>; withdrawals: number; supplies: number; expectedCash: number };
   const withdrawals = (movements ?? []).filter((m) => m.type === 'withdrawal').reduce((a, m) => a + Number(m.amount_cents), 0);
@@ -27,7 +33,34 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="stack-l">
-      <PageHeader title="Caixas e sangrias" eyebrow="Financeiro" icon={Wallet} subtitle="Aberturas, fechamentos e movimentações de dinheiro do caixa." actions={<PeriodForm de={p.de} ate={p.ate} />} />
+      <PageHeader title="Caixas e sangrias" eyebrow="Financeiro" icon={Wallet} subtitle="Abra e feche o caixa daqui; aberturas, fechamentos e movimentações de dinheiro." actions={<PeriodForm de={p.de} ate={p.ate} />} />
+
+      <div className="split-form">
+        {openSession ? (
+          <Card title={`Caixa nº ${openSession.number as number} aberto`} subtitle={`Desde ${fmtShort(openSession.opened_at as string)} · troco inicial ${formatBRL(Number(openSession.opening_balance_cents))}`} icon={Lock} tone="amber">
+            <ActionForm action={closeCash} submit="Fechar caixa" icon={Lock} variant="danger" block confirm="Fechar o caixa agora? Quem estiver usando o PC do bar não vai mais poder receber até abrir de novo.">
+              <div className="field">
+                <label htmlFor="countedCash">Dinheiro contado na gaveta (R$)</label>
+                <input id="countedCash" name="countedCash" className="input" inputMode="decimal" placeholder="Ex.: 350,00" required />
+              </div>
+              <div className="field">
+                <label htmlFor="notes">Observação</label>
+                <input id="notes" name="notes" className="input" maxLength={400} placeholder="Opcional" />
+              </div>
+            </ActionForm>
+          </Card>
+        ) : (
+          <Card title="Abrir caixa" subtitle="Nenhum caixa aberto agora" icon={LockOpen} tone="teal">
+            <ActionForm action={openCash} submit="Abrir caixa" icon={LockOpen} block>
+              <div className="field">
+                <label htmlFor="openingBalance">Troco inicial na gaveta (R$)</label>
+                <input id="openingBalance" name="openingBalance" className="input" inputMode="decimal" placeholder="Ex.: 100,00" />
+              </div>
+            </ActionForm>
+          </Card>
+        )}
+        <CommandFeed types={['cash.open', 'cash.close']} path="/caixas" />
+      </div>
 
       <div className="grid-3 stagger">
         <Stat label="Sangrias" value={formatBRL(withdrawals)} hint="retiradas de dinheiro no período" icon={ArrowUpFromLine} tone="amber" />

@@ -195,6 +195,20 @@ export class AuthService {
     });
   }
 
+  /**
+   * Quem age pelos comandos do painel online: o proprietário (só ele usa o
+   * painel), com o nome de quem enviou para o histórico.
+   */
+  ownerActor(name: string): Actor {
+    const u = this.userWithRole("r.key = 'owner' AND u.status = 'active' AND u.deleted_at IS NULL ORDER BY u.created_at LIMIT 1");
+    if (!u) throw new AppError(409, 'NO_OWNER', 'Nenhum proprietário ativo no PC do bar.');
+    const pub = this.toPublicUser(u);
+    return {
+      kind: 'remote', userId: pub.id, name: name.slice(0, 80) || `${pub.name} (painel online)`, roleKey: pub.roleKey,
+      permissions: new Set(pub.permissions) as Actor['permissions'], ip: null, sessionId: null,
+    };
+  }
+
   /** Invalida todas as sessões de um usuário (bloqueio, troca de permissões, reset). */
   revokeUserSessions(userId: string, reason: string): void {
     this.ctx.db.run(

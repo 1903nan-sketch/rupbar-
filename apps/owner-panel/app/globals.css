@@ -3491,3 +3491,111 @@ a.banner:hover {
     backdrop-filter: none;
   }
 }
+
+/* ---------- ações do painel (o PC do bar aplica) ---------- */
+.split-form.wide-first {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+@media (max-width: 1000px) {
+  .split-form.wide-first {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.action-form {
+  gap: 14px;
+}
+.action-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.action-inline .banner {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.feed-banner {
+  margin: 0 20px 12px;
+}
+.stat-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-l, 18px);
+}
+.stat-link:hover .stat,
+.stat-link:focus-visible .stat {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+.search-form .input {
+  height: 36px;
+  min-width: 0;
+  width: 200px;
+  max-width: 50vw;
+}
+.detail-launch {
+  display: grid;
+  gap: 10px;
+  padding: 14px 20px 16px;
+  border-top: 1px solid var(--separator);
+}
+.launcher-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.launcher-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--separator);
+  background: var(--fill);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.launcher-option:hover,
+.launcher-option:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--fill));
+}
+.launcher-option > .grow {
+  display: grid;
+  min-width: 0;
+}
+.launcher-option .strong {
+  overflow-wrap: anywhere;
+}
+.launcher-picked .list-item {
+  padding: 8px 4px;
+}
+.launcher-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.launcher-stepper .num {
+  min-width: 22px;
+  text-align: center;
+}
+.cancel-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.cancel-item .input {
+  height: 34px;
+  width: 190px;
+  max-width: 100%;
+}
