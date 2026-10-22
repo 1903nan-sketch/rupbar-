@@ -3599,3 +3599,91 @@ a.banner:hover {
   width: 190px;
   max-width: 100%;
 }
+
+/* ---------- comandas abertas (de qualquer dia) ---------- */
+.open-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+.open-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--fill);
+  border: 1px solid var(--separator);
+  color: var(--text);
+  text-decoration: none;
+  transition: translate 0.25s var(--ease-out), border-color 0.2s, background 0.2s;
+}
+.open-tile:hover,
+.open-tile:focus-visible {
+  translate: 0 -2px;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--fill-2);
+}
+.open-tile.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--fill));
+}
+.open-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 16px;
+}
+.open-tile-head svg {
+  color: var(--text-3, var(--text-2));
+  flex: none;
+}
+.open-tile-who {
+  color: var(--text-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.open-tile-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+#comanda,
+#abertas {
+  scroll-margin-top: 84px;
+}
+.table tbody tr.clickable {
+  cursor: pointer;
+}
+.section-head {
+  margin-top: 6px;
+}
+.section-head h2 {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.section-head .subtitle {
+  margin-top: 2px;
+}
+.page-icon.sm {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+}
+@media (max-width: 560px) {
+  .open-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .feed-item {
+    flex-wrap: wrap;
+  }
+  .feed-item > .grow {
+    flex-basis: 100%;
+  }
+}

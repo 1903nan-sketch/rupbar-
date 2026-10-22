@@ -1,9 +1,9 @@
 import { REMOTE_COMMAND_LABELS, type RemoteCommandType } from '@rupbar/core';
-import { CloudUpload, WifiOff } from 'lucide-react';
+import { CloudUpload, Download, WifiOff } from 'lucide-react';
 import { cancelCommand } from '@/app/(panel)/acoes';
 import { AutoRefresh } from './AutoRefresh';
 import { Badge, Card, Empty, type BadgeColor } from './ui';
-import { currentEstablishment, deviceStatus } from '@/lib/data';
+import { currentEstablishment, deviceStatus, OWNER_ACTIONS_VERSION, versionAtLeast } from '@/lib/data';
 import { fmtShort } from '@/lib/format';
 
 const STATUS: Record<string, [string, BadgeColor]> = {
@@ -31,9 +31,18 @@ export async function CommandFeed({ types, path, title = 'Ações enviadas', lim
   const waiting = commands.filter((c) => c.status === 'pending' || c.status === 'delivered');
   const seenAgo = device?.last_seen_at ? Date.now() - new Date(device.last_seen_at).getTime() : Infinity;
   const offline = waiting.length > 0 && seenAgo > 2 * 60_000;
+  const outdated = !!device && !versionAtLeast(device.app_version, OWNER_ACTIONS_VERSION);
   return (
     <Card title={title} subtitle={waiting.length ? `${waiting.length} esperando o PC do bar` : 'O PC do bar confere e aplica cada ação'} icon={CloudUpload} tone="blue" flush>
       {waiting.length > 0 && <AutoRefresh seconds={4} />}
+      {outdated && (
+        <div className="banner warning feed-banner" role="status">
+          <span className="banner-icon" aria-hidden="true"><Download size={18} /></span>
+          <span>
+            O PC do bar está com o RupBar {device?.app_version ?? 'antigo'}. Para abrir comanda, lançar item, abrir ou fechar o caixa daqui, instale a atualização no PC do bar.
+          </span>
+        </div>
+      )}
       {offline && (
         <div className="banner warning feed-banner" role="status">
           <span className="banner-icon" aria-hidden="true"><WifiOff size={18} /></span>
@@ -47,10 +56,12 @@ export async function CommandFeed({ types, path, title = 'Ações enviadas', lim
           {commands.map((c) => {
             const [label, color] = STATUS[c.status as string] ?? [c.status as string, 'gray' as const];
             const payload = c.payload as { label?: string } | null;
-            const msg = (c.result as { message?: string } | null)?.message;
+            const raw = (c.result as { message?: string } | null)?.message;
+            // PC antigo: não conhece a ação e recusa com "Comando desconhecido".
+            const msg = raw?.startsWith('Comando desconhecido') ? 'O PC do bar precisa da atualização do RupBar para esta ação.' : raw;
             const busy = c.status === 'pending' || c.status === 'delivered';
             return (
-              <li key={c.id as string} className="list-item">
+              <li key={c.id as string} className="list-item feed-item">
                 <div className="grow">
                   <div className="strong">{payload?.label || REMOTE_COMMAND_LABELS[c.type as RemoteCommandType] || (c.type as string)}</div>
                   <div className={`tiny ${c.status === 'rejected' || c.status === 'conflict' ? 'danger-text' : 'muted'}`}>

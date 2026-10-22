@@ -36,7 +36,7 @@ export default async function Team() {
                     {owner ? (
                       <Badge color="blue"><ShieldCheck size={12} aria-hidden="true" /> Proprietário</Badge>
                     ) : (
-                      <ActionForm action={removeUser} compact reset={false} submit="Excluir" icon={Trash2} variant="ghost"
+                      <ActionForm action={removeUser} compact reset={false} submit="Excluir" icon={<Trash2 size={14} aria-hidden="true" />} variant="ghost"
                         confirm={`Excluir ${u.name as string}? Não entra mais no sistema (nem no celular).`}>
                         <input type="hidden" name="userId" value={u.id as string} />
                         <input type="hidden" name="name" value={u.name as string} />

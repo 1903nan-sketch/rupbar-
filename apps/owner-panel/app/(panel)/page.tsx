@@ -32,7 +32,6 @@ import {
   daysBetween,
   hourInBrazil,
   lossesTotal,
-  periodFrom,
   salesByHour,
   salesSummary,
 } from '@/lib/data';
@@ -282,7 +281,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
 
         <Card title="Agora no bar" subtitle="Movimento em tempo real" icon={Zap} tone="teal" flush className="reveal" style={stagger(8)}>
           <div className="now-grid">
-            <Link href={`/comandas?status=open&de=${periodFrom({}, 30).de}`} className="now-tile">
+            <Link href="/comandas" className="now-tile">
               <span className="now-value">{openCount}</span>
               <span className="now-label">comanda{openCount === 1 ? '' : 's'} aberta{openCount === 1 ? '' : 's'}</span>
             </Link>

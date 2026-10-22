@@ -1,8 +1,8 @@
 import { formatBRL } from '@rupbar/core';
-import { Ban, PackageCheck, RotateCcw, ShoppingBag, Tags } from 'lucide-react';
+import { Ban, PackageCheck, RotateCcw, Tags } from 'lucide-react';
 import { ActionForm } from '@/components/ActionForm';
 import { CommandFeed } from '@/components/CommandFeed';
-import { Badge, Card, Empty, LinkTabs, PageHeader, Stat } from '@/components/ui';
+import { Badge, Card, Empty, LinkTabs, PageHeader } from '@/components/ui';
 import { currentEstablishment } from '@/lib/data';
 import { setProductActive } from '../acoes';
 
@@ -44,11 +44,6 @@ export default async function Products({ searchParams }: { searchParams: Promise
           />
         }
       />
-      <div className="grid-3 stagger">
-        <Stat label="À venda" value={onSale.toLocaleString('pt-BR')} hint="no cardápio agora" icon={ShoppingBag} tone="teal" />
-        <Stat label="Fora de venda" value={(all.length - onSale).toLocaleString('pt-BR')} hint="podem voltar quando quiser" icon={Ban} tone="amber" />
-        <Stat label="Categorias" value={new Set(all.map((p) => p.category)).size.toLocaleString('pt-BR')} icon={Tags} tone="violet" />
-      </div>
       <div className="split-form wide-first">
         <Card title={view === 'fora' ? 'Fora de venda' : 'À venda'} icon={PackageCheck} flush
           actions={
@@ -73,7 +68,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     </div>
                   </div>
                   {!p.active && <Badge color="gray">Fora de venda</Badge>}
-                  <ActionForm action={setProductActive} compact reset={false} submit={p.active ? 'Tirar da venda' : 'Voltar à venda'} icon={p.active ? Ban : RotateCcw} variant={p.active ? 'ghost' : 'primary'}
+                  <ActionForm action={setProductActive} compact reset={false} submit={p.active ? 'Tirar da venda' : 'Voltar à venda'} icon={p.active ? <Ban size={14} aria-hidden="true" /> : <RotateCcw size={14} aria-hidden="true" />} variant={p.active ? 'ghost' : 'primary'}
                     confirm={p.active ? `Tirar "${p.name}" da venda? Ele some do cardápio do PC e dos celulares.` : undefined}>
                     <input type="hidden" name="productId" value={p.id} />
                     <input type="hidden" name="name" value={p.name} />

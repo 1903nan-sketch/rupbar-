@@ -49,6 +49,19 @@ export async function currentEstablishment() {
   return { sb, user, establishments: list, est };
 }
 
+/** Versão do RupBar no PC a partir da qual ele aplica as ações enviadas pelo painel. */
+export const OWNER_ACTIONS_VERSION = '0.3.0';
+
+/** `v` (ex.: "0.2.0") é igual ou mais nova que `min`? Sem versão conta como antiga. */
+export function versionAtLeast(v: string | null | undefined, min: string): boolean {
+  const parse = (x: string) => x.split(/[.-]/).slice(0, 3).map((n) => Number.parseInt(n, 10) || 0);
+  if (!v) return false;
+  const a = parse(v);
+  const b = parse(min);
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return true;
+}
+
 export async function deviceStatus(establishmentId: string): Promise<DeviceStatus | null> {
   const sb = await supabaseServer();
   const { data } = await sb

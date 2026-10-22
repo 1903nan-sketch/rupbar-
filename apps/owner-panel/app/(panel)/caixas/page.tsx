@@ -1,8 +1,10 @@
 import { formatBRL, PAYMENT_METHODS, type PaymentMethod } from '@rupbar/core';
-import { ArrowDownToLine, ArrowUpFromLine, Banknote, Lock, LockOpen, Paperclip, Scale, Vault, Wallet, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Banknote, History, Lock, LockOpen, Paperclip, Scale, Vault, Wallet, X } from 'lucide-react';
 import Link from 'next/link';
 import { ActionForm } from '@/components/ActionForm';
 import { CommandFeed } from '@/components/CommandFeed';
+import { LinkRow } from '@/components/LinkRow';
+import { ScrollHere } from '@/components/ScrollHere';
 import { Badge, Card, Empty, PageHeader, PeriodForm, Stat, stagger } from '@/components/ui';
 import { currentEstablishment, periodFrom } from '@/lib/data';
 import { fmtShort } from '@/lib/format';
@@ -33,12 +35,12 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="stack-l">
-      <PageHeader title="Caixas e sangrias" eyebrow="Financeiro" icon={Wallet} subtitle="Abra e feche o caixa daqui; aberturas, fechamentos e movimentações de dinheiro." actions={<PeriodForm de={p.de} ate={p.ate} />} />
+      <PageHeader title="Caixas e sangrias" eyebrow="Financeiro" icon={Wallet} subtitle="Abra e feche o caixa daqui; aberturas, fechamentos e movimentações de dinheiro." />
 
       <div className="split-form">
         {openSession ? (
           <Card title={`Caixa nº ${openSession.number as number} aberto`} subtitle={`Desde ${fmtShort(openSession.opened_at as string)} · troco inicial ${formatBRL(Number(openSession.opening_balance_cents))}`} icon={Lock} tone="amber">
-            <ActionForm action={closeCash} submit="Fechar caixa" icon={Lock} variant="danger" block confirm="Fechar o caixa agora? Quem estiver usando o PC do bar não vai mais poder receber até abrir de novo.">
+            <ActionForm action={closeCash} submit="Fechar caixa" icon={<Lock size={17} aria-hidden="true" />} variant="danger" block confirm="Fechar o caixa agora? Quem estiver usando o PC do bar não vai mais poder receber até abrir de novo.">
               <div className="field">
                 <label htmlFor="countedCash">Dinheiro contado na gaveta (R$)</label>
                 <input id="countedCash" name="countedCash" className="input" inputMode="decimal" placeholder="Ex.: 350,00" required />
@@ -51,7 +53,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
           </Card>
         ) : (
           <Card title="Abrir caixa" subtitle="Nenhum caixa aberto agora" icon={LockOpen} tone="teal">
-            <ActionForm action={openCash} submit="Abrir caixa" icon={LockOpen} block>
+            <ActionForm action={openCash} submit="Abrir caixa" icon={<LockOpen size={17} aria-hidden="true" />} block>
               <div className="field">
                 <label htmlFor="openingBalance">Troco inicial na gaveta (R$)</label>
                 <input id="openingBalance" name="openingBalance" className="input" inputMode="decimal" placeholder="Ex.: 100,00" />
@@ -60,6 +62,21 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
           </Card>
         )}
         <CommandFeed types={['cash.open', 'cash.close']} path="/caixas" />
+      </div>
+
+      <div className="page-header section-head">
+        <div className="page-heading">
+          <span className="page-icon sm" aria-hidden="true">
+            <History size={18} strokeWidth={2} />
+          </span>
+          <div className="grow">
+            <h2>Histórico</h2>
+            <p className="subtitle">Caixas, sangrias e suprimentos do período</p>
+          </div>
+        </div>
+        <div className="page-actions">
+          <PeriodForm de={p.de} ate={p.ate} />
+        </div>
       </div>
 
       <div className="grid-3 stagger">
@@ -94,7 +111,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
               </thead>
               <tbody>
                 {sessions.map((s) => (
-                  <tr key={s.id as string} className={`clickable ${s.id === selected ? 'selected' : ''}`}>
+                  <LinkRow key={s.id as string} href={`?de=${p.de}&ate=${p.ate}&id=${s.id}`} selected={s.id === selected}>
                     <td>
                       <Link href={`?de=${p.de}&ate=${p.ate}&id=${s.id}`} className="row-link strong" scroll={false} aria-current={s.id === selected ? 'true' : undefined}>
                         nº {s.number as number}
@@ -121,7 +138,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
                     <td className={`right num strong ${Number(s.difference_cents) < 0 ? 'danger-text' : Number(s.difference_cents) > 0 ? 'warning-text' : ''}`}>
                       {s.difference_cents !== null ? formatBRL(Number(s.difference_cents)) : '—'}
                     </td>
-                  </tr>
+                  </LinkRow>
                 ))}
               </tbody>
             </table>
@@ -143,6 +160,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
             </Link>
           }
         >
+          <ScrollHere />
           <div className="mini-stats stagger">
             {Object.entries(summary.byMethod).map(([m, v]) => (
               <div key={m} className="mini-stat">

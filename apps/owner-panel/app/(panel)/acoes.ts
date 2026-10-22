@@ -1,7 +1,7 @@
 'use server';
 import type { RemoteCommandType } from '@rupbar/core';
 import { revalidatePath } from 'next/cache';
-import { currentEstablishment } from '@/lib/data';
+import { currentEstablishment, deviceStatus, OWNER_ACTIONS_VERSION, versionAtLeast } from '@/lib/data';
 
 export interface ActionState {
   ok: boolean;
@@ -19,6 +19,10 @@ function cents(raw: FormDataEntryValue | null): number | null {
   return Number.isFinite(n) && n >= 0 && n < 10_000_000 ? Math.round(n * 100) : null;
 }
 
+function outdatedMessage(version: string | null) {
+  return `O PC do bar está com o RupBar ${version ?? 'antigo'}, que ainda não recebe ações do site. Instale a atualização no PC do bar e tente de novo.`;
+}
+
 /**
  * Envia a ação como comando para o PC do bar (fonte da verdade): ele confere,
  * aplica uma única vez e devolve "aplicado" ou o motivo da recusa.
@@ -26,6 +30,9 @@ function cents(raw: FormDataEntryValue | null): number | null {
 async function send(type: Exclude<RemoteCommandType, 'loss.register'>, payload: Record<string, unknown>, path: string): Promise<ActionState> {
   const { sb, est } = await currentEstablishment();
   if (!est) return { ok: false, message: 'Nenhum estabelecimento vinculado.' };
+  // O PC antigo recusa na hora o que não conhece: avisa antes de enviar.
+  const device = await deviceStatus(est.id);
+  if (device && !versionAtLeast(device.app_version, OWNER_ACTIONS_VERSION)) return { ok: false, message: outdatedMessage(device.app_version) };
   const { error } = await sb.rpc('rupbar_owner_command', { p_establishment_id: est.id, p_type: type, p_payload: payload });
   if (error) return { ok: false, message: error.message };
   revalidatePath(path);
