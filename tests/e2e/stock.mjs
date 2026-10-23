@@ -327,6 +327,27 @@ try {
   assert.equal(salesNow.grossCents, 0, 'consumo de funcionário fora das vendas');
   assert.deepEqual(salesNow.staffConsumption.map((r) => [r.name, r.items, r.value]), [['Marina Souza', 2, 2_400]]);
 
+  // 6f2. Trocar item lançado: acabou a cerveja, entra a água com gás (PC e celular).
+  const swapComanda = await request('POST', '/api/comandas', { customerName: 'Troca' });
+  await request('POST', '/api/orders', { comandaId: swapComanda.id, clientRequestId: crypto.randomUUID(), items: [{ presentationId: beerItem.presentationId, quantity: 2 }] });
+  await page.goto(`${base}/comandas/${swapComanda.id}`);
+  await page.getByRole('button', { name: 'Trocar Cerveja teste' }).click();
+  await modal.getByText('2× Cerveja teste').waitFor();
+  await modal.getByLabel('Buscar produto').fill('Água com gás');
+  await modal.getByRole('button', { name: /Adicionar Água com gás/ }).click();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: join(out, '07h-trocar-item.png') });
+  await modal.getByRole('button', { name: /^Trocar · R\$ 10,00/ }).click();
+  await modal.waitFor({ state: 'hidden' });
+  const swapped = await request('GET', `/api/comandas/${swapComanda.id}`);
+  assert.deepEqual(swapped.items.map((i) => [i.name, i.quantity, i.status]), [['Cerveja teste', 2, 'canceled'], ['Água com gás', 2, 'active']]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${base}/m/comanda/${swapComanda.id}`);
+  await page.getByRole('button', { name: /Já lançados · 2 itens/ }).click();
+  await page.getByRole('button', { name: 'Trocar Água com gás' }).waitFor();
+  await page.screenshot({ path: join(out, '07i-trocar-no-celular.png') });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   // 6g. Excluir produto: lixeira na lista de Produtos, com confirmação.
   await page.goto(base + '/produtos');
   await page.getByRole('row').filter({ hasText: 'Água com gás' }).getByRole('button', { name: 'Excluir Água com gás' }).click();
@@ -351,6 +372,6 @@ try {
   await page.getByRole('link', { name: 'Importar a planilha do estoque' }).click();
   await page.getByText('Vamos cadastrar seu estoque?').waitFor();
   assert.deepEqual(errors, []);
-  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular, importação de planilha, escolha só da dose, meio a meio na hora, balde de cerveja, consumo de funcionário, excluir produto e apagar dados de teste. Capturas em ${out}`);
+  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular, importação de planilha, escolha só da dose, meio a meio na hora, balde de cerveja, consumo de funcionário, trocar item, excluir produto e apagar dados de teste. Capturas em ${out}`);
 } catch (error) { console.error(error); process.exitCode = 1; }
 finally { await browser?.close(); server.stdin.write('shutdown\n'); setTimeout(() => server.kill(), 3000).unref(); }

@@ -315,6 +315,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('GET', '/api/comandas/:id/split', (req, a) => s.comandas.split(a, id(req), Number(q(req).parts)));
   r('POST', '/api/comandas/:id/print', (req, a) => ({ jobs: s.printing.printBill(a, id(req)) }));
   r('POST', '/api/comanda-items/:id/cancel', (req, a) => s.comandas.cancelItem(a, id(req), req.body));
+  r('POST', '/api/comanda-items/:id/swap', (req, a) => s.comandas.swapItem(a, id(req), req.body, q(req).source === 'mobile' ? 'mobile' : 'desktop'));
   r('POST', '/api/orders', (req, a) => s.comandas.createOrder(a, req.body, q(req).source === 'mobile' ? 'mobile' : 'desktop'));
   r('POST', '/api/quick-sales', (req, a) => s.sales.quickSale(a, req.body));
 

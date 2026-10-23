@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ConnectionBanner, Logo } from '../../components/brand';
 import { OrderComposer } from '../../components/OrderComposer';
+import { LaunchedItems } from '../../components/SwapItem';
 import { Badge, Button, Empty, ErrorBox, Input, Loading, useToast } from '../../components/ui';
 import { api, requestId } from '../../lib/api';
 import { elapsed, formatBRL } from '../../lib/format';
@@ -171,7 +172,12 @@ export function MobileComanda() {
             {can('hookah.rent') && <button type="button" role="tab" aria-selected={view === 'narguile'} className={view === 'narguile' ? 'active' : ''} onClick={() => setView('narguile')}>Narguilé</button>}
             <button type="button" role="tab" aria-selected={view === 'cobrar'} className={view === 'cobrar' ? 'active' : ''} onClick={() => setView('cobrar')}>Cobrar</button>
           </div>
-          {view === 'lancar' && <OrderComposer comandaId={c.id} compact onSent={() => { void reload(); }} />}
+          {view === 'lancar' && (
+            <>
+              <LaunchedItems items={c.items} onChanged={() => void reload()} />
+              <OrderComposer comandaId={c.id} compact onSent={() => { void reload(); }} />
+            </>
+          )}
           {view === 'narguile' && <MobileHookah comandaId={c.id} onChanged={() => void reload()} />}
           {view === 'cobrar' && <MobileCharge comanda={c} onChanged={() => void reload()} onClosed={() => nav('/m')} />}
         </>

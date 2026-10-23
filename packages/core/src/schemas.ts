@@ -429,6 +429,17 @@ export const cancelItemSchema = z.object({
   returnToStock: z.boolean().default(true),
 });
 
+/**
+ * Troca de um item lançado (acabou a água: vai a com gás; outro energético):
+ * o item sai (volta ao estoque) e os novos entram num pedido.
+ */
+export const swapItemSchema = z.object({
+  clientRequestId: zUuid,
+  items: z.array(orderItemSchema).min(1, 'Escolha o que entra no lugar').max(30),
+  reason: optionalText(120),
+  returnToStock: z.boolean().default(true),
+});
+
 export const versionSchema = z.object({ expectedVersion: z.number().int().min(1) });
 
 export const transferSchema = versionSchema.extend({ table: trimmed(20).min(1) });

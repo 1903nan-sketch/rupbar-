@@ -152,3 +152,96 @@ describe('balde de cerveja', () => {
     expect((await owner.fail('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: item.presentationId, quantity: 1 }] })).status).toBe(400);
   });
 });
+
+describe('trocar item lançado', () => {
+  async function water() {
+    const cat = await category(owner, 'Cervejas');
+    const mk = async (name: string, price: number) => {
+      const p = await owner.ok('POST', '/api/products', {
+        name, categoryId: cat, measure: 'unit', station: 'bar', presentations: [{ name: 'Unidade', priceCents: price }], initialStock: { qty: 10_000, totalCostCents: 1_000 },
+      });
+      return { id: p.id as string, presentationId: (await owner.ok('GET', `/api/products/${p.id}`)).presentations[0].id as string };
+    };
+    return { still: await mk('Água sem gás', 500), sparkling: await mk('Água com gás', 600) };
+  }
+
+  it('acabou a água: sai a sem gás (volta ao estoque), entra a com gás num pedido novo para o bar', async () => {
+    const w = await water();
+    const c = await owner.ok('POST', '/api/comandas', { customerName: 'Lia' });
+    await order(c.id, [{ presentationId: w.still.presentationId, quantity: 2 }]);
+    const old = (await owner.ok('GET', `/api/comandas/${c.id}`)).items[0];
+    const key = uuid();
+    const r = await owner.ok('POST', `/api/comanda-items/${old.id}/swap`, { clientRequestId: key, items: [{ presentationId: w.sparkling.presentationId, quantity: 2 }], reason: 'Acabou' });
+    expect(r).toMatchObject({ duplicate: false, swappedItemId: old.id });
+    // Repetir o envio (rede caiu) não troca de novo.
+    expect((await owner.ok('POST', `/api/comanda-items/${old.id}/swap`, { clientRequestId: key, items: [{ presentationId: w.sparkling.presentationId, quantity: 2 }] })).duplicate).toBe(true);
+    const d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    expect(d.items.map((i: { name: string; status: string; cancelReason: string | null }) => [i.name, i.status, i.cancelReason])).toEqual([
+      ['Água sem gás', 'canceled', 'Trocado: Acabou'], ['Água com gás', 'active', null],
+    ]);
+    expect(d.total).toBe(1_200);
+    expect(await stockOf(w.still.id)).toBe(10_000);
+    expect(await stockOf(w.sparkling.id)).toBe(8_000);
+    // O pedido antigo some do bar (ticket cancelado) e o novo chega com a observação.
+    const tickets = env.s.db.all<{ order_id: string; status: string }>('SELECT order_id, status FROM order_tickets ORDER BY created_at');
+    expect(tickets.map((t) => t.status)).toEqual(['canceled', 'received']);
+    expect(env.s.db.value('SELECT notes FROM orders WHERE id = ?', tickets[1]!.order_id)).toBe('Troca de 2× Água sem gás');
+  });
+
+  it('trocar só a escolha (outro energético na dose)', async () => {
+    const redbull = await beer('Red Bull', 1_000);
+    const monster = await beer('Monster', 900);
+    const group = await owner.ok('POST', '/api/option-groups', {
+      name: 'Energético', required: true,
+      choices: [{ name: 'Red Bull', priceDeltaCents: 800, productId: redbull.id, qty: 1000 }, { name: 'Monster', priceDeltaCents: 500, productId: monster.id, qty: 1000 }],
+    });
+    const dose = await owner.ok('POST', '/api/products', {
+      name: 'Dose gin', categoryId: redbull.cat, measure: 'unit', stockTracked: false, presentations: [{ name: 'Dose', priceCents: 2_000, components: [] }], optionGroups: [{ groupId: group.id, quantity: 1 }],
+    });
+    const menu = await owner.ok('GET', '/api/menu');
+    const item = menu.items.find((i: { productId: string }) => i.productId === dose.id);
+    const [rb, mo] = menu.optionGroups[group.id].choices;
+    const c = await owner.ok('POST', '/api/comandas', { customerName: 'Lia' });
+    await order(c.id, [{ presentationId: item.presentationId, quantity: 1, options: [{ groupId: group.id, choiceId: rb.id }] }]);
+    const old = (await owner.ok('GET', `/api/comandas/${c.id}`)).items[0];
+    await owner.ok('POST', `/api/comanda-items/${old.id}/swap`, { clientRequestId: uuid(), items: [{ presentationId: item.presentationId, quantity: 1, options: [{ groupId: group.id, choiceId: mo.id }] }] });
+    const d = await owner.ok('GET', `/api/comandas/${c.id}`);
+    expect(d.items.find((i: { status: string }) => i.status === 'active')).toMatchObject({ options: 'Monster', unitPriceCents: 2_500 });
+    expect(await stockOf(redbull.id)).toBe(24_000);
+    expect(await stockOf(monster.id)).toBe(23_000);
+  });
+
+  it('garçom troca o que ainda não ficou pronto; pronto ou depois de 30 min, só o gerente', async () => {
+    const w = await water();
+    const waiter = await createStaff(env, owner, 'waiter', 'Davi', 'davi@bar.com');
+    const c = await waiter.ok('POST', '/api/comandas', { customerName: 'Lia' });
+    const launch = async () => {
+      await waiter.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: w.still.presentationId, quantity: 1 }] });
+      return (await owner.ok('GET', `/api/comandas/${c.id}`)).items.filter((i: { status: string; name: string }) => i.status === 'active' && i.name === 'Água sem gás').at(-1);
+    };
+    const swap = (who: Client, itemId: string) => who.req('POST', `/api/comanda-items/${itemId}/swap`, { clientRequestId: uuid(), items: [{ presentationId: w.sparkling.presentationId, quantity: 1 }] });
+
+    expect((await swap(waiter, (await launch()).id)).statusCode).toBe(200);
+    const ready = await launch();
+    env.s.db.run("UPDATE order_tickets SET status = 'ready' WHERE order_id = (SELECT order_id FROM comanda_items WHERE id = ?)", ready.id);
+    const denied = await waiter.fail('POST', `/api/comanda-items/${ready.id}/swap`, { clientRequestId: uuid(), items: [{ presentationId: w.sparkling.presentationId, quantity: 1 }] });
+    expect(denied).toMatchObject({ status: 403, code: 'SWAP_NOT_ALLOWED' });
+    const late = await launch();
+    env.clock.advance(31 * 60_000);
+    expect((await swap(waiter, late.id)).statusCode).toBe(403);
+    expect((await swap(owner, late.id)).statusCode).toBe(200);
+  });
+
+  it('comanda já paga não fica com pagamento maior que o total (nada muda)', async () => {
+    const w = await water();
+    const c = await owner.ok('POST', '/api/comandas', { customerName: 'Lia' });
+    await order(c.id, [{ presentationId: w.sparkling.presentationId, quantity: 1 }]);
+    await owner.ok('POST', '/api/cash/open', { openingBalanceCents: 0 });
+    await owner.ok('POST', '/api/payments', { comandaId: c.id, method: 'cash', amountCents: 600, clientRequestId: uuid() });
+    const old = (await owner.ok('GET', `/api/comandas/${c.id}`)).items[0];
+    const r = await owner.fail('POST', `/api/comanda-items/${old.id}/swap`, { clientRequestId: uuid(), items: [{ presentationId: w.still.presentationId, quantity: 1 }] });
+    expect(r.code).toBe('PAID_EXCEEDS_TOTAL');
+    expect((await owner.ok('GET', `/api/comandas/${c.id}`)).items.map((i: { status: string }) => i.status)).toEqual(['active']);
+    expect(await stockOf(w.sparkling.id)).toBe(9_000);
+  });
+});

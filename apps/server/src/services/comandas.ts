@@ -4,7 +4,7 @@ import {
 } from '@rupbar/core';
 import {
   cancelComandaSchema, cancelItemSchema, closeComandaSchema, comandaEditSchema, comandaOpenSchema, discountSchema, moveItemsSchema, orderCreateSchema,
-  serviceFeeSchema, transferSchema,
+  serviceFeeSchema, transferSchema, swapItemSchema,
 } from '@rupbar/core/schemas';
 import type { Row } from '../db/db';
 import { badRequest, conflict, forbidden, notFound, staleVersion } from '../lib/errors';
@@ -563,34 +563,81 @@ export class ComandasService {
       if (t.total - itemTotal < t.paid) {
         throw conflict('O valor já pago ficaria maior que o total. Estorne um pagamento antes de cancelar o item.', 'PAID_EXCEEDS_TOTAL');
       }
-      const now = this.ctx.nowIso();
-      this.ctx.db.run(
-        `UPDATE comanda_items SET status = 'canceled', cancel_reason = ?, canceled_by = ?, canceled_at = ?, version = version + 1, updated_at = ? WHERE id = ?`,
-        input.reason, actor.userId, now, now, itemId,
-      );
-      if (input.returnToStock && item.kind === 'product') this.stock.reverseSale(itemId, actor.userId, input.reason);
-      if (item.order_id) {
-        // Se todos os itens do setor foram cancelados, o ticket de produção é cancelado.
-        const remaining = Number(
-          this.ctx.db.value(
-            "SELECT COUNT(*) FROM comanda_items WHERE order_id = ? AND station = ? AND status = 'active'",
-            String(item.order_id), String(item.station),
-          ),
-        );
-        if (remaining === 0) {
-          this.ctx.db.run(
-            "UPDATE order_tickets SET status = 'canceled', canceled_at = ?, version = version + 1, updated_at = ? WHERE order_id = ? AND station = ? AND status <> 'canceled'",
-            now, now, String(item.order_id), String(item.station),
-          );
-        }
-        this.ctx.emit({ channel: 'kitchen', type: 'order.changed', data: { orderId: item.order_id } });
-        this.ctx.emit({ channel: 'tv', type: 'board.changed' });
-      }
+      this.cancelItemRow(actor, item, input.reason, input.returnToStock);
       this.touch(String(c.id), 'item_canceled');
       this.ctx.audit(actor, 'comandas.item_canceled', 'comanda_item', itemId, {
         comanda: c.number, product: item.product_name, quantity: item.quantity, reason: input.reason, returnToStock: input.returnToStock,
       });
       return this.detail(actor, String(c.id));
+    });
+  }
+
+  /** Cancela o item (e o ticket do setor, se ficou vazio); devolve ao estoque se pedido. */
+  private cancelItemRow(actor: Actor, item: Row, reason: string, returnToStock: boolean) {
+    const now = this.ctx.nowIso();
+    const itemId = String(item.id);
+    this.ctx.db.run(
+      `UPDATE comanda_items SET status = 'canceled', cancel_reason = ?, canceled_by = ?, canceled_at = ?, version = version + 1, updated_at = ? WHERE id = ?`,
+      reason, actor.userId, now, now, itemId,
+    );
+    if (returnToStock && item.kind === 'product') this.stock.reverseSale(itemId, actor.userId, reason);
+    if (item.order_id) {
+      // Se todos os itens do setor foram cancelados, o ticket de produção é cancelado.
+      const remaining = Number(
+        this.ctx.db.value(
+          "SELECT COUNT(*) FROM comanda_items WHERE order_id = ? AND station = ? AND status = 'active'",
+          String(item.order_id), String(item.station),
+        ),
+      );
+      if (remaining === 0) {
+        this.ctx.db.run(
+          "UPDATE order_tickets SET status = 'canceled', canceled_at = ?, version = version + 1, updated_at = ? WHERE order_id = ? AND station = ? AND status <> 'canceled'",
+          now, now, String(item.order_id), String(item.station),
+        );
+      }
+      this.ctx.emit({ channel: 'kitchen', type: 'order.changed', data: { orderId: item.order_id } });
+      this.ctx.emit({ channel: 'tv', type: 'board.changed' });
+    }
+  }
+
+  /**
+   * Troca um item lançado (acabou a água: vai a com gás; outro energético na
+   * dose): o item sai e volta ao estoque, e o que entra no lugar vai num
+   * pedido novo, que segue para a produção e a impressora como qualquer
+   * pedido. Idempotente por `clientRequestId`. Quem não pode cancelar itens
+   * só troca o que ainda não ficou pronto, até 30 minutos depois de lançado.
+   */
+  swapItem(actor: Actor, itemId: string, raw: unknown, source: OrderSource = 'desktop') {
+    requirePerm(actor, 'orders.create');
+    const input = swapItemSchema.parse(raw);
+    return this.ctx.tx(() => {
+      const existing = this.ctx.db.get('SELECT id FROM orders WHERE client_request_id = ?', input.clientRequestId);
+      if (existing) return { ...this.orderView(String(existing.id)), duplicate: true };
+      const item = this.ctx.db.get('SELECT * FROM comanda_items WHERE id = ?', itemId);
+      if (!item) throw notFound('Item');
+      if (item.status !== 'active') throw conflict('Este item já foi cancelado ou trocado.', 'ALREADY_CANCELED');
+      if (item.kind !== 'product') throw badRequest('Narguilé não se troca por aqui: use a tela do narguilé.');
+      const c = this.row(String(item.comanda_id));
+      this.requireOpen(c);
+      if (!hasPerm(actor, 'comandas.cancel_item')) {
+        const ticket = item.order_id
+          ? this.ctx.db.value<string>('SELECT status FROM order_tickets WHERE order_id = ? AND station = ? ORDER BY created_at DESC LIMIT 1', String(item.order_id), String(item.station))
+          : null;
+        const age = this.ctx.clock.now().getTime() - Date.parse(String(item.created_at));
+        if ((ticket && ['ready', 'delivered'].includes(ticket)) || age > 30 * 60_000) {
+          throw forbidden('Este item já saiu da produção. Peça ao gerente para trocar.', 'SWAP_NOT_ALLOWED');
+        }
+      }
+      const was = `${item.quantity}× ${String(item.product_name)}${item.options_label ? ` (${String(item.options_label)})` : ''}`;
+      this.cancelItemRow(actor, item, `Trocado${input.reason ? `: ${input.reason}` : ''}`, input.returnToStock);
+      const order = this.createOrder(actor, { comandaId: c.id, clientRequestId: input.clientRequestId, items: input.items, notes: `Troca de ${was}`.slice(0, 200) }, source);
+      if (this.totals(String(c.id)).remaining < 0) {
+        throw conflict('O valor já pago ficaria maior que o total. Estorne um pagamento antes de trocar.', 'PAID_EXCEEDS_TOTAL');
+      }
+      this.ctx.audit(actor, 'comandas.item_swapped', 'comanda_item', itemId, {
+        comanda: c.number, from: was, toOrder: order.number, reason: input.reason, returnToStock: input.returnToStock,
+      });
+      return { ...order, swappedItemId: itemId };
     });
   }
 

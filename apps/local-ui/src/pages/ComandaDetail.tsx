@@ -1,11 +1,12 @@
 import { PAYMENT_METHODS, presentationSuffix, splitEqually, type PaymentMethod } from '@rupbar/core';
 import {
   ArrowLeft, ArrowRightLeft, Ban, CheckCircle2, CreditCard, Divide, Eye, MoreHorizontal, Pencil, Percent, Plus, Printer, RotateCcw, Tag, Trash2,
-  Undo2, Wind, X,
+  Undo2, Wind, X, Repeat,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { OrderComposer } from '../components/OrderComposer';
+import { SwapItemModal } from '../components/SwapItem';
 import {
   DeleteComandaModal, DeleteItemModal, DeletePaymentModal, EditItemModal, EditPaymentModal, OwnerTag, ReopenComandaModal,
 } from '../components/OwnerActions';
@@ -68,6 +69,7 @@ export function ComandaDetailPage() {
   });
   const [modal, setModal] = useState<null | 'order' | 'pay' | 'transfer' | 'move' | 'discount' | 'fee' | 'split' | 'close' | 'cancel' | 'contact' | 'more' | 'edit' | 'reopen' | 'delete'>(null);
   const [cancelItem, setCancelItem] = useState<ComandaItem | null>(null);
+  const [swapItem, setSwapItem] = useState<ComandaItem | null>(null);
   const [fix, setFix] = useState<null | { kind: 'editItem' | 'deleteItem'; item: ComandaItem } | { kind: 'editPay' | 'deletePay'; payment: ComandaDetail['payments'][number] }>(null);
 
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -150,6 +152,9 @@ export function ComandaDetailPage() {
                     </div>
                     {i.ticketStatus && i.status === 'active' && <Badge color={i.ticketStatus === 'ready' ? 'green' : i.ticketStatus === 'delivered' ? undefined : 'orange'}>{TICKET_LABEL[i.ticketStatus] ?? i.ticketStatus}</Badge>}
                     <span className="num" style={{ minWidth: 86, textAlign: 'right' }}>{formatBRL(i.totalCents)}</span>
+                    {open && i.status === 'active' && i.kind === 'product' && can('orders.create') && (
+                      <Button size="small" variant="plain" icon={<Repeat size={15} />} aria-label={`Trocar ${i.name}`} title="Trocar por outro item ou outra escolha" onClick={() => setSwapItem(i)} />
+                    )}
                     {master && i.status === 'active' ? (
                       <>
                         <Button size="small" variant="plain" icon={<Pencil size={15} />} aria-label="Editar item" title="Editar (conta mestre)" onClick={() => setFix({ kind: 'editItem', item: i })} />
@@ -253,6 +258,7 @@ export function ComandaDetailPage() {
       )}
       {modal === 'cancel' && <CancelComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {cancelItem && <CancelItemModal item={cancelItem} onClose={() => setCancelItem(null)} onDone={reload} />}
+      {swapItem && <SwapItemModal item={swapItem} onClose={() => setSwapItem(null)} onDone={reload} />}
       {modal === 'edit' && <EditComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'reopen' && <ReopenComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'delete' && <DeleteComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
