@@ -91,7 +91,6 @@ export function ProductsPage() {
   const [combo, setCombo] = useState(false);
   const [bucket, setBucket] = useState<Product | 'new' | null>(null);
   const [removing, setRemoving] = useState<Product | null>(null);
-  const toast = useToast();
   const cats = useLoad(() => api.get<Category[]>('/api/categories'));
   const { data, error, reload } = useLoad(() => api.get<Product[]>(`/api/products${qs({ q, categoryId: cat, all: showInactive ? 1 : undefined })}`), [q, cat, showInactive]);
   useRealtime(['stock'], () => void reload());
@@ -156,15 +155,21 @@ export function ProductsPage() {
       {combo && <ComboModal onClose={() => setCombo(false)} onSaved={() => void reload()} />}
       {bucket && <BucketModal product={bucket === 'new' ? undefined : bucket} onClose={() => setBucket(null)} onSaved={() => void reload()} />}
       {editing === 'new' ? <QuickProductModal onClose={() => setEditing(null)} onSaved={() => void reload()} /> : editing && <ProductEditor product={editing === 'advanced' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} onRemove={(p) => { setEditing(null); setRemoving(p); }} />}
-      {removing && (
-        <Confirm title={`Excluir ${removing.name}?`} confirmLabel="Excluir produto" danger onClose={() => setRemoving(null)}
-          message={<>
-            Some do cardápio, do estoque, das escolhas e do painel online. As vendas antigas continuam nos relatórios com o nome.
-            {removing.stockTracked && removing.stockQty > 0 && <><br /><strong>Ainda tem <StockQty qty={removing.stockQty} packaging={packagingOf(removing)} /> em estoque</strong>, que sai junto.</>}
-          </>}
-          onConfirm={async () => { await api.del(`/api/products/${removing.id}`); toast.success(`${removing.name} excluído`); void reload(); }} />
-      )}
+      {removing && <RemoveProductConfirm product={removing} onClose={() => setRemoving(null)} onDone={() => void reload()} />}
     </div>
+  );
+}
+
+/** Confirmação de "Excluir produto" (Produtos e Estoque). */
+export function RemoveProductConfirm({ product, onClose, onDone }: { product: Product; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  return (
+    <Confirm title={`Excluir ${product.name}?`} confirmLabel="Excluir produto" danger onClose={onClose}
+      message={<>
+        Some do cardápio, do estoque, das escolhas e do painel online. As vendas antigas continuam nos relatórios com o nome.
+        {product.stockTracked && product.stockQty > 0 && <><br /><strong>Ainda tem <StockQty qty={product.stockQty} packaging={packagingOf(product)} /> em estoque</strong>, que sai junto.</>}
+      </>}
+      onConfirm={async () => { await api.del(`/api/products/${product.id}`); toast.success(`${product.name} excluído`); onDone(); }} />
   );
 }
 

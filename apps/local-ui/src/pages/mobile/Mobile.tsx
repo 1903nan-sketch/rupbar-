@@ -1,7 +1,8 @@
 import { presentationSuffix } from '@rupbar/core';
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, ClipboardList, Delete, ListChecks, LogOut, Plus, Search, UserRound, X, Zap } from 'lucide-react';
 import { useState } from 'react';
-import { NavLink, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ScreenErrorBoundary } from '../../lib/update';
 import { ConnectionBanner, Logo } from '../../components/brand';
 import { OrderComposer } from '../../components/OrderComposer';
 import { LaunchedItems } from '../../components/SwapItem';
@@ -20,6 +21,7 @@ import type { ComandaDetail } from '../ComandaDetail';
 /** Layout do celular/tablet do garçom: barra superior e barra de abas inferior. */
 export function MobileShell() {
   const { branding, user, logout, can } = useSession();
+  const location = useLocation();
   const quick = can('orders.create') && can('cash.payment');
   return (
     <div className="mobile">
@@ -32,7 +34,9 @@ export function MobileShell() {
         </div>
       </header>
       <ConnectionBanner />
-      <Outlet />
+      <ScreenErrorBoundary key={location.pathname}>
+        <Outlet />
+      </ScreenErrorBoundary>
       <nav className="tabbar glass" style={{ ['--tabs' as string]: quick ? 3 : 2 }}>
         <NavLink to="/m" end className={({ isActive }) => (isActive ? 'active' : '')}><ClipboardList size={22} />Comandas</NavLink>
         {quick && <NavLink to="/m/venda" className={({ isActive }) => (isActive ? 'active' : '')}><Zap size={22} />Venda rápida</NavLink>}

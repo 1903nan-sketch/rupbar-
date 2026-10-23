@@ -8,6 +8,7 @@ import { Button, Card, Empty, Loading, ToastProvider } from './components/ui';
 import { DesktopShell } from './layouts/DesktopShell';
 import { findServer, rememberServer } from './lib/discovery';
 import { SessionProvider, useSession } from './lib/session';
+import { reloadForUpdate, ScreenErrorBoundary, UpdateWatcher } from './lib/update';
 import { ComandaDetailPage } from './pages/ComandaDetail';
 import { ComandasPage } from './pages/Comandas';
 import { DashboardPage } from './pages/Dashboard';
@@ -106,6 +107,8 @@ function LoginRoute() {
 
 function App() {
   return (
+    <ScreenErrorBoundary>
+    <UpdateWatcher />
     <Suspense fallback={<Loading />}>
     <Routes>
       <Route path="/tv" element={<TvPage />} />
@@ -148,8 +151,14 @@ function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>
+    </ScreenErrorBoundary>
   );
 }
+
+// Tela de uma versão anterior pedindo arquivo que a atualização apagou: recarrega uma vez.
+window.addEventListener('vite:preloadError', (e) => {
+  if (reloadForUpdate()) e.preventDefault();
+});
 
 // Service worker: mantém a interface em cache para reabrir mesmo se o IP do PC mudar.
 if ('serviceWorker' in navigator && location.pathname !== '/tv' && import.meta.env.PROD) {

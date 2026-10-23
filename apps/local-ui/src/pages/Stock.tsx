@@ -18,7 +18,7 @@ import { useSession } from '../lib/session';
 import { ReasonModal } from '../components/OwnerActions';
 import { defaultCostMode, emptyQty, entryPayload, qtyOf, type CostDraft, type QtyDraft } from '../lib/stock-units';
 import '../styles/stock.css';
-import { packagingOf, type Product } from './Products';
+import { packagingOf, RemoveProductConfirm, type Product } from './Products';
 import { QuickProductModal } from './QuickProduct';
 import { StockImportModal } from './StockImport';
 
@@ -105,6 +105,7 @@ function Balances({ onEntry, onCreate, onImport }: { onEntry: (product: Product)
   const { can } = useSession();
   const { data, error, reload } = useTracked();
   const [adjust, setAdjust] = useState<Product | null>(null);
+  const [removing, setRemoving] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState<LevelFilter>('all');
   const [cat, setCat] = useState('');
@@ -174,6 +175,7 @@ function Balances({ onEntry, onCreate, onImport }: { onEntry: (product: Product)
                       <td className="stock-actions"><div className="row end">
                         {can('stock.entry') && <Button size="small" icon={<PackagePlus size={14} />} onClick={() => onEntry(p)}>Entrada</Button>}
                         {can('stock.adjust') && <Button size="small" variant="plain" icon={<SlidersHorizontal size={14} />} onClick={() => setAdjust(p)}>Ajustar</Button>}
+                        {can('products.manage') && <Button size="small" variant="plain" icon={<Trash2 size={14} />} aria-label={`Excluir ${p.name}`} title="Excluir produto" onClick={() => setRemoving(p)} />}
                       </div></td>
                     </tr>
                   );
@@ -184,6 +186,7 @@ function Balances({ onEntry, onCreate, onImport }: { onEntry: (product: Product)
         )}
       </Card>
       {adjust && <AdjustModal product={adjust} onClose={() => setAdjust(null)} onDone={reload} />}
+      {removing && <RemoveProductConfirm product={removing} onClose={() => setRemoving(null)} onDone={() => void reload()} />}
     </div>
   );
 }

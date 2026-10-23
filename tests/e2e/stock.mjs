@@ -348,6 +348,10 @@ try {
   await page.screenshot({ path: join(out, '07i-trocar-no-celular.png') });
   await page.setViewportSize({ width: 1440, height: 1000 });
 
+  // 6g0. Lixeira também na tela de Estoque.
+  await page.goto(base + '/estoque');
+  await page.getByRole('row').filter({ hasText: 'Água com gás' }).getByRole('button', { name: 'Excluir Água com gás' }).waitFor();
+
   // 6g. Excluir produto: lixeira na lista de Produtos, com confirmação.
   await page.goto(base + '/produtos');
   await page.getByRole('row').filter({ hasText: 'Água com gás' }).getByRole('button', { name: 'Excluir Água com gás' }).click();

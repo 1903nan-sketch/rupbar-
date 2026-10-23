@@ -6,13 +6,14 @@ import {
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { ConnectionBanner, Logo, RupbarSignature, SyncIndicator } from '../components/brand';
-import { Button } from '../components/ui';
+import { Button, Loading } from '../components/ui';
 import { api } from '../lib/api';
 import { useFullscreen } from '../lib/fullscreen';
 import { useLoad } from '../lib/hooks';
 import { useRealtime } from '../lib/realtime';
 import { useBarcodeScanner } from '../lib/scanner';
 import { useSession } from '../lib/session';
+import { ScreenErrorBoundary } from '../lib/update';
 
 const QuickSale = lazy(() => import('../components/QuickSale').then((m) => ({ default: m.QuickSale })));
 const LaunchComanda = lazy(() => import('../components/LaunchComanda').then((m) => ({ default: m.LaunchComanda })));
@@ -166,7 +167,12 @@ export function DesktopShell() {
           <Button variant="plain" size="small" icon={<LogOut size={16} />} title="Sair" onClick={() => void logout()} />
         </header>
         <main className="content">
-          <Outlet context={actions} />
+          {/* A tela carrega aqui dentro (o menu fica); arquivo de versão antiga recarrega sozinho. */}
+          <ScreenErrorBoundary key={loc.pathname}>
+            <Suspense fallback={<Loading />}>
+              <Outlet context={actions} />
+            </Suspense>
+          </ScreenErrorBoundary>
         </main>
       </div>
       <Suspense fallback={null}>

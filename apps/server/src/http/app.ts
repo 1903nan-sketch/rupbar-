@@ -155,11 +155,20 @@ export async function buildApp(services: Services, opts: AppOptions = {}): Promi
 
   const uiDir = services.ctx.config.uiDir;
   if (uiDir && existsSync(join(uiDir, 'index.html'))) {
-    await app.register(fastifyStatic, { root: uiDir, prefix: '/', wildcard: false, index: ['index.html'], maxAge: '1h' });
-    // SPA: rotas desconhecidas fora de /api servem o index.html
+    await app.register(fastifyStatic, {
+      root: uiDir, prefix: '/', wildcard: false, index: ['index.html'], cacheControl: false,
+      // index.html sempre conferido (depois de uma atualização a tela antiga pedia arquivos que
+      // não existem mais e travava); /assets tem o hash no nome e nunca muda.
+      setHeaders: (reply, path) => {
+        const name = path.replace(/\\/g, '/');
+        reply.header('Cache-Control', name.endsWith('/index.html') || name.endsWith('/sw.js') ? 'no-cache' : name.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'public, max-age=3600');
+      },
+    });
+    // SPA: rotas desconhecidas fora de /api servem o index.html; arquivo que não existe é 404.
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api') || req.url.startsWith('/ws')) {
-        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Rota não encontrada.' } });
+      const path = req.url.split('?')[0]!;
+      if (path.startsWith('/api') || path.startsWith('/ws') || path.startsWith('/assets/') || /\.[a-z0-9]{1,8}$/i.test(path)) {
+        return reply.status(404).header('Cache-Control', 'no-store').send({ error: { code: 'NOT_FOUND', message: 'Rota não encontrada.' } });
       }
       return reply.header('Cache-Control', 'no-cache').sendFile('index.html');
     });

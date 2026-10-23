@@ -1626,3 +1626,22 @@ body {
 .reset-done > svg {
   color: var(--green);
 }
+
+/* Versão nova instalada no PC: aviso discreto para recarregar. */
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: var(--text);
+  border: 1px solid var(--separator);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.35);
+  font-weight: 600;
+}
