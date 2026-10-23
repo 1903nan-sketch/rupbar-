@@ -91,7 +91,7 @@ export class ImportService {
     if (records.length > MAX_ROWS) throw badRequest(`A planilha tem ${records.length} linhas; importe no máximo ${MAX_ROWS} por vez.`, 'IMPORT_TOO_BIG');
 
     const products = this.ctx.db.all(
-      'SELECT id, name, internal_code, barcode, measure, package_qty, package_label, unit_label, stock_qty, stock_tracked, active FROM products',
+      'SELECT id, name, internal_code, barcode, measure, package_qty, package_label, unit_label, stock_qty, stock_tracked, active FROM products WHERE deleted_at IS NULL',
     );
     const byBarcode = new Map(products.filter((p) => p.barcode).map((p) => [String(p.barcode), p]));
     const byCode = new Map(products.filter((p) => p.internal_code).map((p) => [productCodeKey(String(p.internal_code)), p]));

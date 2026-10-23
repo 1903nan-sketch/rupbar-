@@ -57,6 +57,11 @@ export default async function Sales({ searchParams }: { searchParams: Promise<Re
         <Stat label="Custo estimado" value={<CountUp value={cost} format="brl" />} hint="custo médio dos itens vendidos" icon={Coins} tone="amber" />
         <Stat label="Margem bruta" value={<CountUp value={margin} format="percent" />} hint={formatBRL(gross - cost)} icon={Percent} tone="violet" />
       </div>
+      {Number(s.staffCents ?? 0) > 0 && (
+        <p className="small muted staff-note">
+          Consumo de funcionários no período (fora das vendas, não cobrado): {formatBRL(Number(s.staffCents))} a preço de cardápio · custo {formatBRL(Number(s.staffCostCents ?? 0))}.
+        </p>
+      )}
 
       <div className="dash-main">
         <Card title="Faturamento por dia" subtitle={`${dayMonth(p.de)} a ${dayMonth(p.ate)}`} icon={ChartSpline} className="reveal" style={stagger(4)}>

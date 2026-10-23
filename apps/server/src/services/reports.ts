@@ -44,7 +44,7 @@ export class ReportsService {
     };
     if (!financial) return { ...base, financial: null };
     const sales = db.get<{ gross: number; items: number }>(
-      "SELECT COALESCE(SUM(quantity * unit_price_cents),0) AS gross, COALESCE(SUM(quantity),0) AS items FROM comanda_items WHERE status = 'active' AND created_at >= ?",
+      "SELECT COALESCE(SUM(quantity * unit_price_cents),0) AS gross, COALESCE(SUM(quantity),0) AS items FROM comanda_items WHERE status = 'active' AND staff = 0 AND created_at >= ?",
       from,
     )!;
     const received = Number(db.value("SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE status = 'active' AND created_at >= ?", from));
@@ -52,12 +52,12 @@ export class ReportsService {
     const openValue = db.all<{ id: string }>("SELECT id FROM comandas WHERE status = 'open'");
     const openTotal = Number(
       db.value(
-        "SELECT COALESCE(SUM(i.quantity * i.unit_price_cents),0) FROM comanda_items i JOIN comandas c ON c.id = i.comanda_id WHERE c.status = 'open' AND i.status = 'active'",
+        "SELECT COALESCE(SUM(i.quantity * i.unit_price_cents),0) FROM comanda_items i JOIN comandas c ON c.id = i.comanda_id WHERE c.status = 'open' AND i.status = 'active' AND i.staff = 0",
       ),
     );
     const byHour = db.all(
       `SELECT CAST(strftime('%H', created_at, 'localtime') AS INTEGER) AS hour, SUM(quantity * unit_price_cents) AS total
-       FROM comanda_items WHERE status = 'active' AND created_at >= ? GROUP BY hour ORDER BY hour`,
+       FROM comanda_items WHERE status = 'active' AND staff = 0 AND created_at >= ? GROUP BY hour ORDER BY hour`,
       from,
     );
     return {
@@ -81,7 +81,7 @@ export class ReportsService {
     const db = this.ctx.db;
     const totals = db.get<{ gross: number; cost: number; items: number }>(
       `SELECT COALESCE(SUM(quantity * unit_price_cents),0) AS gross, COALESCE(SUM(quantity * unit_cost_cents),0) AS cost, COALESCE(SUM(quantity),0) AS items
-       FROM comanda_items WHERE status = 'active' AND created_at >= ? AND created_at < ?`,
+       FROM comanda_items WHERE status = 'active' AND staff = 0 AND created_at >= ? AND created_at < ?`,
       from, to,
     )!;
     const discounts = Number(db.value("SELECT COALESCE(SUM(discount_cents),0) FROM comandas WHERE status = 'closed' AND closed_at >= ? AND closed_at < ?", from, to));
@@ -91,20 +91,20 @@ export class ReportsService {
     );
     const byDay = db.all(
       `SELECT date(created_at, 'localtime', '-5 hours') AS day, SUM(quantity * unit_price_cents) AS total, SUM(quantity * unit_cost_cents) AS cost
-       FROM comanda_items WHERE status = 'active' AND created_at >= ? AND created_at < ? GROUP BY day ORDER BY day`,
+       FROM comanda_items WHERE status = 'active' AND staff = 0 AND created_at >= ? AND created_at < ? GROUP BY day ORDER BY day`,
       from, to,
     );
     const byCategory = db.all(
       `SELECT COALESCE(c.name, 'Narguilé') AS category, SUM(i.quantity) AS qty, SUM(i.quantity * i.unit_price_cents) AS total,
               SUM(i.quantity * i.unit_cost_cents) AS cost
        FROM comanda_items i LEFT JOIN categories c ON c.id = i.category_id
-       WHERE i.status = 'active' AND i.created_at >= ? AND i.created_at < ? GROUP BY category ORDER BY total DESC`,
+       WHERE i.status = 'active' AND i.staff = 0 AND i.created_at >= ? AND i.created_at < ? GROUP BY category ORDER BY total DESC`,
       from, to,
     );
     const topProducts = db.all(
       `SELECT i.product_id, i.product_name, i.presentation_name, SUM(i.quantity) AS qty, SUM(i.quantity * i.unit_price_cents) AS total,
               SUM(i.quantity * i.unit_cost_cents) AS cost
-       FROM comanda_items i WHERE i.status = 'active' AND i.kind = 'product' AND i.created_at >= ? AND i.created_at < ?
+       FROM comanda_items i WHERE i.status = 'active' AND i.staff = 0 AND i.kind = 'product' AND i.created_at >= ? AND i.created_at < ?
        GROUP BY i.presentation_id ORDER BY total DESC LIMIT 50`,
       from, to,
     );
@@ -117,12 +117,21 @@ export class ReportsService {
     const byWaiter = db.all(
       `SELECT u.name, COUNT(DISTINCT o.id) AS orders, SUM(i.quantity * i.unit_price_cents) AS total
        FROM comanda_items i JOIN orders o ON o.id = i.order_id JOIN users u ON u.id = o.created_by
-       WHERE i.status = 'active' AND i.created_at >= ? AND i.created_at < ? GROUP BY u.id ORDER BY total DESC`,
+       WHERE i.status = 'active' AND i.staff = 0 AND i.created_at >= ? AND i.created_at < ? GROUP BY u.id ORDER BY total DESC`,
+      from, to,
+    );
+    // Consumo de funcionário: fora das vendas; aqui só para o dono acompanhar (valor de cardápio e custo).
+    const staffConsumption = db.all(
+      `SELECT COALESCE(u.name, c.customer_name, 'Funcionário') AS name, COUNT(DISTINCT c.id) AS comandas, SUM(i.quantity) AS items,
+              SUM(i.quantity * i.unit_price_cents) AS value, SUM(i.quantity * i.unit_cost_cents) AS cost
+       FROM comanda_items i JOIN comandas c ON c.id = i.comanda_id LEFT JOIN users u ON u.id = c.staff_user_id
+       WHERE i.status = 'active' AND i.staff = 1 AND i.created_at >= ? AND i.created_at < ?
+       GROUP BY COALESCE(c.staff_user_id, c.customer_name) ORDER BY value DESC`,
       from, to,
     );
     return {
       grossCents: totals.gross, costCents: totals.cost, marginCents: totals.gross - totals.cost, itemsSold: totals.items,
-      discountsCents: discounts, payments, byDay, byCategory, topProducts, cancellations, byWaiter,
+      discountsCents: discounts, payments, byDay, byCategory, topProducts, cancellations, byWaiter, staffConsumption,
     };
   }
 
@@ -134,7 +143,7 @@ export class ReportsService {
     const rows = this.ctx.db.all(
       `SELECT i.product_id, i.product_name, date(i.created_at, 'localtime', '-5 hours') AS day, SUM(i.quantity) AS qty,
               SUM(i.quantity * i.unit_price_cents) AS total, SUM(i.quantity * i.unit_cost_cents) AS cost
-       FROM comanda_items i WHERE i.status = 'active' AND i.product_id IN (${marks}) AND i.created_at >= ? AND i.created_at < ?
+       FROM comanda_items i WHERE i.status = 'active' AND i.staff = 0 AND i.product_id IN (${marks}) AND i.created_at >= ? AND i.created_at < ?
        GROUP BY i.product_id, day ORDER BY day`,
       ...input.productIds, input.from, input.to,
     );
@@ -142,7 +151,7 @@ export class ReportsService {
       `SELECT p.id AS product_id, p.name, COALESCE(SUM(i.quantity),0) AS qty, COALESCE(SUM(i.quantity * i.unit_price_cents),0) AS total,
               COALESCE(SUM(i.quantity * i.unit_cost_cents),0) AS cost,
               (SELECT COALESCE(SUM(l.cost_cents),0) FROM losses l WHERE l.product_id = p.id AND l.status = 'applied' AND l.occurred_at >= ? AND l.occurred_at < ?) AS loss_cost
-       FROM products p LEFT JOIN comanda_items i ON i.product_id = p.id AND i.status = 'active' AND i.created_at >= ? AND i.created_at < ?
+       FROM products p LEFT JOIN comanda_items i ON i.product_id = p.id AND i.status = 'active' AND i.staff = 0 AND i.created_at >= ? AND i.created_at < ?
        WHERE p.id IN (${marks}) GROUP BY p.id ORDER BY total DESC`,
       input.from, input.to, input.from, input.to, ...input.productIds,
     );
@@ -155,7 +164,7 @@ export class ReportsService {
     const { from, to } = period(raw);
     const items = this.ctx.db.all(
       `SELECT product_name, presentation_name, SUM(quantity) AS qty FROM comanda_items
-       WHERE status = 'active' AND kind = 'product' AND created_at >= ? AND created_at < ? GROUP BY presentation_id ORDER BY qty DESC LIMIT 100`,
+       WHERE status = 'active' AND staff = 0 AND kind = 'product' AND created_at >= ? AND created_at < ? GROUP BY presentation_id ORDER BY qty DESC LIMIT 100`,
       from, to,
     );
     const ordersByHour = this.ctx.db.all(

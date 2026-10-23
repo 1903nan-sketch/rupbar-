@@ -39,6 +39,13 @@ function ComandaName({ c }: { c: ComandaRow }) {
       </span>
     );
   }
+  if (c.kind === 'staff') {
+    return (
+      <span className="comanda-name">
+        {labelOf(c)} <Badge color="purple">Funcionário</Badge>
+      </span>
+    );
+  }
   return <span className="comanda-name">{labelOf(c)}</span>;
 }
 

@@ -14,7 +14,7 @@ export interface ComandaSummary {
   id: string;
   number: number;
   cardNumber: number | null;
-  kind: 'regular' | 'quick';
+  kind: 'regular' | 'quick' | 'staff';
   displayNumber: number | null;
   label: string;
   customerName: string;
@@ -84,6 +84,7 @@ export function ComandasPage() {
                 </span>
                 <div className="col" style={{ alignItems: 'flex-end', gap: 4 }}>
                   {c.status === 'open' ? (c.table ? <Badge color="accent">Mesa {c.table}</Badge> : <Badge>Balcão</Badge>) : STATUS_BADGE[c.status]}
+                  {c.kind === 'staff' && <Badge color="purple">Funcionário</Badge>}
                   {c.cardNumber !== null && <span className="tiny muted row" style={{ gap: 4 }}><CreditCard size={12} /> cartão</span>}
                 </div>
               </div>
@@ -108,6 +109,8 @@ export function OpenComandaModal({ onClose, onOpened }: { onClose: () => void; o
   const { user } = useSession();
   const staff = useLoad(() => api.get<{ id: string; name: string; role_name: string }[]>('/api/staff'));
   const [form, setForm] = useState({ cardNumber: '', customerName: '', customerPhone: '', customerCpf: '', table: '', responsibleUserId: user?.id ?? '' });
+  const [who, setWho] = useState<'customer' | 'staff'>('customer');
+  const [staffUserId, setStaffUserId] = useState('');
   const [showPersonal, setShowPersonal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rid] = useState(requestId);
@@ -115,13 +118,15 @@ export function OpenComandaModal({ onClose, onOpened }: { onClose: () => void; o
   const submit = async () => {
     setBusy(true);
     try {
+      const staffMode = who === 'staff';
       const c = await api.post<ComandaSummary>('/api/comandas', {
         cardNumber: form.cardNumber ? Number(form.cardNumber) : null,
-        customerName: form.customerName,
-        customerPhone: form.customerPhone || null,
-        customerCpf: form.customerCpf || null,
-        table: form.table || null,
+        customerName: staffMode ? '' : form.customerName,
+        customerPhone: staffMode ? null : form.customerPhone || null,
+        customerCpf: staffMode ? null : form.customerCpf || null,
+        table: staffMode ? null : form.table || null,
         responsibleUserId: form.responsibleUserId || undefined,
+        ...(staffMode ? { staffUserId } : {}),
         clientRequestId: rid,
       });
       toast.success(`${c.label} aberta`);
@@ -138,9 +143,23 @@ export function OpenComandaModal({ onClose, onOpened }: { onClose: () => void; o
     <Modal
       title="Nova comanda"
       onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!form.customerName.trim() && !form.cardNumber} onClick={submit}>Abrir comanda</Button></>}
+      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={who === 'staff' ? !staffUserId : !form.customerName.trim() && !form.cardNumber} onClick={submit}>{who === 'staff' ? 'Abrir consumo' : 'Abrir comanda'}</Button></>}
     >
       <form className="stack" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        <Segmented value={who} onChange={setWho} options={[{ value: 'customer', label: 'Cliente' }, { value: 'staff', label: 'Funcionário' }]} />
+        {who === 'staff' ? (
+          <>
+            <Field label="Funcionário" hint="Quem está pegando: baixa o estoque, não é cobrado e não entra nas vendas.">
+              <Select value={staffUserId} aria-label="Funcionário que vai consumir" onChange={(e) => setStaffUserId(e.target.value)}>
+                <option value="">Escolha…</option>
+                {staff.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Nº do cartão" hint="Opcional.">
+              <Input inputMode="numeric" className="card-input" placeholder="—" value={form.cardNumber} onChange={(e) => setForm({ ...form, cardNumber: e.target.value.replace(/\D/g, '').slice(0, 5) })} />
+            </Field>
+          </>
+        ) : (<>
         <div className="open-comanda-head">
           <Field label="Nº do cartão" hint="Opcional: o número impresso no cartão.">
             <Input autoFocus large inputMode="numeric" className="card-input" placeholder="—" value={form.cardNumber} onChange={(e) => setForm({ ...form, cardNumber: e.target.value.replace(/\D/g, '').slice(0, 5) })} />
@@ -168,6 +187,7 @@ export function OpenComandaModal({ onClose, onOpened }: { onClose: () => void; o
             <p className="tiny muted">Dados pessoais ficam apenas neste PC, são exibidos mascarados e não vão para a nuvem, cupons ou TV (LGPD).</p>
           </>
         )}
+        </>)}
         <button type="submit" hidden />
       </form>
     </Modal>

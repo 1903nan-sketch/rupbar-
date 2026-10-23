@@ -276,6 +276,65 @@ try {
   await modal.waitFor({ state: 'hidden' });
   assert.equal((await request('GET', `/api/products/${batataCrua.id}`)).stockQty, 2_000_000, 'carrinho não baixa estoque');
 
+  // 6e. Balde de cerveja: escolhe o balde e depois a cerveja; cada cerveja tem o preço do balde dela.
+  await page.goto(base + '/produtos');
+  await page.getByRole('button', { name: 'Novo balde' }).click();
+  await modal.getByLabel('Cerveja 1').selectOption({ label: 'Cerveja teste' });
+  await modal.getByLabel('Preço do balde').first().fill('55,00');
+  await modal.getByRole('button', { name: 'Cerveja', exact: true }).click();
+  await modal.getByLabel('Cerveja 2').selectOption({ label: 'Água com gás' });
+  await modal.getByLabel('Preço do balde').nth(1).fill('30,00');
+  await page.screenshot({ path: join(out, '07e-novo-balde.png') });
+  await modal.getByRole('button', { name: 'Criar balde' }).click();
+  await modal.waitFor({ state: 'hidden' });
+  const bucketItem = (await request('GET', '/api/menu')).items.find((i) => i.productName === 'Balde de cerveja');
+  assert.equal(bucketItem?.priceCents, 0);
+  assert.equal(bucketItem?.optionGroupIds.length, 1);
+  await page.getByRole('button', { name: 'Venda rápida' }).first().click();
+  await modal.getByLabel('Buscar produto').fill('Balde');
+  const bucketTile = modal.locator('.menu-tile', { hasText: 'Balde de cerveja' });
+  await bucketTile.getByText('a partir de R$ 30,00').waitFor();
+  await bucketTile.click();
+  const chooser = page.locator('.modal', { has: page.locator('.option-chooser') });
+  await chooser.getByRole('radio', { name: /Cerveja teste\s*R\$ 55,00/ }).click();
+  await page.screenshot({ path: join(out, '07f-balde-escolhe-cerveja.png') });
+  await chooser.getByRole('button', { name: 'Adicionar R$ 55,00' }).click();
+  await page.locator('.cart-line', { hasText: 'Balde de cerveja' }).getByText('R$ 55,00').waitFor();
+  await page.locator('.cart-line').getByRole('button', { name: 'Remover' }).click();
+  await page.keyboard.press('Escape');
+  await modal.waitFor({ state: 'hidden' });
+
+  // 6f. Comanda de funcionário: baixa o estoque, não cobra e fica fora das vendas.
+  await page.goto(base + '/comandas');
+  await page.getByRole('button', { name: 'Nova comanda' }).click();
+  await modal.getByRole('tab', { name: 'Funcionário' }).click();
+  await modal.getByLabel('Funcionário que vai consumir').selectOption({ label: 'Marina Souza' });
+  await modal.getByRole('button', { name: 'Abrir consumo' }).click();
+  await page.getByText('Consumo de funcionário: baixa o estoque').waitFor();
+  const staffComanda = (await request('GET', '/api/comandas')).find((c) => c.kind === 'staff');
+  const beerItem = (await request('GET', '/api/menu')).items.find((i) => i.productName === 'Cerveja teste');
+  const beforeStaff = (await request('GET', '/api/products')).find((p) => p.name === 'Cerveja teste').stockQty;
+  await request('POST', '/api/orders', { comandaId: staffComanda.id, clientRequestId: crypto.randomUUID(), items: [{ presentationId: beerItem.presentationId, quantity: 2 }] });
+  await page.reload();
+  await page.getByText('Consumido (preço de cardápio)').waitFor();
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: join(out, '07g-consumo-funcionario.png') });
+  await page.getByRole('button', { name: 'Encerrar consumo' }).click();
+  await modal.getByRole('button', { name: 'Encerrar', exact: true }).click();
+  await page.getByText('Encerrada').first().waitFor();
+  assert.equal((await request('GET', '/api/products')).find((p) => p.name === 'Cerveja teste').stockQty, beforeStaff - 2_000, 'consumo baixa o estoque');
+  const salesNow = await request('GET', '/api/reports/sales?from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z');
+  assert.equal(salesNow.grossCents, 0, 'consumo de funcionário fora das vendas');
+  assert.deepEqual(salesNow.staffConsumption.map((r) => [r.name, r.items, r.value]), [['Marina Souza', 2, 2_400]]);
+
+  // 6g. Excluir produto: lixeira na lista de Produtos, com confirmação.
+  await page.goto(base + '/produtos');
+  await page.getByRole('row').filter({ hasText: 'Água com gás' }).getByRole('button', { name: 'Excluir Água com gás' }).click();
+  await modal.getByText('Ainda tem').waitFor();
+  await modal.getByRole('button', { name: 'Excluir produto' }).click();
+  await page.getByRole('row').filter({ hasText: 'Água com gás' }).waitFor({ state: 'detached' });
+  assert.equal((await request('GET', '/api/products?all=1')).some((p) => p.name === 'Água com gás'), false);
+
   // 7. Conta mestre: apagar os dados de teste (estoque, produtos e relatórios).
   await page.goto(base + '/configuracoes');
   await page.getByRole('link', { name: /Apagar dados de teste/ }).click();
@@ -292,6 +351,6 @@ try {
   await page.getByRole('link', { name: 'Importar a planilha do estoque' }).click();
   await page.getByText('Vamos cadastrar seu estoque?').waitFor();
   assert.deepEqual(errors, []);
-  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular, importação de planilha, escolha só da dose, meio a meio na hora e apagar dados de teste. Capturas em ${out}`);
+  console.log(`Estoque E2E OK — fardo × lata, aviso de engano, garrafa e doses, ingrediente, código automático, filtros, celular, importação de planilha, escolha só da dose, meio a meio na hora, balde de cerveja, consumo de funcionário, excluir produto e apagar dados de teste. Capturas em ${out}`);
 } catch (error) { console.error(error); process.exitCode = 1; }
 finally { await browser?.close(); server.stdin.write('shutdown\n'); setTimeout(() => server.kill(), 3000).unref(); }

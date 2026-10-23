@@ -9,6 +9,8 @@ export interface SyncedTable {
    * nada de hash de senha, CPF, telefone de cliente ou segredos.
    */
   serialize: (db: Db, row: Row) => Record<string, unknown>;
+  /** A linha existe no PC, mas sai do painel (ex.: produto excluído). */
+  hidden?: (row: Row) => boolean;
 }
 
 const omit = (row: Row, keys: string[]): Record<string, unknown> => {
@@ -27,7 +29,7 @@ export const SYNCED_TABLES: SyncedTable[] = [
   },
   { table: 'categories', entity: 'category', serialize: asIs },
   { table: 'suppliers', entity: 'supplier', serialize: asIs },
-  { table: 'products', entity: 'product', serialize: asIs },
+  { table: 'products', entity: 'product', serialize: asIs, hidden: (row) => !!row.deleted_at },
   {
     table: 'presentations',
     entity: 'presentation',

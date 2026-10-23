@@ -3687,3 +3687,6 @@ a.banner:hover {
     flex-basis: 100%;
   }
 }
+.staff-note {
+  margin-top: -6px;
+}

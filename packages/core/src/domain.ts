@@ -160,7 +160,8 @@ export function parsePickupCode(raw: string): { businessDay: string; orderNumber
 
 // ------------------------------------------------------------- comandas
 
-export type ComandaKind = 'regular' | 'quick';
+/** regular: cliente · quick: venda rápida · staff: consumo de funcionário (não cobrado, fora das vendas). */
+export type ComandaKind = 'regular' | 'quick' | 'staff';
 
 /**
  * Número que o cliente/garçom enxerga: o do cartão físico quando houver,

@@ -95,6 +95,7 @@ export function ComandaDetailPage() {
             <div className="row">
               <h1>{c.kind === 'quick' ? `Venda rápida ${c.number}` : `Comanda ${c.displayNumber ?? c.number}`}</h1>
               {STATUS_BADGE[c.status]}
+              {c.kind === 'staff' && <Badge color="purple">Funcionário</Badge>}
               {(open ? can('comandas.edit') : master) && <Button size="small" variant="plain" icon={<Pencil size={15} />} aria-label="Editar nome, cartão e mesa" onClick={() => setModal('edit')} />}
             </div>
             <div className="muted">
@@ -120,6 +121,11 @@ export function ComandaDetailPage() {
         )}
       </div>
 
+      {c.kind === 'staff' && (
+        <div className="banner staff-banner" role="note">
+          <span className="grow">Consumo de funcionário: baixa o estoque, <strong>não é cobrado</strong> e <strong>não entra nas vendas</strong>. Aparece em Relatórios → Consumo de funcionários.</span>
+        </div>
+      )}
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.6fr) minmax(300px, 1fr)', alignItems: 'start' }}>
         <div className="stack">
           {orders.length === 0 && <Card><p className="muted">Nenhum item lançado ainda.</p></Card>}
@@ -169,19 +175,19 @@ export function ComandaDetailPage() {
               {c.discount > 0 && <Line label={`Desconto${c.discountReason ? ` (${c.discountReason})` : ''}`} value={`− ${formatBRL(c.discount)}`} />}
               {c.serviceFee > 0 && <Line label={`Taxa de serviço (${c.serviceFeeBp / 100}%)`} value={formatBRL(c.serviceFee)} />}
               <div className="divider" />
-              <Line label={<strong>Total</strong>} value={<strong style={{ fontSize: 22 }}>{formatBRL(c.total)}</strong>} />
+              <Line label={<strong>{c.kind === 'staff' ? 'Consumido (preço de cardápio)' : 'Total'}</strong>} value={<strong style={{ fontSize: 22 }}>{formatBRL(c.total)}</strong>} />
               {c.paid > 0 && <Line label="Pago" value={formatBRL(c.paid)} />}
               {!open && c.paid > c.total && <Line label={<strong>Pago a mais</strong>} value={<strong className="warning-text">{formatBRL(c.paid - c.total)}</strong>} />}
-              {open && <Line label={<strong>Restante</strong>} value={<strong className={c.remaining > 0 ? 'warning-text' : 'success-text'}>{formatBRL(c.remaining)}</strong>} />}
+              {open && c.kind !== 'staff' && <Line label={<strong>Restante</strong>} value={<strong className={c.remaining > 0 ? 'warning-text' : 'success-text'}>{formatBRL(c.remaining)}</strong>} />}
             </div>
             {open && (
               <div className="col" style={{ marginTop: 16 }}>
                 {c.remaining > 0 && can('cash.payment') && <Button variant="primary" size="large" block icon={<CreditCard size={18} />} onClick={() => setModal('pay')}>Receber pagamento</Button>}
                 {c.remaining <= 0 && can('comandas.close') && c.items.some((i) => i.status === 'active') && (
-                  <Button variant="success" size="large" block icon={<CheckCircle2 size={18} />} onClick={() => setModal('close')}>Encerrar comanda</Button>
+                  <Button variant="success" size="large" block icon={<CheckCircle2 size={18} />} onClick={() => setModal('close')}>{c.kind === 'staff' ? 'Encerrar consumo' : 'Encerrar comanda'}</Button>
                 )}
                 <div className="row">
-                  <Button block icon={<Divide size={16} />} onClick={() => setModal('split')}>Dividir</Button>
+                  {c.kind !== 'staff' && <Button block icon={<Divide size={16} />} onClick={() => setModal('split')}>Dividir</Button>}
                   <Button block icon={<Printer size={16} />} onClick={printBill}>Conta</Button>
                 </div>
               </div>
@@ -240,7 +246,9 @@ export function ComandaDetailPage() {
       {modal === 'fee' && <ServiceFeeModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'contact' && <ContactModal comandaId={c.id} onClose={() => setModal(null)} />}
       {modal === 'close' && (
-        <Confirm title={`Encerrar ${c.label}?`} message={`Total ${formatBRL(c.total)} pago integralmente.`} confirmLabel="Encerrar" onClose={() => setModal(null)}
+        <Confirm title={`Encerrar ${c.label}?`}
+          message={c.kind === 'staff' ? `Consumo de ${c.customerName || 'funcionário'}: ${formatBRL(c.total)} a preço de cardápio. Nada é cobrado e não entra nas vendas.` : `Total ${formatBRL(c.total)} pago integralmente.`}
+          confirmLabel="Encerrar" onClose={() => setModal(null)}
           onConfirm={async () => { await api.post(`/api/comandas/${c.id}/close`, { expectedVersion: c.version }); toast.success('Comanda encerrada'); await reload(); }} />
       )}
       {modal === 'cancel' && <CancelComandaModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}

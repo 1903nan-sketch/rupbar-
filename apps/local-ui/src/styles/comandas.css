@@ -74,3 +74,9 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Consumo de funcionário: aviso de que não é cobrado nem entra nas vendas. */
+.staff-banner {
+  background: color-mix(in srgb, var(--purple, #bf5af2) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--purple, #bf5af2) 35%, transparent);
+}

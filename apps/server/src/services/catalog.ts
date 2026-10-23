@@ -339,6 +339,7 @@ export class CatalogService {
     requirePerm(actor, 'products.view');
     const where: string[] = [];
     const params: string[] = [];
+    where.push('p.deleted_at IS NULL');
     if (!filter.includeInactive) where.push('p.active = 1');
     if (filter.categoryId) {
       where.push('p.category_id = ?');
@@ -443,6 +444,7 @@ export class CatalogService {
     }
     const productId = id ?? this.ctx.id();
     let internalCode: string | null = null;
+    if (id && this.ctx.db.value('SELECT deleted_at FROM products WHERE id = ?', id)) throw notFound('Produto');
     this.ctx.tx(() => {
       if (!this.ctx.db.get('SELECT id FROM categories WHERE id = ?', input.categoryId)) throw notFound('Categoria');
       if (input.internalCode && this.ctx.db.value('SELECT id FROM products WHERE internal_code = ? AND id <> ?', input.internalCode, productId)) {
@@ -582,7 +584,7 @@ export class CatalogService {
   setActive(actor: Actor, id: string, active: boolean) {
     requirePerm(actor, 'products.manage');
     return this.ctx.tx(() => {
-      const p = this.ctx.db.get<{ name: string; active: number }>('SELECT name, active FROM products WHERE id = ?', id);
+      const p = this.ctx.db.get<{ name: string; active: number }>('SELECT name, active FROM products WHERE id = ? AND deleted_at IS NULL', id);
       if (!p) throw notFound('Produto');
       if (p.active !== (active ? 1 : 0)) {
         this.ctx.db.run('UPDATE products SET active = ?, version = version + 1, updated_at = ? WHERE id = ?', active ? 1 : 0, this.ctx.nowIso(), id);
@@ -590,6 +592,47 @@ export class CatalogService {
         this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId: id } });
       }
       return { id, name: p.name, active };
+    });
+  }
+
+  /**
+   * Exclui o produto: some do cardápio, do estoque, das escolhas e do painel
+   * online; vendas e movimentações antigas continuam com o nome. Código e
+   * código de barras ficam livres para outro cadastro. Não exclui o que é
+   * ingrediente ou item fixo de outro produto à venda (baixaria do excluído).
+   */
+  remove(actor: Actor, id: string) {
+    requirePerm(actor, 'products.manage');
+    return this.ctx.tx(() => {
+      const p = this.ctx.db.get<{ name: string; stock_qty: number; stock_tracked: number }>(
+        'SELECT name, stock_qty, stock_tracked FROM products WHERE id = ? AND deleted_at IS NULL',
+        id,
+      );
+      if (!p) throw notFound('Produto');
+      const usedBy = this.ctx.db.all<{ name: string }>(
+        `SELECT DISTINCT p.name FROM presentation_components pc JOIN presentations pr ON pr.id = pc.presentation_id
+         JOIN products p ON p.id = pr.product_id
+         WHERE pc.ingredient_product_id = ? AND pr.product_id <> ? AND pr.active = 1 AND p.active = 1 AND p.deleted_at IS NULL ORDER BY p.name LIMIT 4`,
+        id, id,
+      );
+      if (usedBy.length) {
+        const names = usedBy.slice(0, 3).map((u) => u.name).join(', ') + (usedBy.length > 3 ? '…' : '');
+        throw conflict(`${p.name} é ingrediente ou item de: ${names}. Tire de lá (ou exclua esses produtos) antes.`, 'PRODUCT_IN_USE', { products: usedBy.map((u) => u.name) });
+      }
+      const now = this.ctx.nowIso();
+      this.ctx.db.run(
+        `UPDATE products SET deleted_at = ?, active = 0, internal_code = NULL, barcode = NULL, version = version + 1, updated_at = ? WHERE id = ?`,
+        now, now, id,
+      );
+      this.ctx.db.run('UPDATE presentations SET active = 0, version = version + 1, updated_at = ? WHERE product_id = ? AND active = 1', now, id);
+      // Opções que baixavam este produto (ex.: Red Bull no "Energético") saem das escolhas.
+      this.ctx.db.run('UPDATE option_choices SET active = 0 WHERE ingredient_product_id = ? AND active = 1', id);
+      this.ctx.db.run('DELETE FROM hookah_flavors WHERE product_id = ?', id);
+      this.ctx.db.run("UPDATE stock_alerts SET status = 'resolved', resolved_at = ?, version = version + 1, updated_at = ? WHERE product_id = ? AND status = 'open'", now, now, id);
+      this.ctx.audit(actor, 'products.deleted', 'product', id, { name: p.name, stockQty: p.stock_tracked ? p.stock_qty : null });
+      this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId: id } });
+      this.ctx.emit({ channel: 'hookah', type: 'flavors.changed' });
+      return { id, name: p.name };
     });
   }
 

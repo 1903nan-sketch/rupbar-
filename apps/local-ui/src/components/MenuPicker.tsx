@@ -70,8 +70,19 @@ export const unitPriceOf = (l: Pick<CartLine, 'item' | 'options'>) => {
   const base = halves.length ? Math.max(l.item.priceCents, ...halves) : l.item.priceCents;
   return base + l.options.filter((o) => !o.half).reduce((a, o) => a + o.priceDeltaCents, 0);
 };
-/** Menor preço possível (meio a meio com as duas metades mais baratas). */
-export const fromPriceOf = (i: MenuItem) => (i.halfParts?.length ? Math.max(i.priceCents, Math.min(...i.halfParts.map((h) => h.priceCents))) : i.priceCents);
+/**
+ * Menor preço possível: meio a meio com as duas metades mais baratas e, nas
+ * escolhas obrigatórias, a opção mais barata (balde: a cerveja mais barata).
+ */
+export const fromPriceOf = (i: MenuItem, groups: OptionGroup[] = []) => {
+  const base = i.halfParts?.length ? Math.max(i.priceCents, Math.min(...i.halfParts.map((h) => h.priceCents))) : i.priceCents;
+  return base + groups
+    .filter((g) => g.required && !g.half)
+    .reduce((a, g) => {
+      const prices = g.choices.filter((c) => !c.soldOut).map((c) => c.priceDeltaCents);
+      return a + (prices.length ? Math.min(...prices) : 0) * (i.optionQty?.[g.id] ?? 1);
+    }, 0);
+};
 
 /** Comida (cozinha) pode ser pedida meio a meio na hora: meia batata, meia polenta. */
 export const canHalf = (i: MenuItem) => i.station === 'kitchen' && !i.halfParts?.length;
@@ -283,12 +294,12 @@ export function MenuPicker({ cart, compact, autoFocus }: { cart: Cart; compact?:
                 className="menu-tile-main"
                 disabled={i.soldOut}
                 onClick={() => pick(i)}
-                aria-label={`Adicionar ${itemLabel(i)} (${formatBRL(fromPriceOf(i))})`}
+                aria-label={`Adicionar ${itemLabel(i)} (${formatBRL(fromPriceOf(i, groupsOf(i)))})`}
               >
                 {i.photoUrl && <img className="menu-tile-photo" src={i.photoUrl} alt="" loading="lazy" />}
                 <span className="menu-tile-name">{i.productName}</span>
                 {presentationSuffix(i.productName, i.presentationName) && <span className="menu-tile-pres">{i.presentationName}</span>}
-                <span className="menu-tile-price num">{groupsOf(i).length ? 'a partir de ' : ''}{formatBRL(fromPriceOf(i))}</span>
+                <span className="menu-tile-price num">{groupsOf(i).length ? 'a partir de ' : ''}{formatBRL(fromPriceOf(i, groupsOf(i)))}</span>
                 {i.soldOut ? <span className="menu-tile-flag danger">Esgotado</span> : i.available !== null && i.available <= 5 ? <span className="menu-tile-flag">restam {i.available}</span> : null}
               </button>
               {n > 0 && (
@@ -376,7 +387,7 @@ export function OptionChooser({ item, groups, onClose, onAdd }: {
                   >
                     {on && <Check size={16} />}
                     <span className="option-choice-name">{c.name}</span>
-                    {c.soldOut ? <span className="tiny danger-text">esgotado</span> : g.half ? <span className="option-choice-price num">{formatBRL(c.priceDeltaCents)}</span> : c.priceDeltaCents > 0 ? <span className="option-choice-price num">+{formatBRL(c.priceDeltaCents * qtyOf(g))}</span> : null}
+                    {c.soldOut ? <span className="tiny danger-text">esgotado</span> : g.half ? <span className="option-choice-price num">{formatBRL(c.priceDeltaCents)}</span> : c.priceDeltaCents > 0 ? <span className="option-choice-price num">{item.priceCents > 0 ? '+' : ''}{formatBRL(c.priceDeltaCents * qtyOf(g))}</span> : null}
                   </button>
                 );
               })}

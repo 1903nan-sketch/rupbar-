@@ -147,6 +147,23 @@ describe('nuvem RupBar', () => {
     expect(pres.rows).toEqual([]);
   });
 
+  it('consumo de funcionário fica fora das vendas e vem à parte; produto excluído some', async () => {
+    const at = new Date().toISOString();
+    const item = (n: number, staff: number) => ({
+      outboxId: `comanda_item:i${n}:1`, entity: 'comanda_item', id: randomUUID(), version: 1, updatedAt: at,
+      data: { comanda_id: randomUUID(), kind: 'product', product_name: 'Heineken', presentation_name: 'Unidade', quantity: 2, unit_price_cents: 1200, unit_cost_cents: 500, status: 'active', created_at: at, staff },
+    });
+    await as('anon', null, () => rpc('rupbar_device_push', { p_device_id: device.device_id, p_secret: device.device_secret, p_records: [item(1, 0), item(2, 1)] }));
+    const s = await as('authenticated', OWNER, () => rpc<{ grossCents: number; itemsSold: number; staffCents: number; staffCostCents: number }>('rupbar_sales_summary', { p_establishment_id: EST, p_from: '2020-01-01', p_to: '2100-01-01' }));
+    expect(s).toMatchObject({ grossCents: 2_400, itemsSold: 2, staffCents: 2_400, staffCostCents: 1_000 });
+    const items = await as('authenticated', OWNER, () => db.query<{ staff: boolean }>('select staff from v_comanda_items order by staff'));
+    expect(items.rows.map((r) => r.staff)).toEqual([false, true]);
+    // Produto excluído no PC chega como removido e sai do painel.
+    await as('anon', null, () => rpc('rupbar_device_push', { p_device_id: device.device_id, p_secret: device.device_secret, p_records: [{ outboxId: `product:${PRODUCT}:9`, entity: 'product', id: PRODUCT, version: 9, deleted: true, data: {}, updatedAt: at }] }));
+    const products = await as('authenticated', OWNER, () => db.query('select id from v_products where id = $1', [PRODUCT]));
+    expect(products.rows).toHaveLength(0);
+  });
+
   it('heartbeat registra última sincronização; novo registro revoga o PC anterior', async () => {
     await as('anon', null, () => rpc('rupbar_device_heartbeat', { p_device_id: device.device_id, p_secret: device.device_secret, p_status: { pending: 3, version: '0.1.0' } }));
     const d = await as('authenticated', OWNER, () => db.query<{ pending_count: number; last_sync_at: string | null }>('select pending_count, last_sync_at from devices where id = $1', [device.device_id]));
@@ -158,7 +175,8 @@ describe('nuvem RupBar', () => {
 
   it('relatórios agregados respeitam o RLS', async () => {
     const summary = await as('authenticated', OWNER, () => rpc<{ grossCents: number }>('rupbar_sales_summary', { p_establishment_id: EST, p_from: '2020-01-01', p_to: '2100-01-01' }));
-    expect(summary.grossCents).toBe(0);
+    // Só a venda de cliente do teste anterior (o consumo de funcionário fica fora).
+    expect(summary.grossCents).toBe(2_400);
     const other = await as('authenticated', OTHER, () => rpc<{ grossCents: number; byDay: unknown[] }>('rupbar_sales_summary', { p_establishment_id: EST, p_from: '2020-01-01', p_to: '2100-01-01' }));
     expect(other.byDay).toEqual([]);
   });

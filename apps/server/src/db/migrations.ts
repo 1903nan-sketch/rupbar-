@@ -843,6 +843,26 @@ const M012 = /* sql */ `
 ALTER TABLE users ADD COLUMN deleted_at TEXT;
 `;
 
+/**
+ * Consumo de funcionário e exclusão de produto.
+ *  - comandas.kind 'staff' (+ staff_user_id): o que o funcionário pegou; baixa
+ *    o estoque, não é cobrado e não entra nas vendas.
+ *  - comanda_items.staff: marca os itens dessas comandas (gatilhos), para os
+ *    relatórios do PC e do painel online deixarem de fora.
+ *  - products.deleted_at: produto excluído some de tudo; o histórico continua.
+ */
+const M013 = /* sql */ `
+ALTER TABLE comandas ADD COLUMN staff_user_id TEXT;
+ALTER TABLE comanda_items ADD COLUMN staff INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE products ADD COLUMN deleted_at TEXT;
+CREATE TRIGGER comanda_items_staff_ins AFTER INSERT ON comanda_items
+WHEN (SELECT kind FROM comandas WHERE id = NEW.comanda_id) = 'staff'
+BEGIN UPDATE comanda_items SET staff = 1 WHERE id = NEW.id; END;
+CREATE TRIGGER comanda_items_staff_move AFTER UPDATE OF comanda_id ON comanda_items
+WHEN NEW.staff <> ((SELECT kind FROM comandas WHERE id = NEW.comanda_id) = 'staff')
+BEGIN UPDATE comanda_items SET staff = ((SELECT kind FROM comandas WHERE id = NEW.comanda_id) = 'staff') WHERE id = NEW.id; END;
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -864,6 +884,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 10, name: 'escolhas por apresentação e meio a meio', sql: M010 },
   { id: 11, name: 'sabores do aluguel de narguilé', sql: M011 },
   { id: 12, name: 'excluir funcionário', sql: M012 },
+  { id: 13, name: 'consumo de funcionário e excluir produto', sql: M013 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

@@ -26,6 +26,9 @@ export interface SalesSummary {
   itemsSold: number;
   receivedCents: number;
   closedComandas: number;
+  /** Consumo de funcionário (fora das vendas): valor de cardápio e custo. PC antigo não envia. */
+  staffCents?: number;
+  staffCostCents?: number;
   byDay: { day: string; total: number; cost: number }[];
   byMethod: { method: PaymentMethod; total: number; count: number }[];
   byCategory: { category: string; total: number; qty: number; cost: number }[];
@@ -126,7 +129,7 @@ export async function lossesTotal(sb: Sb, establishmentId: string, from: string,
 /** Atendimentos (comandas e vendas rápidas não canceladas) abertos no período. */
 export async function comandaCounts(sb: Sb, establishmentId: string, from: string, to: string) {
   const base = () =>
-    sb.from('v_comandas').select('id', { count: 'exact', head: true }).eq('establishment_id', establishmentId).gte('opened_at', from).lt('opened_at', to).neq('status', 'canceled');
+    sb.from('v_comandas').select('id', { count: 'exact', head: true }).eq('establishment_id', establishmentId).gte('opened_at', from).lt('opened_at', to).neq('status', 'canceled').neq('kind', 'staff');
   const [{ count: total }, { count: quick }] = await Promise.all([base(), base().eq('kind', 'quick')]);
   return { total: total ?? 0, quick: quick ?? 0 };
 }
@@ -141,6 +144,7 @@ export async function salesByHour(sb: Sb, establishmentId: string, from: string,
       .select('created_at, quantity, unit_price_cents')
       .eq('establishment_id', establishmentId)
       .eq('status', 'active')
+      .eq('staff', false)
       .gte('created_at', from)
       .lt('created_at', to)
       .order('created_at')

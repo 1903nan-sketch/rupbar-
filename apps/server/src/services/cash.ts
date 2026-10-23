@@ -178,6 +178,7 @@ export class CashService {
       const c = this.ctx.db.get('SELECT * FROM comandas WHERE id = ?', input.comandaId);
       if (!c) throw notFound('Comanda');
       if (c.status !== 'open') throw conflict('Esta comanda já foi encerrada.', 'COMANDA_NOT_OPEN');
+      if (c.kind === 'staff') throw conflict('Consumo de funcionário não é cobrado: é só encerrar a comanda.', 'STAFF_NO_PAYMENT');
       const session = this.openSession();
       if (!session && (input.method === 'cash' || this.settings.operation().requireCashSessionForPayments)) {
         throw conflict('Abra o caixa antes de receber pagamentos.', 'CASH_CLOSED');

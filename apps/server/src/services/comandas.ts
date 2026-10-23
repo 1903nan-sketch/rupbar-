@@ -69,10 +69,12 @@ export class ComandasService {
     const paid = Number(
       this.ctx.db.value("SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE comanda_id = ? AND status = 'active'", comandaId),
     );
-    return billTotals(
+    const t = billTotals(
       items.map((i) => ({ quantity: i.quantity, unitPrice: i.unit_price_cents, canceled: i.status !== 'active' })),
       { discount: Number(c.discount_cents), serviceFeeBp: Number(c.service_fee_bp), paid },
     );
+    // Consumo de funcionário: mostra o valor consumido, mas não há o que cobrar.
+    return c.kind === 'staff' ? { ...t, remaining: 0 } : t;
   }
 
   private summary(c: Row) {
@@ -91,6 +93,7 @@ export class ComandasService {
       table: c.table_label,
       status: c.status,
       responsibleUserId: c.responsible_user_id,
+      staffUserId: (c.staff_user_id as string | null) ?? null,
       responsibleName: c.responsible_name ?? null,
       openedAt: c.opened_at,
       closedAt: c.closed_at,
@@ -183,6 +186,12 @@ export class ComandasService {
         if (busy) this.ctx.emit({ channel: 'comandas', type: 'table.shared', data: { table: input.table } });
       }
       if (input.cardNumber !== null) this.assertCardFree(input.cardNumber);
+      // Consumo de funcionário: a comanda leva o nome de quem pegou.
+      let staffName: string | null = null;
+      if (input.staffUserId) {
+        staffName = this.ctx.db.value<string>("SELECT name FROM users WHERE id = ? AND status = 'active' AND deleted_at IS NULL", input.staffUserId) ?? null;
+        if (!staffName) throw notFound('Funcionário');
+      }
       const responsible = input.responsibleUserId ?? actor.userId;
       if (responsible && !this.ctx.db.get("SELECT id FROM users WHERE id = ? AND status = 'active'", responsible)) {
         throw notFound('Funcionário responsável');
@@ -192,12 +201,13 @@ export class ComandasService {
       const now = this.ctx.nowIso();
       this.ctx.db.run(
         `INSERT INTO comandas (id, number, card_number, kind, customer_name, customer_phone, customer_cpf, table_label, responsible_user_id, status,
-           service_fee_bp, notes, opened_by, opened_at, client_request_id, updated_at)
-         VALUES (?,?,?,'regular',?,?,?,?,?,'open',?,?,?,?,?,?)`,
-        id, number, input.cardNumber, input.customerName, input.customerPhone, input.customerCpf, input.table, responsible, op.serviceFeeBp,
-        input.notes, actor.userId ?? 'system', now, input.clientRequestId ?? null, now,
+           service_fee_bp, notes, opened_by, opened_at, client_request_id, updated_at, staff_user_id)
+         VALUES (?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?)`,
+        id, number, input.cardNumber, staffName ? 'staff' : 'regular', input.customerName || staffName || '', input.customerPhone, input.customerCpf,
+        input.table, responsible, staffName ? 0 : op.serviceFeeBp, input.notes, actor.userId ?? 'system', now, input.clientRequestId ?? null, now,
+        input.staffUserId ?? null,
       );
-      this.ctx.audit(actor, 'comandas.opened', 'comanda', id, { number, card: input.cardNumber, table: input.table });
+      this.ctx.audit(actor, 'comandas.opened', 'comanda', id, { number, card: input.cardNumber, table: input.table, ...(staffName ? { staff: staffName } : {}) });
       this.ctx.emit({ channel: 'comandas', type: 'comanda.opened', data: { comandaId: id, number } });
       return this.summary(this.row(id));
     });
@@ -234,7 +244,7 @@ export class ComandasService {
     requirePerm(actor, 'comandas.view');
     const c =
       this.ctx.db.get("SELECT * FROM comandas WHERE status = 'open' AND card_number = ?", n) ??
-      this.ctx.db.get("SELECT * FROM comandas WHERE status = 'open' AND card_number IS NULL AND number = ? AND kind = 'regular'", n);
+      this.ctx.db.get("SELECT * FROM comandas WHERE status = 'open' AND card_number IS NULL AND number = ? AND kind IN ('regular','staff')", n);
     return c ? this.summary(c) : null;
   }
 
@@ -676,7 +686,7 @@ export class ComandasService {
       const now = this.ctx.nowIso();
       this.ctx.db.run("UPDATE comandas SET status = 'closed', closed_by = ?, closed_at = ? WHERE id = ?", actor.userId, now, id);
       this.touch(id, 'closed');
-      this.ctx.audit(actor, 'comandas.closed', 'comanda', id, { number: c.number, total: t.total });
+      this.ctx.audit(actor, 'comandas.closed', 'comanda', id, { number: c.number, total: t.total, ...(c.kind === 'staff' ? { staff: true } : {}) });
       return this.summary(this.row(id));
     });
   }

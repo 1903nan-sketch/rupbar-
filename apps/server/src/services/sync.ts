@@ -316,13 +316,14 @@ export class SyncService {
       const t = TABLE_BY_ENTITY.get(r.entity as SyncRecord['entity']);
       if (!t) continue;
       const row = this.ctx.db.get(`SELECT * FROM ${t.table} WHERE id = ?`, r.entity_id);
+      const gone = !row || !!t.hidden?.(row);
       records.push({
         outboxId: `${r.entity}:${r.entity_id}:${r.max_seq}`,
         entity: t.entity,
         id: r.entity_id,
         version: r.max_seq,
-        deleted: !row,
-        data: row ? t.serialize(this.ctx.db, row) : {},
+        deleted: gone,
+        data: row && !gone ? t.serialize(this.ctx.db, row) : {},
         updatedAt: row ? String(row.updated_at ?? row.created_at ?? this.ctx.nowIso()) : this.ctx.nowIso(),
       });
     }

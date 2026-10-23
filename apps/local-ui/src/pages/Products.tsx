@@ -1,9 +1,9 @@
 import { BASE_UNIT, buyModeOf, costOf, packName, unitName, type Measure, type Packaging } from '@rupbar/core';
-import { Boxes, Camera, ImageOff, ListChecks, Plus, Search, Trash2, Wine } from 'lucide-react';
+import { Beer, Boxes, Camera, ImageOff, ListChecks, Plus, Search, Trash2, Wine } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
 import { OptionGroupsField } from '../components/OptionGroups';
 import { BuyModePicker, CodeTag, LevelChip, QtyEntry, StockQty } from '../components/stock-units';
-import { Button, Card, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Switch, Tabs, Textarea, useToast } from '../components/ui';
+import { Button, Card, Confirm, DecimalInput, Empty, ErrorBox, Field, Input, Loading, Modal, MoneyInput, PageHeader, Select, Switch, Tabs, Textarea, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { formatBRL } from '../lib/format';
 import { useLoad } from '../lib/hooks';
@@ -11,6 +11,7 @@ import { useRealtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
 import { draftFromPackaging, packagingFromDraft, previewPackaging, qtyDraftFrom, qtyOf, type PackDraft, type QtyDraft } from '../lib/stock-units';
 import '../styles/stock.css';
+import { BucketModal, isBucket } from './BucketModal';
 import { ComboModal } from './ComboModal';
 import { HalfPartsField } from './HalfParts';
 import { QuickProductModal } from './QuickProduct';
@@ -88,6 +89,9 @@ export function ProductsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<Product | 'new' | 'advanced' | null>(null);
   const [combo, setCombo] = useState(false);
+  const [bucket, setBucket] = useState<Product | 'new' | null>(null);
+  const [removing, setRemoving] = useState<Product | null>(null);
+  const toast = useToast();
   const cats = useLoad(() => api.get<Category[]>('/api/categories'));
   const { data, error, reload } = useLoad(() => api.get<Product[]>(`/api/products${qs({ q, categoryId: cat, all: showInactive ? 1 : undefined })}`), [q, cat, showInactive]);
   useRealtime(['stock'], () => void reload());
@@ -97,7 +101,7 @@ export function ProductsPage() {
       <PageHeader
         title="Produtos"
         subtitle="Cadastro único: o mesmo produto é usado no cardápio, no estoque e nas fichas técnicas."
-        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button icon={<Boxes size={16} />} onClick={() => setCombo(true)}>Novo combo</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
+        actions={can('products.manage') && <><Button variant="plain" onClick={() => setEditing('advanced')}>Cadastro completo</Button><Button icon={<Beer size={16} />} onClick={() => setBucket('new')}>Novo balde</Button><Button icon={<Boxes size={16} />} onClick={() => setCombo(true)}>Novo combo</Button><Button variant="primary" icon={<Plus size={16} />} onClick={() => setEditing('new')}>Novo produto</Button></>}
       />
       <div className="row wrap">
         <div className="input-group" style={{ width: 300, maxWidth: '100%' }}>
@@ -117,10 +121,10 @@ export function ProductsPage() {
         <Card flush>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Produto</th><th>Categoria</th><th>Apresentações</th><th className="right">Estoque</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Produto</th><th>Categoria</th><th>Apresentações</th><th className="right">Estoque</th><th>Situação</th>{can('products.manage') && <th aria-label="Excluir" />}</tr></thead>
               <tbody>
                 {data.map((p) => (
-                  <tr key={p.id} className="clickable" onClick={() => can('products.manage') && setEditing(p)} style={{ opacity: p.active ? 1 : 0.5 }}>
+                  <tr key={p.id} className="clickable" onClick={() => can('products.manage') && (isBucket(p) ? setBucket(p) : setEditing(p))} style={{ opacity: p.active ? 1 : 0.5 }}>
                     <td>
                       <div className="row">
                         {p.photoUrl ? <img src={p.photoUrl} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover' }} /> : <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--fill)' }} />}
@@ -136,6 +140,12 @@ export function ProductsPage() {
                       {p.stockTracked ? <StockQty qty={p.stockQty} packaging={packagingOf(p)} /> : <span className="muted">não controlado</span>}
                     </td>
                     <td>{p.stockTracked ? LEVEL_BADGE[p.level] : null}</td>
+                    {can('products.manage') && (
+                      <td className="right">
+                        <Button size="small" variant="plain" icon={<Trash2 size={15} />} aria-label={`Excluir ${p.name}`} title="Excluir produto"
+                          onClick={(e) => { e.stopPropagation(); setRemoving(p); }} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -144,7 +154,16 @@ export function ProductsPage() {
         </Card>
       )}
       {combo && <ComboModal onClose={() => setCombo(false)} onSaved={() => void reload()} />}
-      {editing === 'new' ? <QuickProductModal onClose={() => setEditing(null)} onSaved={() => void reload()} /> : editing && <ProductEditor product={editing === 'advanced' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} />}
+      {bucket && <BucketModal product={bucket === 'new' ? undefined : bucket} onClose={() => setBucket(null)} onSaved={() => void reload()} />}
+      {editing === 'new' ? <QuickProductModal onClose={() => setEditing(null)} onSaved={() => void reload()} /> : editing && <ProductEditor product={editing === 'advanced' ? null : editing} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={reload} onRemove={(p) => { setEditing(null); setRemoving(p); }} />}
+      {removing && (
+        <Confirm title={`Excluir ${removing.name}?`} confirmLabel="Excluir produto" danger onClose={() => setRemoving(null)}
+          message={<>
+            Some do cardápio, do estoque, das escolhas e do painel online. As vendas antigas continuam nos relatórios com o nome.
+            {removing.stockTracked && removing.stockQty > 0 && <><br /><strong>Ainda tem <StockQty qty={removing.stockQty} packaging={packagingOf(removing)} /> em estoque</strong>, que sai junto.</>}
+          </>}
+          onConfirm={async () => { await api.del(`/api/products/${removing.id}`); toast.success(`${removing.name} excluído`); void reload(); }} />
+      )}
     </div>
   );
 }
@@ -183,7 +202,7 @@ function toDraft(p: Product | null): PresDraft[] {
   });
 }
 
-function ProductEditor({ product, categories, onClose, onSaved }: { product: Product | null; categories: Category[]; onClose: () => void; onSaved: () => void }) {
+function ProductEditor({ product, categories, onClose, onSaved, onRemove }: { product: Product | null; categories: Category[]; onClose: () => void; onSaved: () => void; onRemove?: (p: Product) => void }) {
   const toast = useToast();
   const suppliers = useLoad(() => api.get<{ id: string; name: string }[]>('/api/suppliers').catch(() => []));
   const all = useLoad(() => api.get<Product[]>('/api/products'));
@@ -267,7 +286,10 @@ function ProductEditor({ product, categories, onClose, onSaved }: { product: Pro
 
   return (
     <Modal title={product ? product.name : 'Novo produto'} wide onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!f.name.trim() || !f.categoryId} onClick={save}>Salvar</Button></>}>
+      footer={<>
+        {product && onRemove && <Button variant="plain" className="danger-text" icon={<Trash2 size={15} />} onClick={() => onRemove(product)} style={{ marginRight: 'auto' }}>Excluir produto</Button>}
+        <Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!f.name.trim() || !f.categoryId} onClick={save}>Salvar</Button>
+      </>}>
       <Tabs value={tab} onChange={setTab} options={[{ value: 'geral', label: 'Geral' }, { value: 'estoque', label: 'Estoque e custo' }, { value: 'apresentacoes', label: `Apresentações e preços (${pres.length})` }, { value: 'escolhas', label: `Escolhas no pedido${optionGroupIds.length ? ` (${optionGroupIds.length})` : ''}` }]} />
       {tab === 'escolhas' && (
         <div className="stack">

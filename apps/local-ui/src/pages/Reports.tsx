@@ -92,6 +92,16 @@ function Sales({ from, to }: { from: string; to: string }) {
           ))}
         </tbody></table></div>
       </Card>
+      {data.staffConsumption?.length > 0 && (
+        <Card title="Consumo de funcionários" flush>
+          <p className="small muted" style={{ padding: '0 16px 8px' }}>Fora das vendas: não foi cobrado. Valor a preço de cardápio e o custo do que saiu do estoque.</p>
+          <div className="table-wrap"><table className="table"><thead><tr><th>Funcionário</th><th className="right">Itens</th><th className="right">Valor de cardápio</th><th className="right">Custo</th></tr></thead><tbody>
+            {data.staffConsumption.map((r: { name: string; items: number; value: number; cost: number }) => (
+              <tr key={r.name}><td>{r.name}</td><td className="right num">{r.items}</td><td className="right num">{formatBRL(r.value)}</td><td className="right num muted">{formatBRL(r.cost)}</td></tr>
+            ))}
+          </tbody></table></div>
+        </Card>
+      )}
       {data.cancellations.length > 0 && (
         <Card title="Cancelamentos" flush>
           <div className="list">{data.cancellations.map((c: { product_name: string; quantity: number; unit_price_cents: number; cancel_reason: string; canceled_at: string; canceled_by_name: string }, i: number) => (

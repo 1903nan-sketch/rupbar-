@@ -270,6 +270,7 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/products', (req, a) => s.catalog.saveProduct(a, null, req.body));
   r('POST', '/api/products/:id/active', (req, a) => s.catalog.setActive(a, id(req), (req.body as { active?: unknown })?.active === true));
   r('PUT', '/api/products/:id', (req, a) => s.catalog.saveProduct(a, id(req), req.body));
+  r('DELETE', '/api/products/:id', (req, a) => s.catalog.remove(a, id(req)));
   r('POST', '/api/products/:id/photo', async (req, a) => {
     requirePerm(a, 'products.manage');
     const file = await readUpload(req);

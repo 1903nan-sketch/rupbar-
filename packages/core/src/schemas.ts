@@ -362,10 +362,12 @@ export const comandaOpenSchema = z
     customerCpf: zOptionalCpf,
     table: optionalText(20),
     responsibleUserId: zUuid.optional(),
+    /** Consumo de funcionário: quem pegou. Não é cobrado e não entra nas vendas. */
+    staffUserId: zUuid.optional(),
     notes: optionalText(200),
     clientRequestId: zUuid.optional(),
   })
-  .refine((v) => v.customerName.length > 0 || v.cardNumber !== null, { message: 'Informe o nome do cliente ou o número do cartão', path: ['customerName'] });
+  .refine((v) => v.customerName.length > 0 || v.cardNumber !== null || !!v.staffUserId, { message: 'Informe o nome do cliente ou o número do cartão', path: ['customerName'] });
 
 export const comandaEditSchema = z
   .object({
