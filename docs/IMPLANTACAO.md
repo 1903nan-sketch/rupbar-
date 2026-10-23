@@ -37,7 +37,7 @@ Configurações → Impressoras:
 | Conexão | Quando usar |
 |---|---|
 | Rede (porta 9100) | Impressoras Ethernet/Wi-Fi (Epson TM-T20, Elgin i9, Bematech MP-4200 TH em ESC/POS etc.). Informe o IP (veja o autoteste da impressora). |
-| Windows | Impressora USB instalada no Windows. Use o driver do fabricante ou “Generic / Text Only”. O RupBar envia bytes RAW pelo spooler. |
+| Windows | Impressora USB instalada no Windows. Use o driver do fabricante ou “Generic / Text Only”. O RupBar envia bytes RAW pelo spooler (drivers v4 recebem como XPS_PASS) e confere a fila do Windows: se ela estiver offline, pausada ou com cupons parados, a impressora aparece com “Atenção” em Configurações → Impressoras. |
 | Arquivo | Testes. |
 
 **Impressora USB:** ligue no PC do bar e instale o driver do fabricante (nas genéricas de 58 mm costuma ser “POS-58”). Sem driver, adicione no Windows uma impressora manual na porta **USB001** com o modelo **Generic / Text Only**. Depois, em Configurações → Impressoras → Adicionar, escolha **USB (instalada no Windows)** e selecione-a na lista (botão **Atualizar** se acabou de instalar).

@@ -56,7 +56,7 @@ export function PrintersSettings() {
         <div className="grid-auto">
           {data.map((p) => (
             <Card key={p.id}>
-              <div className="row between"><strong>{p.name}</strong>{!p.active ? <Badge>Inativa</Badge> : p.lastStatus === 'error' ? <Badge color="red">Erro</Badge> : p.lastStatus === 'ok' ? <Badge color="green">OK</Badge> : <Badge>Sem uso</Badge>}</div>
+              <div className="row between"><strong>{p.name}</strong>{!p.active ? <Badge>Inativa</Badge> : p.lastStatus === 'error' ? <Badge color="red">Erro</Badge> : p.lastStatus === 'warning' ? <Badge color="orange">Atenção</Badge> : p.lastStatus === 'ok' ? <Badge color="green">OK</Badge> : <Badge>Sem uso</Badge>}</div>
               <div className="small muted" style={{ marginTop: 4 }}>
                 {p.transport === 'network' ? `Rede ${p.host}:${p.port}` : p.transport === 'windows' ? `Windows: ${p.windowsName}` : `Arquivo: ${p.filePath}`} · {p.paper} mm
               </div>
@@ -67,7 +67,7 @@ export function PrintersSettings() {
                 {p.printReceipts && <Badge color="purple">Contas e caixa</Badge>}
                 {p.autoPrint && <Badge>Automática</Badge>}
               </div>
-              {p.lastError && <div className="tiny danger-text" style={{ marginTop: 6 }}>{p.lastError}</div>}
+              {p.lastError && <div className={`tiny ${p.lastStatus === 'warning' ? 'warning-text' : 'danger-text'}`} style={{ marginTop: 6 }}>{p.lastError}</div>}
               <div className="row" style={{ marginTop: 12 }}>
                 <Button size="small" icon={<TestTube2 size={14} />} onClick={async () => { try { await api.post(`/api/printers/${p.id}/test`); toast.success('Teste enviado'); } catch (e) { toast.error(e); } }}>Testar</Button>
                 <Button size="small" variant="plain" onClick={() => setEdit(p)}>Editar</Button>
@@ -86,7 +86,7 @@ export function PrintersSettings() {
                   <td className="small nowrap">{fmtDateTime(j.created_at)}</td>
                   <td>{j.printer_name}</td>
                   <td>{j.title}<div className="tiny muted">{PRINT_JOB_KINDS[j.kind] ?? j.kind}</div></td>
-                  <td><Badge color={JOB_STATUS[j.status]?.color}>{JOB_STATUS[j.status]?.label ?? j.status}</Badge>{j.last_error && j.status !== 'done' && <div className="tiny danger-text">{j.last_error} ({j.attempts}×)</div>}</td>
+                  <td><Badge color={JOB_STATUS[j.status]?.color}>{JOB_STATUS[j.status]?.label ?? j.status}</Badge>{j.last_error && (j.status === 'done' ? <div className="tiny warning-text">{j.last_error}</div> : <div className="tiny danger-text">{j.last_error} ({j.attempts}×)</div>)}</td>
                   <td className="right">
                     {(j.status === 'failed' || j.status === 'canceled') && <Button size="small" variant="plain" icon={<RefreshCw size={14} />} onClick={async () => { await api.post(`/api/print-jobs/${j.id}/retry`); void jobs.reload(); }}>Tentar de novo</Button>}
                     {j.status === 'done' && <Button size="small" variant="plain" icon={<RotateCcw size={14} />} onClick={async () => { await api.post(`/api/print-jobs/${j.id}/reprint`); toast.success('Reimpressão enviada'); void jobs.reload(); }}>Reimprimir</Button>}

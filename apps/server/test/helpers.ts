@@ -23,6 +23,8 @@ export interface TestEnv {
   clock: FakeClock;
   printed: { printer: string; bytes: Uint8Array }[];
   printerFail: { on: boolean };
+  /** Aviso que a impressora "devolve" (ex.: fila do Windows parada). */
+  printerWarning: { text: string | null };
   dataDir: string;
 }
 
@@ -31,6 +33,7 @@ export async function createEnv(extra: Partial<CreateOptions> = {}): Promise<Tes
   const clock = new FakeClock();
   const printed: TestEnv['printed'] = [];
   const printerFail = { on: false };
+  const printerWarning: TestEnv['printerWarning'] = { text: null };
   const s = createServices({
     config: {
       dataDir,
@@ -48,12 +51,13 @@ export async function createEnv(extra: Partial<CreateOptions> = {}): Promise<Tes
       async send(printer, data) {
         if (printerFail.on) throw new Error('Impressora desligada');
         printed.push({ printer: String(printer.printer_name ?? printer.name), bytes: data });
+        return printerWarning.text ?? undefined;
       },
     },
     ...extra,
   });
   const app = await buildApp(s);
-  return { app, s, clock, printed, printerFail, dataDir };
+  return { app, s, clock, printed, printerFail, printerWarning, dataDir };
 }
 
 /** Cliente HTTP com cookie de sessão. */

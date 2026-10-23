@@ -22,7 +22,8 @@ const MAX_ATTEMPTS = 8;
 const QR_OFF_KEY = 'printers_qr_off';
 
 export interface PrinterTransport {
-  send(printer: Row, data: Uint8Array): Promise<void>;
+  /** Envia o trabalho; um texto de volta é um aviso (enviado, mas algo no Windows impede a saída). */
+  send(printer: Row, data: Uint8Array): Promise<void | string>;
 }
 
 /** Impressora de rede (Ethernet/Wi-Fi) em modo RAW, porta 9100. */
@@ -47,12 +48,13 @@ export function sendNetwork(host: string, port: number, data: Uint8Array, timeou
 
 /**
  * Impressora instalada no Windows (USB/compartilhada): envia bytes RAW ao
- * spooler via winspool.drv (OpenPrinter/StartDocPrinter/WritePrinter).
- * Nome da impressora e arquivo vão por variáveis de ambiente — nunca
- * concatenados no script — para evitar injeção de comandos.
+ * spooler via winspool.drv (OpenPrinter/StartDocPrinter/WritePrinter) e, em
+ * seguida, olha a fila do Windows para avisar se a impressora está offline,
+ * pausada ou com trabalhos parados. Nome da impressora e arquivo vão por
+ * variáveis de ambiente — nunca concatenados no script — para evitar injeção
+ * de comandos. Só ASCII: o Windows PowerShell lê .ps1 sem BOM como ANSI.
  */
-const RAW_PRINT_PS = `
-$ErrorActionPreference = 'Stop'
+export const RAW_PRINT_PS = `$ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -66,46 +68,132 @@ public class RupBarRawPrinter {
   [DllImport("winspool.drv", SetLastError = true)] public static extern bool StartPagePrinter(IntPtr h);
   [DllImport("winspool.drv", SetLastError = true)] public static extern bool EndPagePrinter(IntPtr h);
   [DllImport("winspool.drv", SetLastError = true)] public static extern bool WritePrinter(IntPtr h, byte[] buf, int len, out int written);
-  public static void Send(string printer, byte[] data) {
+  public static int Send(string printer, byte[] data) {
     IntPtr h;
-    if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("Impressora nao encontrada: " + printer);
+    if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("RUPBAR:NOT_FOUND:" + Marshal.GetLastWin32Error());
     try {
-      var di = new DOCINFO { pDocName = "RupBar", pDataType = "RAW" };
-      if (StartDocPrinter(h, 1, di) == 0) throw new Exception("Falha ao iniciar documento");
+      int job = StartDocPrinter(h, 1, new DOCINFO { pDocName = "RupBar", pDataType = "RAW" });
+      // Drivers v4 (pipeline XPS) recusam RAW (erro 1804): XPS_PASS entrega os bytes do mesmo jeito.
+      if (job == 0 && Marshal.GetLastWin32Error() == 1804) job = StartDocPrinter(h, 1, new DOCINFO { pDocName = "RupBar", pDataType = "XPS_PASS" });
+      if (job == 0) throw new Exception("RUPBAR:START_DOC:" + Marshal.GetLastWin32Error());
       StartPagePrinter(h);
       int written;
-      if (!WritePrinter(h, data, data.Length, out written) || written != data.Length) throw new Exception("Falha ao enviar dados");
+      if (!WritePrinter(h, data, data.Length, out written) || written != data.Length) throw new Exception("RUPBAR:WRITE:" + Marshal.GetLastWin32Error());
       EndPagePrinter(h);
       EndDocPrinter(h);
+      return job;
     } finally { ClosePrinter(h); }
   }
 }
 "@
-[RupBarRawPrinter]::Send($env:RUPBAR_PRINTER, [System.IO.File]::ReadAllBytes($env:RUPBAR_PRINT_FILE))
+$job = [RupBarRawPrinter]::Send($env:RUPBAR_PRINTER, [System.IO.File]::ReadAllBytes($env:RUPBAR_PRINT_FILE))
+$info = @{ job = $job; stuck = 0; offline = $false; paused = $false; error = $false }
+try {
+  $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $env:RUPBAR_PRINTER } | Select-Object -First 1
+  if ($p) {
+    $info.offline = [bool]$p.WorkOffline -or $p.ExtendedPrinterStatus -eq 7 -or $p.ExtendedPrinterStatus -eq 11 -or $p.PrinterStatus -eq 7
+    $info.paused = $p.ExtendedPrinterStatus -eq 8
+    $info.error = $p.ExtendedPrinterStatus -eq 9
+  }
+  $prefix = $env:RUPBAR_PRINTER + ','
+  $info.stuck = @(Get-CimInstance Win32_PrintJob | Where-Object { $_.Name.StartsWith($prefix) -and $_.JobId -ne $job }).Count
+} catch { }
+[Console]::Out.Write((ConvertTo-Json $info -Compress))
 `;
 
-export function sendWindows(printerName: string, data: Uint8Array, timeoutMs = 20_000): Promise<void> {
-  if (process.platform !== 'win32') return Promise.reject(new Error('Impressão pelo spooler disponível apenas no Windows'));
+/** Erros do script em português, com o código do Windows para o suporte. */
+export function windowsPrintError(printerName: string, rawStderr: string, code: number | null): string {
+  // PowerShell 7 colore os erros (códigos ANSI); o texto vai para a tela de impressoras.
+  const stderr = rawStderr.replace(/\x1b\[[0-9;]*m/g, '');
+  const m = /RUPBAR:(NOT_FOUND|START_DOC|WRITE):(\d+)/.exec(stderr);
+  if (m) {
+    const n = Number(m[2]);
+    if (m[1] === 'NOT_FOUND') return `O Windows não encontrou a impressora "${printerName}" (erro ${n}). Confira o nome em Impressoras e scanners e selecione de novo em Editar.`;
+    if (m[1] === 'START_DOC') return `O Windows recusou o cupom na impressora "${printerName}" (erro ${n}). Confira o driver da impressora.`;
+    return `Falha ao enviar o cupom para a impressora "${printerName}" (erro ${n}). Confira o cabo USB e se ela está ligada.`;
+  }
+  const last = stderr.trim().split(/\r?\n/).filter(Boolean).slice(-2).join(' ');
+  return last || `PowerShell saiu com código ${code}`;
+}
+
+export interface WindowsQueueInfo {
+  job?: number;
+  stuck?: number;
+  offline?: boolean;
+  paused?: boolean;
+  error?: boolean;
+}
+
+/** Aviso quando o Windows aceitou o cupom mas a fila não anda (ou null se está tudo certo). */
+export function windowsQueueWarning(printerName: string, info: WindowsQueueInfo | null): string | null {
+  if (!info) return null;
+  const where = `Abra Configurações do Windows → Impressoras e scanners → ${printerName} → Abrir fila de impressão.`;
+  if (info.paused) return `A fila da impressora "${printerName}" está pausada no Windows: os cupons ficam parados. ${where} e escolha Retomar.`;
+  if (info.offline) return `A impressora "${printerName}" está offline no Windows: confira se está ligada e o cabo USB. ${where} Se aparecer "Usar impressora offline", desmarque.`;
+  if (info.error) return `O Windows informa erro na impressora "${printerName}" (papel, tampa aberta ou cabo).`;
+  if ((info.stuck ?? 0) > 0) {
+    const n = info.stuck!;
+    return `Há ${n} ${n === 1 ? 'impressão parada' : 'impressões paradas'} na fila do Windows da impressora "${printerName}". ${where} Se ela estiver na porta USB errada, troque a porta em Propriedades da impressora → Portas.`;
+  }
+  return null;
+}
+
+const POLICY_BLOCKED = /PSSecurityException|UnauthorizedAccess|execution polic|pol[ií]tica de execu/i;
+
+/**
+ * Roda um script do PowerShell e devolve a saída. Antes o script ia pela
+ * entrada padrão (-Command -), e nesse modo o PowerShell ignora em silêncio
+ * comandos de várias linhas: saía com sucesso sem imprimir nada. Agora vai
+ * como arquivo .ps1 (-File); se uma política do Windows bloquear scripts,
+ * tenta de novo com -EncodedCommand, que não depende dela.
+ */
+export async function runPowerShellScript(
+  script: string, env: NodeJS.ProcessEnv, opts: { exe?: string; dir: string; timeoutMs?: number },
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const exe = opts.exe ?? 'powershell.exe';
+  const run = (args: string[]) =>
+    new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+      const ps = spawn(exe, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', ...args], { env, windowsHide: true });
+      let stdout = '';
+      let stderr = '';
+      const timer = setTimeout(() => ps.kill(), opts.timeoutMs ?? 30_000);
+      ps.stdout.on('data', (d) => (stdout += String(d)));
+      ps.stderr.on('data', (d) => (stderr += String(d)));
+      ps.on('error', (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+      ps.on('close', (code) => {
+        clearTimeout(timer);
+        resolve({ code, stdout, stderr });
+      });
+    });
+  const file = join(opts.dir, 'rupbar-print.ps1');
+  writeFileSync(file, script);
+  const first = await run(['-File', file]);
+  if (first.code === 0 || !POLICY_BLOCKED.test(first.stderr)) return first;
+  return run(['-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]);
+}
+
+export async function sendWindows(printerName: string, data: Uint8Array, opts: { exe?: string; timeoutMs?: number } = {}): Promise<string | undefined> {
+  if (process.platform !== 'win32' && !opts.exe) throw new Error('Impressão pelo spooler disponível apenas no Windows');
   const dir = mkdtempSync(join(tmpdir(), 'rupbar-print-'));
   const file = join(dir, 'job.bin');
   writeFileSync(file, data);
-  return new Promise<void>((resolve, reject) => {
-    const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', '-'], {
-      env: { ...process.env, RUPBAR_PRINTER: printerName, RUPBAR_PRINT_FILE: file },
-      windowsHide: true,
-    });
-    let stderr = '';
-    const timer = setTimeout(() => ps.kill(), timeoutMs);
-    ps.stderr.on('data', (d) => (stderr += String(d)));
-    ps.on('error', reject);
-    ps.on('close', (code) => {
-      clearTimeout(timer);
-      rmSync(dir, { recursive: true, force: true });
-      if (code === 0) resolve();
-      else reject(new Error(stderr.trim().split('\n').slice(-2).join(' ') || `PowerShell saiu com código ${code}`));
-    });
-    ps.stdin.end(RAW_PRINT_PS);
-  });
+  try {
+    const r = await runPowerShellScript(RAW_PRINT_PS, { ...process.env, RUPBAR_PRINTER: printerName, RUPBAR_PRINT_FILE: file }, { exe: opts.exe, dir, timeoutMs: opts.timeoutMs });
+    if (r.code !== 0) throw new Error(windowsPrintError(printerName, r.stderr, r.code));
+    let info: WindowsQueueInfo | null = null;
+    try {
+      info = JSON.parse(r.stdout.trim()) as WindowsQueueInfo;
+    } catch {
+      // O PowerShell terminou sem a resposta do script: o cupom não foi enviado.
+      throw new Error(`O PowerShell não confirmou o envio para a impressora "${printerName}". ${r.stderr.trim()}`.trim());
+    }
+    return windowsQueueWarning(printerName, info) ?? undefined;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 export interface WindowsPrinter {
@@ -130,7 +218,8 @@ export function parseWindowsPrinters(out: string): WindowsPrinter[] {
       name: String(p.Name),
       port: typeof p.PortName === 'string' ? p.PortName : null,
       driver: typeof p.DriverName === 'string' ? p.DriverName : null,
-      offline: p.WorkOffline === true,
+      // 7 = offline, 11 = não disponível (ex.: cabo USB desligado).
+      offline: p.WorkOffline === true || p.ExtendedPrinterStatus === 7 || p.ExtendedPrinterStatus === 11,
     }));
 }
 
@@ -146,7 +235,7 @@ export function listWindowsPrinters(timeoutMs = 15_000): Promise<WindowsPrinter[
       [
         '-NoProfile', '-NonInteractive', '-Command',
         // UTF-8 na saída: nomes com acento ("Térmica") precisam chegar iguais para o spooler encontrar a impressora.
-        '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name,PortName,DriverName,WorkOffline | ConvertTo-Json -Compress',
+        '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name,PortName,DriverName,WorkOffline,ExtendedPrinterStatus | ConvertTo-Json -Compress',
       ],
       { windowsHide: true },
     );
@@ -579,12 +668,14 @@ export class PrintingService {
         }
         this.ctx.db.run("UPDATE print_jobs SET status = 'printing', attempts = attempts + 1 WHERE id = ?", String(job.id));
         try {
-          await this.transport.send(job, job.payload as Uint8Array);
+          const warning = (await this.transport.send(job, job.payload as Uint8Array)) || null;
           this.ctx.tx(() => {
-            this.ctx.db.run("UPDATE print_jobs SET status = 'done', printed_at = ?, last_error = NULL WHERE id = ?", this.ctx.nowIso(), String(job.id));
-            this.ctx.db.run("UPDATE printers SET last_status = 'ok', last_error = NULL WHERE id = ?", String(job.printer_id));
-            this.ctx.emit({ channel: 'printing', type: 'job.done', data: { jobId: job.id } });
+            this.ctx.db.run("UPDATE print_jobs SET status = 'done', printed_at = ?, last_error = ? WHERE id = ?", this.ctx.nowIso(), warning, String(job.id));
+            // Aviso: o Windows aceitou o cupom, mas a fila dele está parada (offline, pausada...).
+            this.ctx.db.run('UPDATE printers SET last_status = ?, last_error = ? WHERE id = ?', warning ? 'warning' : 'ok', warning, String(job.printer_id));
+            this.ctx.emit({ channel: 'printing', type: 'job.done', data: { jobId: job.id, warning, printer: job.printer_name } });
           });
+          if (warning) this.ctx.log.warn('impressão parada no Windows', { job: job.id, printer: job.printer_name, warning });
           done++;
         } catch (err) {
           const attempts = Number(job.attempts) + 1;

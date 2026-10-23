@@ -1,8 +1,11 @@
 import { pickupCode } from '@rupbar/core';
+import { appendFileSync, chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Db } from '../src/db/db';
 import { migrate, MIGRATIONS } from '../src/db/migrations';
-import { parseWindowsPrinters } from '../src/services/printing';
+import { parseWindowsPrinters, RAW_PRINT_PS, sendWindows, windowsPrintError, windowsQueueWarning } from '../src/services/printing';
 import { category, Client, createEnv, createStaff, setupEstablishment, uuid, type TestEnv } from './helpers';
 
 let env: TestEnv;
@@ -158,4 +161,84 @@ describe('impressora do caixa', () => {
       }
     }
   });
+});
+
+/**
+ * PowerShell falso: registra os argumentos, guarda uma cópia do .ps1 e
+ * responde como o script de verdade (ou como uma política que bloqueia .ps1).
+ */
+function fakePowerShell(mode: 'ok' | 'policy') {
+  const dir = mkdtempSync(join(tmpdir(), 'rupbar-fake-ps-'));
+  const exe = join(dir, 'powershell');
+  writeFileSync(exe, `#!/bin/sh
+echo "$*" >> "${dir}/args.log"
+for a; do last=$a; done
+case "$*" in
+  *-File*)
+    cp "$last" "${dir}/script.ps1"
+    if [ "${mode}" = policy ]; then echo "rupbar-print.ps1 cannot be loaded. PSSecurityException UnauthorizedAccess" >&2; exit 1; fi
+    printf '{"job":7,"stuck":0,"offline":false,"paused":false,"error":false}'; exit 0;;
+  *-EncodedCommand*) printf '{"job":8,"stuck":2}'; exit 0;;
+esac
+exit 3
+`);
+  chmodSync(exe, 0o755);
+  appendFileSync(join(dir, 'args.log'), '');
+  return { exe, calls: () => readFileSync(join(dir, 'args.log'), 'utf8').trim().split('\n').filter(Boolean), script: () => readFileSync(join(dir, 'script.ps1'), 'utf8') };
+}
+
+describe('impressora instalada no Windows (USB)', () => {
+  it('o script vai como arquivo .ps1 (pela entrada padrão o PowerShell não executava nada) e é só ASCII', async () => {
+    expect(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(RAW_PRINT_PS)).toBe(true);
+    const ps = fakePowerShell('ok');
+    expect(await sendWindows('POS-58', new Uint8Array([27, 64]), { exe: ps.exe })).toBeUndefined();
+    const [call] = ps.calls();
+    expect(call).toMatch(/-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \S+rupbar-print\.ps1$/);
+    expect(call).not.toContain('-Command');
+    expect(ps.script()).toBe(RAW_PRINT_PS);
+  });
+
+  it('política do Windows bloqueando scripts: envia de novo com -EncodedCommand e avisa da fila parada', async () => {
+    const ps = fakePowerShell('policy');
+    const warning = await sendWindows('POS-58', new Uint8Array([27, 64]), { exe: ps.exe });
+    const calls = ps.calls();
+    expect(calls).toHaveLength(2);
+    const args = calls[1]!.split(' ');
+    const encoded = args[args.indexOf('-EncodedCommand') + 1]!;
+    expect(Buffer.from(encoded, 'base64').toString('utf16le')).toBe(RAW_PRINT_PS);
+    expect(warning).toContain('Há 2 impressões paradas na fila do Windows da impressora "POS-58"');
+  });
+
+  it('erros e avisos do Windows em português, com o código do erro', () => {
+    const stderr = 'Exception calling "Send" with "2" argument(s): "RUPBAR:NOT_FOUND:1801"\r\nAt line:39 char:1';
+    expect(windowsPrintError('POS-58', stderr, 1)).toBe('O Windows não encontrou a impressora "POS-58" (erro 1801). Confira o nome em Impressoras e scanners e selecione de novo em Editar.');
+    expect(windowsPrintError('POS-58', '\x1b[31;1mRUPBAR:START_DOC:1804\x1b[0m', 1)).toContain('recusou o cupom');
+    expect(windowsPrintError('POS-58', 'outra falha\nlinha final', 1)).toBe('outra falha linha final');
+    expect(windowsQueueWarning('POS-58', { job: 3, stuck: 0 })).toBeNull();
+    expect(windowsQueueWarning('POS-58', { paused: true })).toContain('pausada');
+    expect(windowsQueueWarning('POS-58', { offline: true, stuck: 4 })).toContain('offline');
+    expect(windowsQueueWarning('POS-58', { stuck: 1 })).toContain('Há 1 impressão parada');
+  });
+
+  it('fila do Windows parada: o cupom conta como enviado e a impressora mostra o aviso até voltar a imprimir', async () => {
+    const p = await owner.ok('POST', '/api/printers', { name: 'Caixa', transport: 'windows', windowsName: 'POS-58', cashier: true });
+    env.printerWarning.text = 'A impressora "POS-58" está offline no Windows';
+    await owner.ok('POST', `/api/printers/${p.id}/test`);
+    await env.s.printing.processQueue();
+    let saved = (await owner.ok('GET', '/api/printers')).find((x: { id: string }) => x.id === p.id);
+    expect(saved).toMatchObject({ lastStatus: 'warning', lastError: 'A impressora "POS-58" está offline no Windows' });
+    expect(env.s.db.value("SELECT status FROM print_jobs WHERE kind = 'test'")).toBe('done');
+    env.printerWarning.text = null;
+    await owner.ok('POST', `/api/printers/${p.id}/test`);
+    await env.s.printing.processQueue();
+    saved = (await owner.ok('GET', '/api/printers')).find((x: { id: string }) => x.id === p.id);
+    expect(saved).toMatchObject({ lastStatus: 'ok', lastError: null });
+  });
+
+  // Com um PowerShell instalado (RUPBAR_TEST_POWERSHELL=caminho), roda o script de verdade.
+  it.skipIf(!process.env.RUPBAR_TEST_POWERSHELL)('PowerShell de verdade executa o envio e a leitura da fila', async () => {
+    const err = await sendWindows('POS-58', new Uint8Array([27, 64]), { exe: process.env.RUPBAR_TEST_POWERSHELL }).then(() => null, (e: Error) => e.message);
+    // Fora do Windows não há winspool: chegar à chamada do Send prova que o script executou.
+    if (process.platform !== 'win32') expect(err).toMatch(/Exception calling "Send"/);
+  }, 60_000);
 });
