@@ -51,7 +51,8 @@
           $('msg').textContent = how === 'running' ? 'Conectando…' : 'Iniciando o serviço do RupBar…';
           for (let i = 0; i < 90; i++) {
             const st = await invoke('server_status');
-            if (st.ok) return void (location.href = st.url);
+            // Endereço sempre novo: depois de uma atualização abre a tela nova, nunca a guardada.
+            if (st.ok) return void (location.href = st.url + (st.url.includes('?') ? '&' : '?') + 'v=' + Date.now());
             await new Promise((r) => setTimeout(r, 500));
           }
           throw new Error('O servidor local não respondeu. Verifique o serviço "RupBar Server" ou os registros em C:\\ProgramData\\RupBar\\logs.');

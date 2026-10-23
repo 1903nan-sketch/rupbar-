@@ -30,6 +30,15 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+/// Recarrega a interface pelo endereço com marca de tempo (não usa a tela guardada).
+fn reload_ui(app: &AppHandle) {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    navigate(app, &format!("?v={stamp}"));
+}
+
 fn navigate(app: &AppHandle, path: &str) {
     if let Some(w) = app.get_webview_window("main") {
         if let Ok(url) = format!("{}{}", server::base_url(), path.trim_start_matches('/')).parse() {
@@ -47,16 +56,18 @@ pub fn run() {
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Abrir RupBar", true, None::<&str>)?;
             let devices = MenuItem::with_id(app, "devices", "Conectar celular (QR Code)", true, None::<&str>)?;
+            let reload = MenuItem::with_id(app, "reload", "Recarregar a tela", true, None::<&str>)?;
             let browser = MenuItem::with_id(app, "browser", "Abrir no navegador", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Sair da janela", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(app, &[&open, &devices, &browser, &sep, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &reload, &devices, &browser, &sep, &quit])?;
             let mut tray = TrayIconBuilder::with_id("main")
                 .tooltip("RupBar — servidor ativo")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "open" => show_main(app),
+                    "reload" => reload_ui(app),
                     "devices" => navigate(app, "configuracoes/dispositivos"),
                     "browser" => server::open_in_browser(&server::base_url()),
                     "quit" => app.exit(0),
