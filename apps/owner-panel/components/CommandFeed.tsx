@@ -22,16 +22,21 @@ const STATUS: Record<string, [string, BadgeColor]> = {
 export async function CommandFeed({ types, path, title = 'Ações enviadas', limit = 8 }: { types: RemoteCommandType[]; path: string; title?: string; limit?: number }) {
   const { sb, est } = await currentEstablishment();
   if (!est) return null;
-  const [{ data }, device] = await Promise.all([
+  const [{ data }, device, { data: lastRows }] = await Promise.all([
     sb.from('remote_commands').select('id, type, status, payload, result, created_at').eq('establishment_id', est.id).in('type', types)
       .order('created_at', { ascending: false }).limit(limit),
     deviceStatus(est.id),
+    sb.from('remote_commands').select('status, result').eq('establishment_id', est.id).order('created_at', { ascending: false }).limit(1),
   ]);
   const commands = data ?? [];
   const waiting = commands.filter((c) => c.status === 'pending' || c.status === 'delivered');
   const seenAgo = device?.last_seen_at ? Date.now() - new Date(device.last_seen_at).getTime() : Infinity;
   const offline = waiting.length > 0 && seenAgo > 2 * 60_000;
-  const outdated = !!device && !versionAtLeast(device.app_version, OWNER_ACTIONS_VERSION);
+  // PC desatualizado só quando ele mesmo recusou a última ação por não conhecê-la
+  // (o número da versão sozinho já enganou: o PC novo chegou dizendo 0.2.0).
+  const last = lastRows?.[0];
+  const lastUnknown = last?.status === 'rejected' && String((last.result as { message?: string } | null)?.message ?? '').startsWith('Comando desconhecido');
+  const outdated = lastUnknown && !versionAtLeast(device?.app_version, OWNER_ACTIONS_VERSION);
   return (
     <Card title={title} subtitle={waiting.length ? `${waiting.length} esperando o PC do bar` : 'O PC do bar confere e aplica cada ação'} icon={CloudUpload} tone="blue" flush>
       {waiting.length > 0 && <AutoRefresh seconds={4} />}
@@ -39,7 +44,7 @@ export async function CommandFeed({ types, path, title = 'Ações enviadas', lim
         <div className="banner warning feed-banner" role="status">
           <span className="banner-icon" aria-hidden="true"><Download size={18} /></span>
           <span>
-            O PC do bar está com o RupBar {device?.app_version ?? 'antigo'}. Para abrir comanda, lançar item, abrir ou fechar o caixa daqui, instale a atualização no PC do bar.
+            O PC do bar recusou a última ação porque está com o RupBar antigo. Para abrir comanda, lançar item, abrir ou fechar o caixa daqui, instale a atualização no PC do bar.
           </span>
         </div>
       )}
