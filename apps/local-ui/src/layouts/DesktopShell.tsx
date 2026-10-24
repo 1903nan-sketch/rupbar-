@@ -6,6 +6,7 @@ import {
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { ConnectionBanner, Logo, RupbarSignature, SyncIndicator } from '../components/brand';
+import { DiscountNotices } from '../components/DiscountRequest';
 import { Button, Loading } from '../components/ui';
 import { api } from '../lib/api';
 import { useFullscreen } from '../lib/fullscreen';
@@ -150,6 +151,7 @@ export function DesktopShell() {
       </aside>
       <div className="main">
         <ConnectionBanner />
+        <DiscountNotices />
         <header className="topbar glass">
           <Button variant="plain" className="show-mobile" icon={<Menu size={20} />} aria-label="Menu" onClick={() => setOpen(true)} />
           <div className="grow small muted ellipsis">{titleFor(loc.pathname)}</div>

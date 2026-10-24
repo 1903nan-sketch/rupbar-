@@ -1645,3 +1645,73 @@ body {
   box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.35);
   font-weight: 600;
 }
+
+/* Pedido de desconto: aguardando o proprietário (na comanda) */
+.discount-pending {
+  align-items: flex-start;
+  gap: 10px;
+}
+.discount-pending > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.discount-preview-box {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.discount-preview-box > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--fill, rgba(120, 120, 128, 0.12));
+}
+.discount-preview-box strong {
+  font-size: 17px;
+}
+
+/* Resposta do proprietário para quem pediu o desconto, em qualquer tela */
+.discount-notices {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, calc(100vw - 24px));
+}
+.discount-notices.mobile {
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+}
+.discount-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  color: var(--text);
+  border: 1px solid var(--separator);
+  border-left: 5px solid var(--green);
+  box-shadow: 0 16px 40px -14px rgba(0, 0, 0, 0.45);
+}
+.discount-notice.no {
+  border-left-color: var(--red);
+}
+.discount-notice-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--green);
+}
+.discount-notice.no .discount-notice-icon {
+  background: var(--red);
+}

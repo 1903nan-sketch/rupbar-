@@ -31,6 +31,7 @@ export const SYNC_ENTITIES = [
   'hookah_consumption',
   'user',
   'purchase',
+  'discount_request',
 ] as const;
 export type SyncEntity = (typeof SYNC_ENTITIES)[number];
 
@@ -63,6 +64,7 @@ export interface PushResponse {
  */
 export const REMOTE_COMMAND_TYPES = [
   'loss.register', 'comanda.open', 'order.create', 'comanda_item.cancel', 'cash.open', 'cash.close', 'user.remove', 'product.set_active',
+  'comanda.discount', 'discount.approve', 'discount.reject',
 ] as const;
 export type RemoteCommandType = (typeof REMOTE_COMMAND_TYPES)[number];
 
@@ -75,6 +77,9 @@ export const REMOTE_COMMAND_LABELS: Record<RemoteCommandType, string> = {
   'cash.close': 'Fechar caixa',
   'user.remove': 'Excluir funcionário',
   'product.set_active': 'Produto à venda / fora de venda',
+  'comanda.discount': 'Dar desconto',
+  'discount.approve': 'Aceitar desconto',
+  'discount.reject': 'Recusar desconto',
 };
 
 export interface RemoteCommand {

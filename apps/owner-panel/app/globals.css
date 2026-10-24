@@ -3766,3 +3766,82 @@ a.banner:hover {
 .staff-note {
   margin-top: -6px;
 }
+
+/* ============================================================ pedidos de desconto */
+.discount-inbox {
+  border-color: color-mix(in srgb, var(--orange) 45%, var(--separator));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--orange) 20%, transparent), 0 18px 40px -24px color-mix(in srgb, var(--orange) 60%, transparent);
+}
+.discount-request {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--separator);
+}
+.discount-request p {
+  margin: 0;
+  color: var(--text-2);
+}
+.discount-request-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: 16px;
+}
+.discount-numbers {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.discount-numbers > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--fill);
+  border: 1px solid var(--separator);
+}
+.discount-numbers dt {
+  font-size: 11.5px;
+  font-weight: 620;
+  color: var(--text-2);
+}
+.discount-numbers dd {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+}
+.discount-minus dd {
+  color: var(--orange);
+}
+.discount-final {
+  background: color-mix(in srgb, var(--accent) 12%, var(--fill)) !important;
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent) !important;
+}
+.discount-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 10px;
+}
+.discount-actions .action-form {
+  gap: 8px;
+}
+.discount-actions .btn {
+  width: 100%;
+}
+.discount-preview {
+  margin: 0;
+}
+@media (max-width: 420px) {
+  .discount-numbers dd {
+    font-size: 15px;
+  }
+  .discount-numbers > div {
+    padding: 8px 10px;
+  }
+}

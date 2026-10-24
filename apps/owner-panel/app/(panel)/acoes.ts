@@ -69,6 +69,41 @@ export async function cancelItem(_prev: ActionState | null, form: FormData): Pro
   return send('comanda_item.cancel', { itemId, reason, label: `Tirar ${String(form.get('itemLabel') ?? 'item').slice(0, 80)}` }, '/comandas');
 }
 
+// --------------------------------------------------------------- descontos
+
+const brl = (c: number) => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
+
+/** Desconto direto na comanda (só o proprietário dá desconto). "10%" vale sobre os itens. */
+export async function giveDiscount(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const comandaId = String(form.get('comandaId') ?? '');
+  const comandaLabel = String(form.get('comandaLabel') ?? 'comanda').slice(0, 40);
+  const reason = String(form.get('reason') ?? '').trim().slice(0, 200);
+  const subtotal = Number(form.get('subtotalCents') ?? 0);
+  if (!UUID.test(comandaId)) return { ok: false, message: 'Comanda inválida.' };
+  const raw = String(form.get('value') ?? '').trim();
+  let value: number | null;
+  if (raw.endsWith('%')) {
+    const pct = Number(raw.slice(0, -1).replace(',', '.'));
+    value = Number.isFinite(pct) && pct > 0 && pct <= 100 ? Math.round((subtotal * pct) / 100) : null;
+  } else value = cents(raw);
+  if (value === null) return { ok: false, message: 'Valor do desconto inválido (ex.: 15,00 ou 10%).' };
+  if (value > subtotal) return { ok: false, message: 'O desconto é maior que o valor dos itens.' };
+  if (value > 0 && reason.length < 3) return { ok: false, message: 'Informe o motivo do desconto.' };
+  const label = value ? `${comandaLabel}: desconto de ${brl(value)}` : `${comandaLabel}: tirar o desconto`;
+  return send('comanda.discount', { comandaId, discountCents: value, reason: value ? reason : 'Desconto tirado', label }, '/comandas');
+}
+
+/** Resposta a um pedido de desconto feito por um funcionário no PC. */
+export async function decideDiscount(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const requestId = String(form.get('requestId') ?? '');
+  const approve = form.get('decision') === 'approve';
+  const note = String(form.get('note') ?? '').trim().slice(0, 200) || null;
+  if (!UUID.test(requestId)) return { ok: false, message: 'Pedido inválido.' };
+  const label = String(form.get('label') ?? '').slice(0, 120);
+  const r = await send(approve ? 'discount.approve' : 'discount.reject', { requestId, note, label: `${approve ? 'Aceitar' : 'Recusar'} ${label}` }, '/comandas');
+  return r.ok ? { ok: true, message: approve ? 'Aceito. O PC do bar aplica o desconto em alguns segundos e avisa quem pediu.' : 'Recusado. Quem pediu recebe o aviso no PC.' } : r;
+}
+
 // ------------------------------------------------------------------- caixa
 
 export async function openCash(_prev: ActionState | null, form: FormData): Promise<ActionState> {

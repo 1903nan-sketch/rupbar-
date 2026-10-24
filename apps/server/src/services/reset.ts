@@ -7,7 +7,7 @@ import { requirePerm, type Actor, type Ctx } from './context';
 
 /** Vendas, caixas e tudo o que sai nos relatórios (filhos antes dos pais). */
 const SALES_TABLES = [
-  'pickup_calls', 'print_jobs', 'order_tickets', 'hookah_consumptions', 'hookah_status_history', 'hookah_sessions',
+  'discount_requests', 'pickup_calls', 'print_jobs', 'order_tickets', 'hookah_consumptions', 'hookah_status_history', 'hookah_sessions',
   'payments', 'comanda_items', 'orders', 'comandas', 'cash_movements', 'cash_sessions', 'losses', 'notifications',
 ];
 const STOCK_TABLES = ['stock_lots', 'purchase_items', 'purchases', 'inventory_items', 'inventories', 'stock_alerts', 'stock_movements'];

@@ -2,6 +2,7 @@ import { initials } from '@rupbar/core';
 import { MonitorSmartphone, Settings, Sparkles } from 'lucide-react';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
+import { DiscountInbox } from '@/components/DiscountInbox';
 import { Shell } from '@/components/Shell';
 import { SyncBanner } from '@/components/SyncBanner';
 import { SyncPill } from '@/components/SyncPill';
@@ -45,6 +46,7 @@ export default async function PanelLayout({ children }: { children: ReactNode })
       {est ? (
         <>
           <SyncBanner device={device} />
+          <DiscountInbox />
           {children}
         </>
       ) : (

@@ -11,6 +11,8 @@ export interface SyncedTable {
   serialize: (db: Db, row: Row) => Record<string, unknown>;
   /** A linha existe no PC, mas sai do painel (ex.: produto excluído). */
   hidden?: (row: Row) => boolean;
+  /** Migração que criou a tabela (as mais novas ganham os gatilhos nela, não na 2). */
+  since?: number;
 }
 
 const omit = (row: Row, keys: string[]): Record<string, unknown> => {
@@ -59,6 +61,7 @@ export const SYNCED_TABLES: SyncedTable[] = [
   { table: 'hookahs', entity: 'hookah', serialize: asIs },
   { table: 'hookah_sessions', entity: 'hookah_session', serialize: (_db, row) => omit(row, ['client_request_id']) },
   { table: 'hookah_consumptions', entity: 'hookah_consumption', serialize: asIs },
+  { table: 'discount_requests', entity: 'discount_request', serialize: (_db, row) => omit(row, ['client_request_id', 'seen_at']), since: 14 },
   {
     table: 'users',
     entity: 'user',

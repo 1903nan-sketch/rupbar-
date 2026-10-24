@@ -1,5 +1,5 @@
 import { presentationSuffix, type PaymentMethod } from '@rupbar/core';
-import { Banknote, CheckCircle2, CreditCard, Printer, QrCode, Wallet } from 'lucide-react';
+import { Banknote, CheckCircle2, CreditCard, Printer, QrCode, Tag, Wallet } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { PixQr } from '../../components/PixQr';
 import { Button, MoneyInput, useToast } from '../../components/ui';
@@ -8,7 +8,8 @@ import { formatBRL, PAYMENT_METHODS } from '../../lib/format';
 import { useLoad } from '../../lib/hooks';
 import { useRealtime } from '../../lib/realtime';
 import { useSession } from '../../lib/session';
-import type { ComandaDetail } from '../ComandaDetail';
+import { DiscountModal, type ComandaDetail } from '../ComandaDetail';
+import { PendingDiscount, RequestDiscountModal } from '../../components/DiscountRequest';
 
 const METHODS: { m: PaymentMethod; icon: ReactNode }[] = [
   { m: 'pix', icon: <QrCode size={22} /> },
@@ -76,6 +77,7 @@ export function MobileCharge({ comanda, onChanged, onClosed }: { comanda: Comand
   const [received, setReceived] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [key, setKey] = useState(requestId);
+  const [askDiscount, setAskDiscount] = useState(false);
   const active = comanda.items.filter((i) => i.status === 'active');
   const value = Math.min(amount ?? 0, comanda.remaining);
   const change = method === 'cash' && received !== null ? Math.max(0, received - value) : 0;
@@ -127,10 +129,22 @@ export function MobileCharge({ comanda, onChanged, onClosed }: { comanda: Comand
           ))}
           {active.length === 0 && <div className="small muted">Nenhum item lançado.</div>}
         </div>
+        {comanda.discount > 0 && <div className="row between small warning-text"><span>Desconto{comanda.discountReason ? ` (${comanda.discountReason})` : ''}</span><span className="num">− {formatBRL(comanda.discount)}</span></div>}
         {comanda.serviceFee > 0 && <div className="row between small muted"><span>Taxa de serviço</span><span className="num">{formatBRL(comanda.serviceFee)}</span></div>}
         {comanda.paid > 0 && <div className="row between small muted"><span>Já pago</span><span className="num">{formatBRL(comanda.paid)}</span></div>}
         <div className="row between mcharge-due"><span>{comanda.paid > 0 ? 'Falta' : 'Total'}</span><strong className="num">{formatBRL(comanda.remaining)}</strong></div>
       </div>
+
+      {comanda.discountRequest ? (
+        <PendingDiscount request={comanda.discountRequest} onChanged={onChanged} />
+      ) : comanda.kind === 'regular' && comanda.subtotal > 0 && (
+        <Button block variant="plain" icon={<Tag size={18} />} onClick={() => setAskDiscount(true)}>
+          {can('comandas.discount') ? (comanda.discount > 0 ? 'Mudar desconto' : 'Dar desconto') : 'Pedir desconto ao proprietário'}
+        </Button>
+      )}
+      {askDiscount && (can('comandas.discount')
+        ? <DiscountModal comanda={comanda} onClose={() => setAskDiscount(false)} onDone={onChanged} />
+        : <RequestDiscountModal comanda={comanda} onClose={() => setAskDiscount(false)} onDone={onChanged} />)}
 
       {!can('cash.payment') ? (
         <div className="stack">

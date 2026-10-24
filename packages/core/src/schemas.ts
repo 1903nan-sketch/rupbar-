@@ -454,6 +454,15 @@ export const discountSchema = versionSchema.extend({
   reason: trimmed(200).min(3),
 });
 
+/** Funcionário pede desconto ao proprietário (quem aplica é só ele). */
+export const discountRequestSchema = z.object({
+  clientRequestId: zUuid,
+  discountCents: zCents.min(1, 'Informe o valor do desconto'),
+  reason: trimmed(200).min(3, 'Informe o motivo'),
+});
+
+export const discountDecisionSchema = z.object({ note: optionalText(200) });
+
 export const serviceFeeSchema = versionSchema.extend({ serviceFeeBp: z.number().int().min(0).max(3000) });
 
 export const paymentSchema = z.object({
@@ -774,3 +783,7 @@ export const remoteCashOpenSchema = z.object({ openingBalanceCents: zCents.min(0
 export const remoteCashCloseSchema = z.object({ countedCashCents: zCents.min(0), notes: optionalText(400) });
 export const remoteUserRemoveSchema = z.object({ userId: zUuid });
 export const remoteProductActiveSchema = z.object({ productId: zUuid, active: z.boolean() });
+/** Desconto dado pelo proprietário no painel (0 tira o desconto). */
+export const remoteDiscountSchema = z.object({ comandaId: zUuid, discountCents: zCents.min(0), reason: trimmed(200).min(3, 'Informe o motivo') });
+/** Resposta do proprietário a um pedido de desconto. */
+export const remoteDiscountDecisionSchema = z.object({ requestId: zUuid, note: optionalText(200) });

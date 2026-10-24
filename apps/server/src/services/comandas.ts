@@ -1,9 +1,10 @@
 import {
-  billTotals, comandaDisplayNumber, comandaLabel, displayName, firstName, maskCpf, maskPhone, parsePickupCode, pickupCode, presentationSuffix, splitEqually,
-  type Station,
+  billTotals, comandaDisplayNumber, comandaLabel, displayName, firstName, formatBRL, maskCpf, maskPhone, parsePickupCode, pickupCode, presentationSuffix,
+  splitEqually, type Station,
 } from '@rupbar/core';
 import {
-  cancelComandaSchema, cancelItemSchema, closeComandaSchema, comandaEditSchema, comandaOpenSchema, discountSchema, moveItemsSchema, orderCreateSchema,
+  cancelComandaSchema, cancelItemSchema, closeComandaSchema, comandaEditSchema, comandaOpenSchema, discountRequestSchema, discountSchema, moveItemsSchema,
+  orderCreateSchema,
   serviceFeeSchema, transferSchema, swapItemSchema,
 } from '@rupbar/core/schemas';
 import type { Row } from '../db/db';
@@ -166,6 +167,7 @@ export class ComandasService {
       })),
       payments,
       hookahSessions,
+      discountRequest: this.pendingDiscountRequest(id),
     };
   }
 
@@ -685,20 +687,38 @@ export class ComandasService {
     requirePerm(actor, 'comandas.discount');
     const input = discountSchema.parse(raw);
     return this.ctx.tx(() => {
-      const c = this.row(id);
-      this.requireOpen(c);
-      this.checkVersion(c, input.expectedVersion);
-      this.ctx.db.run('UPDATE comandas SET discount_cents = ?, discount_reason = ? WHERE id = ?', input.discountCents, input.reason, id);
-      const t = this.totals(id);
-      if (t.remaining < 0) throw conflict('O desconto deixaria o valor pago maior que o total.', 'PAID_EXCEEDS_TOTAL');
-      this.touch(id, 'discount');
-      this.ctx.audit(actor, 'comandas.discount', 'comanda', id, { from: c.discount_cents, to: input.discountCents, reason: input.reason });
-      return this.summary(this.row(id));
+      this.checkVersion(this.row(id), input.expectedVersion);
+      return this.applyDiscount(actor, id, input.discountCents, input.reason);
     });
   }
 
-  setServiceFee(actor: Actor, id: string, raw: unknown) {
+  /**
+   * Desconto: só o proprietário dá (no PC ou pelo painel online). Quem tinha
+   * pedido desconto nesta comanda tem o pedido encerrado (o dono já decidiu).
+   */
+  applyDiscount(actor: Actor, id: string, discountCents: number, reason: string, fromRequest?: Row) {
     requirePerm(actor, 'comandas.discount');
+    const c = this.row(id);
+    this.requireOpen(c);
+    if (c.kind === 'staff' && discountCents > 0) throw conflict('Consumo de funcionário não é cobrado; não tem desconto.', 'STAFF_NO_DISCOUNT');
+    this.ctx.db.run('UPDATE comandas SET discount_cents = ?, discount_reason = ? WHERE id = ?', discountCents, discountCents ? reason : null, id);
+    const t = this.totals(id);
+    if (t.remaining < 0) throw conflict('O desconto deixaria o valor pago maior que o total.', 'PAID_EXCEEDS_TOTAL');
+    const now = this.ctx.nowIso();
+    this.ctx.db.run(
+      `UPDATE discount_requests SET status = 'canceled', decision_note = 'O proprietário deu o desconto direto', decided_at = ?, seen_at = ?,
+         version = version + 1, updated_at = ? WHERE comanda_id = ? AND status = 'pending' AND id <> ?`,
+      now, now, now, id, fromRequest ? String(fromRequest.id) : '',
+    );
+    this.touch(id, 'discount');
+    this.ctx.audit(actor, 'comandas.discount', 'comanda', id, {
+      from: c.discount_cents, to: discountCents, reason, ...(fromRequest ? { requestedBy: fromRequest.requested_by_name } : {}),
+    });
+    return this.summary(this.row(id));
+  }
+
+  setServiceFee(actor: Actor, id: string, raw: unknown) {
+    requirePerm(actor, 'comandas.service_fee');
     const input = serviceFeeSchema.parse(raw);
     return this.ctx.tx(() => {
       const c = this.row(id);
@@ -710,6 +730,154 @@ export class ComandasService {
       this.ctx.audit(actor, 'comandas.service_fee', 'comanda', id, { from: c.service_fee_bp, to: input.serviceFeeBp });
       return this.summary(this.row(id));
     });
+  }
+
+  /** Total da comanda com um desconto (sem gravar), para o pedido mostrar "fica R$ X". */
+  private totalsWith(c: Row, discountCents: number) {
+    const id = String(c.id);
+    const items = this.ctx.db.all<{ quantity: number; unit_price_cents: number; status: string }>(
+      'SELECT quantity, unit_price_cents, status FROM comanda_items WHERE comanda_id = ?', id,
+    );
+    const paid = Number(this.ctx.db.value("SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE comanda_id = ? AND status = 'active'", id));
+    const lines = items.map((i) => ({ quantity: i.quantity, unitPrice: i.unit_price_cents, canceled: i.status !== 'active' }));
+    return {
+      before: billTotals(lines, { discount: Number(c.discount_cents), serviceFeeBp: Number(c.service_fee_bp), paid }),
+      after: billTotals(lines, { discount: discountCents, serviceFeeBp: Number(c.service_fee_bp), paid }),
+    };
+  }
+
+  private discountRequestView(r: Row) {
+    return {
+      id: r.id, comandaId: r.comanda_id, requestedBy: r.requested_by, requestedByName: r.requested_by_name,
+      discountCents: Number(r.discount_cents), reason: r.reason, subtotalCents: Number(r.subtotal_cents), totalCents: Number(r.total_cents),
+      totalAfterCents: Number(r.total_after_cents), status: r.status, decidedByName: r.decided_by_name ?? null, decidedAt: r.decided_at ?? null,
+      decisionNote: r.decision_note ?? null, createdAt: r.created_at,
+    };
+  }
+
+  /** Pedido de desconto aguardando o proprietário (aparece na comanda). */
+  pendingDiscountRequest(comandaId: string) {
+    const r = this.ctx.db.get("SELECT * FROM discount_requests WHERE comanda_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1", comandaId);
+    return r ? this.discountRequestView(r) : null;
+  }
+
+  /**
+   * Qualquer funcionário pede desconto; o pedido vai ao painel online do
+   * proprietário. Um pedido novo na mesma comanda substitui o anterior.
+   */
+  requestDiscount(actor: Actor, comandaId: string, raw: unknown) {
+    requirePerm(actor, 'comandas.view');
+    const input = discountRequestSchema.parse(raw);
+    return this.ctx.tx(() => {
+      const dup = this.ctx.db.get('SELECT * FROM discount_requests WHERE client_request_id = ?', input.clientRequestId);
+      if (dup) return { ...this.discountRequestView(dup), duplicate: true };
+      const c = this.row(comandaId);
+      this.requireOpen(c);
+      if (c.kind !== 'regular') throw conflict('Desconto só em comanda de cliente.', 'DISCOUNT_NOT_ALLOWED');
+      const t = this.totalsWith(c, input.discountCents);
+      if (input.discountCents > t.before.subtotal) throw badRequest('O desconto é maior que o valor dos itens.');
+      if (t.after.remaining < 0) throw conflict('O desconto deixaria o valor pago maior que o total.', 'PAID_EXCEEDS_TOTAL');
+      const now = this.ctx.nowIso();
+      this.ctx.db.run(
+        `UPDATE discount_requests SET status = 'canceled', decision_note = 'Substituído por um pedido novo', decided_at = ?, seen_at = ?,
+           version = version + 1, updated_at = ? WHERE comanda_id = ? AND status = 'pending'`,
+        now, now, now, comandaId,
+      );
+      const id = this.ctx.id();
+      this.ctx.db.run(
+        `INSERT INTO discount_requests (id, comanda_id, requested_by, requested_by_name, discount_cents, reason, subtotal_cents, total_cents,
+           total_after_cents, client_request_id, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        id, comandaId, actor.userId, actor.name, input.discountCents, input.reason, t.before.subtotal, t.before.total, t.after.total,
+        input.clientRequestId, now, now,
+      );
+      this.ctx.audit(actor, 'comandas.discount_requested', 'comanda', comandaId, { discountCents: input.discountCents, reason: input.reason });
+      this.ctx.emit({ channel: 'comandas', type: 'comanda.changed', data: { comandaId, change: 'discount_request' } });
+      return { ...this.discountRequestView(this.ctx.db.get('SELECT * FROM discount_requests WHERE id = ?', id)!), duplicate: false };
+    });
+  }
+
+  /** Quem pediu (ou o proprietário) desiste do pedido. */
+  cancelDiscountRequest(actor: Actor, requestId: string) {
+    requirePerm(actor, 'comandas.view');
+    return this.ctx.tx(() => {
+      const r = this.ctx.db.get('SELECT * FROM discount_requests WHERE id = ?', requestId);
+      if (!r) throw notFound('Pedido de desconto');
+      if (r.requested_by !== actor.userId && !hasPerm(actor, 'comandas.discount')) throw forbidden('Só quem pediu pode cancelar o pedido.');
+      if (r.status !== 'pending') throw conflict('Este pedido já foi respondido.', 'DISCOUNT_REQUEST_DONE');
+      const now = this.ctx.nowIso();
+      this.ctx.db.run(
+        `UPDATE discount_requests SET status = 'canceled', decision_note = 'Cancelado por quem pediu', decided_at = ?, seen_at = ?,
+           version = version + 1, updated_at = ? WHERE id = ?`,
+        now, now, now, requestId,
+      );
+      this.ctx.emit({ channel: 'comandas', type: 'comanda.changed', data: { comandaId: r.comanda_id, change: 'discount_request' } });
+      return { ok: true };
+    });
+  }
+
+  /**
+   * O proprietário aceita ou recusa (pelo painel online ou no PC). Não lança
+   * erro quando o pedido não vale mais: responde o motivo, para o painel mostrar.
+   */
+  decideDiscount(actor: Actor, requestId: string, approve: boolean, note: string | null): { applied: boolean; message: string } {
+    requirePerm(actor, 'comandas.discount');
+    const r = this.ctx.db.get('SELECT * FROM discount_requests WHERE id = ?', requestId);
+    if (!r) throw notFound('Pedido de desconto');
+    if (r.status !== 'pending') {
+      const why = r.status === 'approved' ? 'já foi aceito' : r.status === 'rejected' ? 'já foi recusado' : `foi cancelado (${r.decision_note ?? 'sem motivo'})`;
+      return { applied: false, message: `Este pedido de desconto ${why}.` };
+    }
+    const c = this.row(String(r.comanda_id));
+    const label = comandaLabel({ number: Number(c.number), cardNumber: c.card_number === null ? null : Number(c.card_number), kind: String(c.kind) });
+    const now = this.ctx.nowIso();
+    const finish = (status: 'approved' | 'rejected' | 'canceled', decisionNote: string | null) => {
+      this.ctx.db.run(
+        `UPDATE discount_requests SET status = ?, decided_by_name = ?, decided_at = ?, decision_note = ?, seen_at = ?, version = version + 1, updated_at = ?
+         WHERE id = ?`,
+        status, actor.name, now, decisionNote, status === 'canceled' ? now : null, now, requestId,
+      );
+      this.ctx.emit({ channel: 'comandas', type: 'discount.decided', data: { requestId, requestedBy: r.requested_by, comandaId: r.comanda_id, status } });
+      this.ctx.emit({ channel: 'comandas', type: 'comanda.changed', data: { comandaId: r.comanda_id, change: 'discount_request' } });
+    };
+    if (!approve) {
+      finish('rejected', note);
+      this.ctx.audit(actor, 'comandas.discount_rejected', 'comanda', String(r.comanda_id), { discountCents: r.discount_cents, requestedBy: r.requested_by_name, note });
+      return { applied: true, message: `Desconto de ${formatBRL(Number(r.discount_cents))} recusado (${label}). ${r.requested_by_name} recebe o aviso.` };
+    }
+    if (c.status !== 'open') {
+      finish('canceled', 'Comanda encerrada antes da resposta');
+      return { applied: false, message: `${label} já foi encerrada; o desconto não foi aplicado.` };
+    }
+    const after = this.totalsWith(c, Number(r.discount_cents)).after;
+    if (after.remaining < 0) {
+      finish('canceled', 'O valor já pago ficaria maior que o total');
+      return { applied: false, message: `Não deu para aplicar: o valor já pago na ${label} ficaria maior que o total.` };
+    }
+    this.applyDiscount(actor, String(r.comanda_id), Number(r.discount_cents), String(r.reason), r);
+    finish('approved', note);
+    return {
+      applied: true,
+      message: `Desconto de ${formatBRL(Number(r.discount_cents))} aplicado na ${label} (fica ${formatBRL(after.total)}). ${r.requested_by_name} recebe o aviso.`,
+    };
+  }
+
+  /** Respostas do proprietário que o funcionário ainda não viu (mensagem na tela). */
+  discountNotices(actor: Actor) {
+    const rows = this.ctx.db.all(
+      `SELECT r.*, c.number, c.card_number, c.kind FROM discount_requests r JOIN comandas c ON c.id = r.comanda_id
+       WHERE r.requested_by = ? AND r.status IN ('approved','rejected') AND r.seen_at IS NULL ORDER BY r.decided_at`,
+      actor.userId,
+    );
+    return rows.map((r) => ({
+      ...this.discountRequestView(r),
+      comandaLabel: comandaLabel({ number: Number(r.number), cardNumber: r.card_number === null ? null : Number(r.card_number), kind: String(r.kind) }),
+    }));
+  }
+
+  markDiscountNoticeSeen(actor: Actor, requestId: string) {
+    this.ctx.db.run('UPDATE discount_requests SET seen_at = ? WHERE id = ? AND requested_by = ? AND seen_at IS NULL', this.ctx.nowIso(), requestId, actor.userId);
+    return { ok: true };
   }
 
   /** Divisão igualitária do saldo restante (sugestão; cada parte vira um pagamento). */

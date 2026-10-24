@@ -13,7 +13,8 @@ export const PERMISSIONS = {
   'comandas.transfer': 'Transferir mesa / mover itens',
   'comandas.cancel_item': 'Cancelar itens (com justificativa)',
   'comandas.cancel': 'Cancelar comandas inteiras',
-  'comandas.discount': 'Conceder descontos',
+  'comandas.discount': 'Conceder descontos (só o proprietário; os outros pedem a ele)',
+  'comandas.service_fee': 'Alterar taxa de serviço',
   'comandas.close': 'Encerrar comandas',
   'menu.view': 'Ver cardápio',
   'orders.create': 'Enviar pedidos',
@@ -65,7 +66,7 @@ export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
  * ("Somente o proprietário poderá criar contas, alterar permissões, redefinir
  * credenciais e confirmar perdas.")
  */
-export const OWNER_ONLY: readonly Permission[] = ['users.manage', 'roles.manage', 'losses.confirm', 'sync.manage', 'admin.override'];
+export const OWNER_ONLY: readonly Permission[] = ['users.manage', 'roles.manage', 'losses.confirm', 'sync.manage', 'admin.override', 'comandas.discount'];
 
 /** Permissões sensíveis: podem ser concedidas, mas a interface exige confirmação. */
 /**
@@ -102,7 +103,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, { name: string; description: st
     description: 'Operação e relatórios autorizados, sem criar contas e sem registrar perdas.',
     permissions: [
       ...operational,
-      'comandas.transfer', 'comandas.cancel_item', 'comandas.cancel', 'comandas.discount', 'comandas.close',
+      'comandas.transfer', 'comandas.cancel_item', 'comandas.cancel', 'comandas.service_fee', 'comandas.close',
       'kitchen.view', 'kitchen.update', 'kitchen.call',
       'cash.view', 'cash.open', 'cash.close', 'cash.payment', 'cash.payment_reverse', 'cash.withdrawal', 'cash.supply',
       'products.view', 'products.manage', 'stock.view', 'stock.entry', 'stock.adjust', 'suppliers.manage', 'losses.view',

@@ -51,8 +51,14 @@ worker (a cada 5 s, backoff até 5 min)
 | `cash.open` / `cash.close` | abre o caixa com o troco / fecha com o dinheiro contado |
 | `user.remove` | exclui o funcionário (bloqueia, encerra as sessões, libera o e-mail) |
 | `product.set_active` | tira o produto da venda ou devolve |
+| `comanda.discount` | dá (ou tira, com 0) o desconto na comanda |
+| `discount.approve` / `discount.reject` | responde o pedido de desconto de um funcionário; quem pediu recebe o aviso no PC/celular |
 
 Dado inválido ou regra violada (caixa já aberto, cartão em uso, item já cancelado, excluir o proprietário) → `rejected` com o motivo, sem aplicar nada. O painel mostra “Aguardando o PC”, “Feito” ou “Recusado” com a mensagem.
+
+### Pedido de desconto
+
+Desconto só o proprietário dá (`comandas.discount` é exclusiva dele). O funcionário pede na comanda (PC ou celular): o PC grava em `discount_requests` (valor, motivo, total antes e depois) e envia como registro `discount_request`; o painel mostra o pedido no topo de todas as páginas (`v_discount_requests`, conferido a cada 10 s) com “Aceitar” / “Recusar”, que viram `discount.approve` / `discount.reject`. O PC aplica uma única vez e avisa quem pediu em qualquer tela. Pedido novo na mesma comanda substitui o anterior; comanda encerrada antes da resposta cancela o pedido; o proprietário também pode responder no próprio PC.
 
 ## Estados exibidos
 

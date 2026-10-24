@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { formatBRL } from '@rupbar/core';
 import {
-  remoteCashCloseSchema, remoteCashOpenSchema, remoteComandaOpenSchema, remoteItemCancelSchema, remoteOrderSchema, remoteProductActiveSchema,
-  remoteUserRemoveSchema,
+  remoteCashCloseSchema, remoteCashOpenSchema, remoteComandaOpenSchema, remoteDiscountDecisionSchema, remoteDiscountSchema, remoteItemCancelSchema,
+  remoteOrderSchema, remoteProductActiveSchema, remoteUserRemoveSchema,
 } from '@rupbar/core/schemas';
 import { Db } from '../db/db';
 import { migrate, pendingMigrations } from '../db/migrations';
@@ -161,6 +162,21 @@ export function createServices(opts: CreateOptions) {
     const u = users.remove(remote(payload), input.userId);
     return { status: 'applied', message: `${u.name} excluído(a).` };
   });
+  sync.register('comanda.discount', (_commandId, payload) => {
+    const input = remoteDiscountSchema.parse(payload);
+    const c = comandas.applyDiscount(remote(payload), input.comandaId, input.discountCents, input.reason);
+    return {
+      status: 'applied',
+      message: input.discountCents ? `Desconto de ${formatBRL(input.discountCents)} na ${c.label} (fica ${formatBRL(c.total)}).` : `Desconto tirado da ${c.label}.`,
+    };
+  });
+  for (const [type, approve] of [['discount.approve', true], ['discount.reject', false]] as const) {
+    sync.register(type, (_commandId, payload) => {
+      const input = remoteDiscountDecisionSchema.parse(payload);
+      const r = comandas.decideDiscount(remote(payload), input.requestId, approve, input.note);
+      return { status: r.applied ? 'applied' : 'rejected', message: r.message };
+    });
+  }
   sync.register('product.set_active', (_commandId, payload) => {
     const input = remoteProductActiveSchema.parse(payload);
     const p = catalog.setActive(remote(payload), input.productId, input.active);

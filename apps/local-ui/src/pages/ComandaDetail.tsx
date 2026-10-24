@@ -6,6 +6,7 @@ import {
 import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { OrderComposer } from '../components/OrderComposer';
+import { PendingDiscount, RequestDiscountModal, type DiscountRequestView } from '../components/DiscountRequest';
 import { SwapItemModal } from '../components/SwapItem';
 import {
   DeleteComandaModal, DeleteItemModal, DeletePaymentModal, EditItemModal, EditPaymentModal, OwnerTag, ReopenComandaModal,
@@ -53,6 +54,8 @@ export interface ComandaDetail extends ComandaSummary {
   items: ComandaItem[];
   payments: { id: string; method: PaymentMethod; amount_cents: number; change_cents: number; payer_label: string | null; status: string; created_at: string; created_by_name: string | null; reverse_reason: string | null }[];
   hookahSessions: { id: string; status: string; started_at: string; code: string; charge_cents: number | null }[];
+  /** Pedido de desconto aguardando o proprietário. */
+  discountRequest: DiscountRequestView | null;
 }
 
 const TICKET_LABEL: Record<string, string> = { received: 'Recebido', preparing: 'Em preparo', ready: 'Pronto', delivered: 'Entregue', canceled: 'Cancelado' };
@@ -64,10 +67,10 @@ export function ComandaDetailPage() {
   const { can } = useSession();
   const now = useNow();
   const { data: c, error, reload } = useLoad(() => api.get<ComandaDetail>(`/api/comandas/${id}`), [id]);
-  useRealtime(['comanda.changed', 'order.status', 'ticket.updated'], (e) => {
+  useRealtime(['comanda.changed', 'order.status', 'ticket.updated', 'discount.decided'], (e) => {
     if (!e.data?.comandaId || e.data.comandaId === id) void reload();
   });
-  const [modal, setModal] = useState<null | 'order' | 'pay' | 'transfer' | 'move' | 'discount' | 'fee' | 'split' | 'close' | 'cancel' | 'contact' | 'more' | 'edit' | 'reopen' | 'delete'>(null);
+  const [modal, setModal] = useState<null | 'order' | 'pay' | 'transfer' | 'move' | 'discount' | 'askDiscount' | 'fee' | 'split' | 'close' | 'cancel' | 'contact' | 'more' | 'edit' | 'reopen' | 'delete'>(null);
   const [cancelItem, setCancelItem] = useState<ComandaItem | null>(null);
   const [swapItem, setSwapItem] = useState<ComandaItem | null>(null);
   const [fix, setFix] = useState<null | { kind: 'editItem' | 'deleteItem'; item: ComandaItem } | { kind: 'editPay' | 'deletePay'; payment: ComandaDetail['payments'][number] }>(null);
@@ -77,6 +80,9 @@ export function ComandaDetailPage() {
   const open = c.status === 'open';
   const master = can('admin.override');
   const orders = groupByOrder(c.items);
+  // Desconto: o proprietário dá; os outros pedem a ele.
+  const discountable = open && c.kind === 'regular' && c.subtotal > 0;
+  const discountAction = can('comandas.discount') ? 'discount' : 'askDiscount';
 
   const printBill = async () => {
     try {
@@ -185,6 +191,7 @@ export function ComandaDetailPage() {
               {!open && c.paid > c.total && <Line label={<strong>Pago a mais</strong>} value={<strong className="warning-text">{formatBRL(c.paid - c.total)}</strong>} />}
               {open && c.kind !== 'staff' && <Line label={<strong>Restante</strong>} value={<strong className={c.remaining > 0 ? 'warning-text' : 'success-text'}>{formatBRL(c.remaining)}</strong>} />}
             </div>
+            {c.discountRequest && open && <div style={{ marginTop: 14 }}><PendingDiscount request={c.discountRequest} onChanged={() => void reload()} /></div>}
             {open && (
               <div className="col" style={{ marginTop: 16 }}>
                 {c.remaining > 0 && can('cash.payment') && <Button variant="primary" size="large" block icon={<CreditCard size={18} />} onClick={() => setModal('pay')}>Receber pagamento</Button>}
@@ -195,6 +202,11 @@ export function ComandaDetailPage() {
                   {c.kind !== 'staff' && <Button block icon={<Divide size={16} />} onClick={() => setModal('split')}>Dividir</Button>}
                   <Button block icon={<Printer size={16} />} onClick={printBill}>Conta</Button>
                 </div>
+                {discountable && !c.discountRequest && (
+                  <Button block variant="plain" icon={<Tag size={16} />} onClick={() => setModal(discountAction)}>
+                    {discountAction === 'discount' ? (c.discount > 0 ? 'Mudar desconto' : 'Dar desconto') : 'Pedir desconto ao proprietário'}
+                  </Button>
+                )}
               </div>
             )}
           </Card>
@@ -237,8 +249,8 @@ export function ComandaDetailPage() {
           <div className="col">
             {can('comandas.transfer') && <ActionRow icon={<ArrowRightLeft size={18} />} label="Transferir mesa" onClick={() => setModal('transfer')} />}
             {can('comandas.transfer') && <ActionRow icon={<ArrowRightLeft size={18} />} label="Mover itens para outra comanda" onClick={() => setModal('move')} />}
-            {can('comandas.discount') && <ActionRow icon={<Tag size={18} />} label="Desconto" onClick={() => setModal('discount')} />}
-            {can('comandas.discount') && <ActionRow icon={<Percent size={18} />} label="Taxa de serviço" onClick={() => setModal('fee')} />}
+            {discountable && <ActionRow icon={<Tag size={18} />} label={discountAction === 'discount' ? 'Desconto' : 'Pedir desconto ao proprietário'} onClick={() => setModal(discountAction)} />}
+            {can('comandas.service_fee') && <ActionRow icon={<Percent size={18} />} label="Taxa de serviço" onClick={() => setModal('fee')} />}
             {can('comandas.open') && (c.customerPhoneMasked || c.customerCpfMasked) && <ActionRow icon={<Eye size={18} />} label="Ver contato do cliente" onClick={() => setModal('contact')} />}
             {can('comandas.cancel') && <ActionRow icon={<Ban size={18} />} label="Cancelar comanda" danger onClick={() => setModal('cancel')} />}
             {master && c.paid > 0 && <ActionRow icon={<Trash2 size={18} />} label="Excluir comanda com pagamentos (conta mestre)" danger onClick={() => setModal('delete')} />}
@@ -248,6 +260,7 @@ export function ComandaDetailPage() {
       {modal === 'transfer' && <TransferModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'move' && <MoveItemsModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'discount' && <DiscountModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
+      {modal === 'askDiscount' && <RequestDiscountModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'fee' && <ServiceFeeModal comanda={c} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'contact' && <ContactModal comandaId={c.id} onClose={() => setModal(null)} />}
       {modal === 'close' && (
@@ -436,7 +449,8 @@ function MoveItemsModal({ comanda, onClose, onDone }: { comanda: ComandaDetail; 
   );
 }
 
-function DiscountModal({ comanda, onClose, onDone }: { comanda: ComandaDetail; onClose: () => void; onDone: () => void }) {
+/** Desconto direto (só o proprietário). */
+export function DiscountModal({ comanda, onClose, onDone }: { comanda: ComandaDetail; onClose: () => void; onDone: () => void }) {
   const [value, setValue] = useState<number | null>(comanda.discount || null);
   const [reason, setReason] = useState(comanda.discountReason ?? '');
   return (

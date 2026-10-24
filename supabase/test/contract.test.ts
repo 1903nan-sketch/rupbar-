@@ -199,4 +199,58 @@ describe('contrato PC ⇄ Supabase', () => {
     const products = await as('authenticated', OWNER_ID, () => pg.query<{ active: boolean }>('select active from v_products'));
     expect(products.rows[0]!.active).toBe(false);
   });
+
+  it('desconto: o funcionário pede no PC, o proprietário aceita no painel e o desconto volta aplicado', async () => {
+    const est = (await call('GET', '/api/branding')).establishmentId as string;
+    const owner = (type: string, payload: Record<string, unknown>) =>
+      as('authenticated', OWNER_ID, () => rpc<string>('rupbar_owner_command', { p_establishment_id: est, p_type: type, p_payload: payload }));
+    const statusOf = async (id: string) => (await pg.query<{ status: string; result: { message: string } }>('select status, result from remote_commands where id = $1', [id])).rows[0]!;
+    const cats = await call('GET', '/api/categories');
+    const beer = await call('POST', '/api/products', {
+      name: 'Heineken long neck', categoryId: cats.find((c: { name: string }) => c.name === 'Cervejas').id, measure: 'unit',
+      presentations: [{ name: 'Unidade', priceCents: 1200 }], initialStock: { qty: 24_000, totalCostCents: 12_000 },
+    });
+    const presentationId = (await call('GET', `/api/products/${beer.id}`)).presentations[0].id;
+    const comanda = await call('POST', '/api/comandas', { customerName: 'Bruno', cardNumber: 14 });
+    await call('POST', '/api/orders', { comandaId: comanda.id, clientRequestId: randomUUID(), items: [{ presentationId, quantity: 10 }] });
+
+    // Garçom entra no PC (outra sessão) e pede o desconto.
+    const role = (await call('GET', '/api/roles')).find((r: { key: string }) => r.key === 'waiter').id;
+    const davi = await call('POST', '/api/users', { name: 'Davi', email: 'davi@bar.com', roleId: role });
+    let waiterCookie = '';
+    const waiter = async (method: string, url: string, body?: unknown) => {
+      const res = await app.inject({
+        method: method as 'GET', url, remoteAddress: '192.168.0.50',
+        headers: { 'x-rupbar': '1', ...(waiterCookie ? { cookie: waiterCookie } : {}), ...(body ? { 'content-type': 'application/json' } : {}) },
+        payload: body ? JSON.stringify(body) : undefined,
+      });
+      const c = res.cookies.find((x) => x.name === 'rupbar_session');
+      if (c) waiterCookie = `rupbar_session=${c.value}`;
+      if (res.statusCode >= 400) throw new Error(`${url}: ${res.body}`);
+      return res.json();
+    };
+    await waiter('POST', '/api/auth/login', { email: 'davi@bar.com', password: davi.temporaryPassword });
+    await waiter('POST', '/api/auth/change-password', { currentPassword: davi.temporaryPassword, newPassword: 'Senha-Forte-99' });
+    const req = await waiter('POST', `/api/comandas/${comanda.id}/discount-requests`, { clientRequestId: randomUUID(), discountCents: 2_000, reason: 'Levou caixa fechada' });
+
+    await s.sync.runOnce(); // o pedido chega ao painel
+    const pending = await as('authenticated', OWNER_ID, () => pg.query('select requested_by_name, discount_cents, total_cents, total_after_cents, status, reason from v_discount_requests where id = $1', [req.id]));
+    expect(pending.rows[0]).toEqual({ requested_by_name: 'Davi', discount_cents: 2_000, total_cents: 12_000, total_after_cents: 10_000, status: 'pending', reason: 'Levou caixa fechada' });
+    await expect(as('anon', null, () => pg.query('select id from v_discount_requests'))).rejects.toThrow(/permission denied/);
+
+    const approve = await owner('discount.approve', { requestId: req.id });
+    await s.sync.runOnce(); // o PC aplica e confirma
+    expect(await statusOf(approve)).toMatchObject({ status: 'applied', result: { message: expect.stringContaining('Desconto de R$ 20,00 aplicado na Comanda 14') } });
+    expect(await waiter('GET', '/api/discount-requests/notices')).toEqual([expect.objectContaining({ status: 'approved', comandaLabel: 'Comanda 14' })]);
+    await s.sync.runOnce(); // a resposta e a comanda com desconto chegam à nuvem
+    const done = await as('authenticated', OWNER_ID, () => pg.query<{ status: string }>('select status from v_discount_requests where id = $1', [req.id]));
+    expect(done.rows[0]!.status).toBe('approved');
+    const c = await as('authenticated', OWNER_ID, () => pg.query('select discount_cents, discount_reason from v_comandas where id = $1', [comanda.id]));
+    expect(c.rows[0]).toEqual({ discount_cents: 2_000, discount_reason: 'Levou caixa fechada' });
+
+    // O proprietário também dá (e tira) desconto direto pelo painel.
+    const direct = await owner('comanda.discount', { comandaId: comanda.id, discountCents: 3_000, reason: 'Aniversário' });
+    await s.sync.runOnce();
+    expect(await statusOf(direct)).toMatchObject({ status: 'applied', result: { message: 'Desconto de R$ 30,00 na Comanda 14 (fica R$ 90,00).' } });
+  });
 });

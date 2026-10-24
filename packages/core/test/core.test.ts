@@ -116,6 +116,13 @@ describe('permissões', () => {
     expect(manager.has('users.manage')).toBe(false);
     expect(manager.has('reports.financial')).toBe(false);
   });
+  it('desconto só o proprietário dá; a taxa de serviço continua com o gerente', () => {
+    const manager = effectivePermissions({ roleKey: 'manager', rolePermissions: [...SYSTEM_ROLES.manager.permissions, 'comandas.discount'], grants: ['comandas.discount'] });
+    expect(manager.has('comandas.discount')).toBe(false);
+    expect(manager.has('comandas.service_fee')).toBe(true);
+    expect(effectivePermissions({ roleKey: 'owner', rolePermissions: [] }).has('comandas.discount')).toBe(true);
+    expect(sanitizeGrantable(['comandas.discount', 'comandas.service_fee'])).toEqual(['comandas.service_fee']);
+  });
   it('funcionários comuns não acessam relatórios financeiros', () => {
     for (const key of ['cashier', 'waiter', 'kitchen', 'manager'] as const) {
       expect(SYSTEM_ROLES[key].permissions).not.toContain('reports.financial');

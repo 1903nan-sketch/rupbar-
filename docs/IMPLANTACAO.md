@@ -95,6 +95,7 @@ Em produção, o RupBar foi instalado no projeto Supabase já usado pelo Barberf
 | 20261023222958 | `rupbar_09_staff_consumption` | consumo de funcionário fora das vendas (`v_comanda_items.staff`, resumo de vendas e comparação de produtos) |
 | 20261024012741 | `rupbar_10_cash_movement_status` | caixa aberto no painel: `v_cash_movements.status` (sangria/suprimento anulado fica fora do dinheiro esperado) |
 | 20261024015652 | `rupbar_11_comanda_discount` | descontos no painel: `v_comandas.discount_reason` e `closed_by` |
+| 20261024184130 | `rupbar_12_discount_requests` | desconto só do proprietário: pedidos de desconto do PC (`discount_request`, `v_discount_requests`) e ações `comanda.discount`, `discount.approve`, `discount.reject` |
 
 Consequências de compartilhar o projeto:
 

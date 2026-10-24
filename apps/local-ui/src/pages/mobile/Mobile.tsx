@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ScreenErrorBoundary } from '../../lib/update';
 import { ConnectionBanner, Logo } from '../../components/brand';
+import { DiscountNotices } from '../../components/DiscountRequest';
 import { OrderComposer } from '../../components/OrderComposer';
 import { LaunchedItems } from '../../components/SwapItem';
 import { Badge, Button, Empty, ErrorBox, Input, Loading, useToast } from '../../components/ui';
@@ -34,6 +35,7 @@ export function MobileShell() {
         </div>
       </header>
       <ConnectionBanner />
+      <DiscountNotices mobile />
       <ScreenErrorBoundary key={location.pathname}>
         <Outlet />
       </ScreenErrorBoundary>

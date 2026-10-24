@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { PERMISSION_GROUPS, PERMISSIONS, OWNER_ONLY, SENSITIVE } from '@rupbar/core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { discountDecisionSchema } from '@rupbar/core/schemas';
 import { z } from 'zod';
 import { AppError, badRequest, forbidden, unauthorized } from '../lib/errors';
 import type { AttachmentKind } from '../services/attachments';
@@ -310,6 +311,15 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   r('POST', '/api/comandas/:id/move-items', (req, a) => s.comandas.moveItems(a, id(req), req.body));
   r('POST', '/api/comandas/:id/discount', (req, a) => s.comandas.setDiscount(a, id(req), req.body));
   r('POST', '/api/comandas/:id/service-fee', (req, a) => s.comandas.setServiceFee(a, id(req), req.body));
+  // Pedido de desconto: o funcionário pede, o proprietário responde (painel online ou aqui).
+  r('POST', '/api/comandas/:id/discount-requests', (req, a) => s.comandas.requestDiscount(a, id(req), req.body));
+  r('POST', '/api/discount-requests/:id/cancel', (req, a) => s.comandas.cancelDiscountRequest(a, id(req)));
+  r('POST', '/api/discount-requests/:id/approve', (req, a) =>
+    s.ctx.tx(() => s.comandas.decideDiscount(a, id(req), true, discountDecisionSchema.parse(req.body ?? {}).note)));
+  r('POST', '/api/discount-requests/:id/reject', (req, a) =>
+    s.ctx.tx(() => s.comandas.decideDiscount(a, id(req), false, discountDecisionSchema.parse(req.body ?? {}).note)));
+  r('GET', '/api/discount-requests/notices', (_req, a) => s.comandas.discountNotices(a));
+  r('POST', '/api/discount-requests/:id/seen', (req, a) => s.comandas.markDiscountNoticeSeen(a, id(req)));
   r('POST', '/api/comandas/:id/close', (req, a) => s.comandas.close(a, id(req), req.body));
   r('POST', '/api/comandas/:id/cancel', (req, a) => s.comandas.cancel(a, id(req), req.body));
   r('GET', '/api/comandas/:id/split', (req, a) => s.comandas.split(a, id(req), Number(q(req).parts)));

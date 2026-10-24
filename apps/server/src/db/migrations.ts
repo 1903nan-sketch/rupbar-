@@ -10,7 +10,7 @@
  */
 import type { Db } from './db';
 import { backfillProductCodes } from './product-codes';
-import { SYNCED_TABLES } from './sync-tables';
+import { SYNCED_TABLES, type SyncedTable } from './sync-tables';
 
 const M001 = /* sql */ `
 CREATE TABLE meta (
@@ -863,6 +863,50 @@ WHEN NEW.staff <> ((SELECT kind FROM comandas WHERE id = NEW.comanda_id) = 'staf
 BEGIN UPDATE comanda_items SET staff = ((SELECT kind FROM comandas WHERE id = NEW.comanda_id) = 'staff') WHERE id = NEW.id; END;
 `;
 
+/**
+ * Desconto só o proprietário dá. Os funcionários pedem; o pedido vai ao painel
+ * online e a resposta volta como comando. A taxa de serviço ganha permissão
+ * própria (antes vinha junto com o desconto).
+ */
+const M014 = /* sql */ `
+CREATE TABLE discount_requests (
+  id TEXT PRIMARY KEY,
+  comanda_id TEXT NOT NULL REFERENCES comandas(id),
+  requested_by TEXT NOT NULL REFERENCES users(id),
+  requested_by_name TEXT NOT NULL,
+  discount_cents INTEGER NOT NULL CHECK (discount_cents > 0),
+  reason TEXT NOT NULL,
+  subtotal_cents INTEGER NOT NULL,
+  total_cents INTEGER NOT NULL,
+  total_after_cents INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','canceled')),
+  decided_by_name TEXT,
+  decided_at TEXT,
+  decision_note TEXT,
+  seen_at TEXT,
+  client_request_id TEXT UNIQUE,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX discount_requests_comanda ON discount_requests(comanda_id, status);
+CREATE INDEX discount_requests_requester ON discount_requests(requested_by, status);
+-- Comanda encerrada ou cancelada antes da resposta: o pedido perde o sentido.
+CREATE TRIGGER discount_requests_comanda_done AFTER UPDATE OF status ON comandas WHEN NEW.status <> 'open'
+BEGIN
+  UPDATE discount_requests SET status = 'canceled', decision_note = 'Comanda encerrada antes da resposta',
+    decided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), version = version + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+  WHERE comanda_id = NEW.id AND status = 'pending';
+END;
+UPDATE roles SET permissions_json = json_insert(permissions_json, '$[#]', 'comandas.service_fee')
+WHERE EXISTS (SELECT 1 FROM json_each(roles.permissions_json) WHERE value = 'comandas.discount')
+  AND NOT EXISTS (SELECT 1 FROM json_each(roles.permissions_json) WHERE value = 'comandas.service_fee');
+UPDATE users SET grants_json = json_insert(grants_json, '$[#]', 'comandas.service_fee')
+WHERE EXISTS (SELECT 1 FROM json_each(users.grants_json) WHERE value = 'comandas.discount')
+  AND NOT EXISTS (SELECT 1 FROM json_each(users.grants_json) WHERE value = 'comandas.service_fee');
+${syncTriggersSql((t) => t.since === 14)}
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -873,7 +917,7 @@ export interface Migration {
 
 export const MIGRATIONS: Migration[] = [
   { id: 1, name: 'schema inicial', sql: M001 },
-  { id: 2, name: 'gatilhos de sincronização', sql: syncTriggersSql() },
+  { id: 2, name: 'gatilhos de sincronização', sql: syncTriggersSql((t) => !t.since) },
   { id: 3, name: 'cartões, venda rápida e narguilé por item', sql: M003 },
   { id: 4, name: 'correções da conta mestre', sql: M004 },
   { id: 5, name: 'anúncios da TV de retirada', sql: M005 },
@@ -885,13 +929,14 @@ export const MIGRATIONS: Migration[] = [
   { id: 11, name: 'sabores do aluguel de narguilé', sql: M011 },
   { id: 12, name: 'excluir funcionário', sql: M012 },
   { id: 13, name: 'consumo de funcionário e excluir produto', sql: M013 },
+  { id: 14, name: 'desconto só do proprietário e pedidos de desconto', sql: M014 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */
-function syncTriggersSql(): string {
+function syncTriggersSql(which: (t: SyncedTable) => boolean): string {
   const when = `(SELECT value FROM meta WHERE key = 'sync_enabled') = '1'`;
   const now = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`;
-  return SYNCED_TABLES.map(
+  return SYNCED_TABLES.filter(which).map(
     ({ table, entity }) => `
 CREATE TRIGGER sync_${table}_ins AFTER INSERT ON ${table} WHEN ${when}
 BEGIN INSERT INTO sync_outbox(entity, entity_id, created_at) VALUES ('${entity}', NEW.id, ${now}); END;

@@ -8,7 +8,8 @@ import { ScrollHere } from '@/components/ScrollHere';
 import { Badge, Card, Empty, PageHeader, PeriodForm, Stat } from '@/components/ui';
 import { currentEstablishment, periodFrom } from '@/lib/data';
 import { fmtShort } from '@/lib/format';
-import { openComanda } from '../acoes';
+import { giveDiscount, openComanda } from '../acoes';
+import { DiscountFields } from './DiscountFields';
 import { CancelItemButton, ItemLauncher, type SaleOption } from './ItemLauncher';
 
 export const metadata = { title: 'Comandas' };
@@ -31,7 +32,7 @@ interface ComandaRow {
 
 const UUID = /^[0-9a-f-]{36}$/;
 const STATUS_COLOR: Record<string, 'green' | 'red' | 'gray'> = { open: 'green', closed: 'gray', canceled: 'red' };
-const FEED_TYPES = ['comanda.open', 'order.create', 'comanda_item.cancel'] as const;
+const FEED_TYPES = ['comanda.open', 'order.create', 'comanda_item.cancel', 'comanda.discount', 'discount.approve', 'discount.reject'] as const;
 
 const labelOf = (c: ComandaRow) => comandaLabel({ number: c.number, cardNumber: c.card_number ?? null, kind: c.kind ?? 'regular' });
 /** Conta da comanda como no PC: itens − desconto + taxa de serviço. */
@@ -196,6 +197,16 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
               <div className="detail-launch">
                 <h3 className="mini-label">Lançar itens</h3>
                 <ItemLauncher comandaId={sel.id} comandaLabel={labelOf(sel)} options={saleOptions} />
+              </div>
+            )}
+            {sel.status === 'open' && sel.kind === 'regular' && selTotal > 0 && (
+              <div className="detail-launch">
+                <h3 className="mini-label">{Number(sel.discount_cents ?? 0) > 0 ? 'Mudar o desconto' : 'Dar desconto'}</h3>
+                <ActionForm action={giveDiscount} submit="Aplicar desconto" pending="Enviando…" icon={<BadgePercent size={17} aria-hidden="true" />} reset={false}>
+                  <input type="hidden" name="comandaId" value={sel.id} />
+                  <input type="hidden" name="comandaLabel" value={labelOf(sel)} />
+                  <DiscountFields subtotalCents={selTotal} serviceFeeBp={Number(sel.service_fee_bp ?? 0)} currentCents={Number(sel.discount_cents ?? 0)} />
+                </ActionForm>
               </div>
             )}
             {bill && (bill.discount > 0 || bill.serviceFee > 0) && (
