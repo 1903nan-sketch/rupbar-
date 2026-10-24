@@ -160,16 +160,17 @@ export class TvService {
 
   board() {
     const b = this.settings.branding();
+    const display = this.display();
     return {
       branding: { tradeName: b.tradeName, initials: b.initials, primaryColor: b.primaryColor, secondaryColor: b.secondaryColor, logoUrl: b.logoUrl, coverUrl: b.coverUrl },
-      ...this.kitchen.tvBoard(this.display().readyMinutes),
+      ...this.kitchen.tvBoard(display.readyMinutes, display.stations),
       recentCalls: this.kitchen.recentCalls(5),
       voice: this.settings.operation().tvVoiceEnabled,
       serverTts: this.ttsAvailable === true,
       serverTime: this.ctx.nowIso(),
       pickupPlace: this.settings.operation().pickupPlace,
       /** Som da chamada e modo de anúncios (alterados em Configurações → TV). */
-      display: this.display(),
+      display,
       /** Anúncios ativos, na ordem de exibição. */
       media: this.media.playlist(),
     };

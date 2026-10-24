@@ -100,7 +100,7 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 - **Narguilé**: tabela única com aluguel (essência e carvão inclusos), troca de rosh e narguilé próprio do cliente (essência e carvão lançados na comanda). Troca cortesia e "Alterar valores" em um clique.
 - **Pix copia e cola**: configure a chave, o nome e a cidade. O QR aparece no pagamento, na venda rápida e na conta impressa.
 - **Produção**: nome do cliente em destaque, número da comanda, cronômetro de atraso e alerta sonoro forte.
-- **TV**: nome grande, toque alto antes da voz e anúncios (fotos e vídeos) em carrossel ou contínuos. Os anúncios são interrompidos quando há chamada e o som dos vídeos pode ser ligado ou desligado.
+- **TV**: nome grande, toque alto antes da voz e anúncios (fotos e vídeos) em carrossel ou contínuos. Os anúncios são interrompidos quando há chamada e o som dos vídeos pode ser ligado ou desligado. Por padrão o telão mostra só os pedidos da cozinha; dá para incluir o balcão em Configurações → Conectar TV.
 - **App do garçom**: teclado numérico para abrir a comanda pelo cartão e cardápio em blocos.
 - **Estoque autoexplicativo**: "como você compra / como você vende", fardo × lata com conta pronta, aviso de engano e código automático de produto.
 - **WhatsApp pela Evolution API**: assistente passo a passo com QR Code.

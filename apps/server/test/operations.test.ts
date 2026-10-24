@@ -209,6 +209,29 @@ describe('estoque por mililitro e pedidos', () => {
     // cozinha não tem acesso ao caixa
     expect((await kitchenUser.fail('GET', '/api/cash/current')).status).toBe(403);
   });
+
+  it('telão: por padrão só os pedidos da cozinha; o dono pode incluir o balcão', async () => {
+    const w = await createWhisky();
+    const porcoes = await category(owner, 'Porções');
+    const fritas = await owner.ok('POST', '/api/products', {
+      name: 'Batata frita', categoryId: porcoes, measure: 'unit', stockTracked: false, presentations: [{ name: 'Porção', priceCents: 3000 }],
+    });
+    const fp = (await owner.ok('GET', `/api/products/${fritas.id}`)).presentations[0].id;
+    const ana = await openComanda(owner, 'Ana Paula');
+    const bia = await openComanda(owner, 'Bia Souza');
+    // Ana pediu só bebida (sai no balcão); Bia pediu porção (cozinha).
+    await owner.ok('POST', '/api/orders', { comandaId: ana.id, clientRequestId: uuid(), items: [{ presentationId: w.pres['Dose 50 ml'], quantity: 1 }] });
+    await owner.ok('POST', '/api/orders', { comandaId: bia.id, clientRequestId: uuid(), items: [{ presentationId: fp, quantity: 1 }] });
+    const names = (b: { preparing: { name: string }[]; ready: { name: string }[] }) => [...b.preparing, ...b.ready].map((x) => x.name).sort();
+    expect(names(env.s.tv.board())).toEqual(['Bia']);
+    expect(names(await owner.ok('GET', '/api/tv/board'))).toEqual(['Bia']);
+
+    expect((await owner.ok('PUT', '/api/tv/display', { stations: ['kitchen', 'bar'] })).stations).toEqual(['kitchen', 'bar']);
+    expect(names(env.s.tv.board())).toEqual(['Ana', 'Bia']);
+    await owner.ok('PUT', '/api/tv/display', { stations: ['bar'] });
+    expect(names(env.s.tv.board())).toEqual(['Ana']);
+    expect((await owner.fail('PUT', '/api/tv/display', { stations: [] })).status).toBe(400);
+  });
 });
 
 describe('comandas, pagamentos e caixa', () => {

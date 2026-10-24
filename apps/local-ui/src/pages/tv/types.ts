@@ -53,6 +53,7 @@ export interface TvCall {
 /** Padrões usados até o painel chegar (iguais aos do servidor). */
 export const DEFAULT_DISPLAY: TvDisplaySettings = {
   volume: 100,
+  stations: ['kitchen'],
   chimeRepeat: 2,
   callRepeat: 1,
   adsMode: 'off',

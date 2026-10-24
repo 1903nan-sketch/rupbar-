@@ -191,6 +191,13 @@ export function TvDisplayPanel() {
             <Field label="Repetir chamada" hint="Quantas vezes o toque e o anúncio por voz são feitos para cada pedido.">
               <Segmented value={String(d.callRepeat)} options={[1, 2, 3].map((n) => ({ value: String(n), label: n === 1 ? '1 vez' : `${n} vezes` }))} onChange={(v) => save({ callRepeat: Number(v) })} />
             </Field>
+            <Field label="Pedidos que aparecem no telão" hint="Bebidas saem na hora no balcão; deixe só a cozinha para o telão mostrar porções e lanches.">
+              <Segmented
+                value={d.stations.length > 1 ? 'all' : d.stations[0] === 'bar' ? 'bar' : 'kitchen'}
+                options={[{ value: 'kitchen', label: 'Só cozinha' }, { value: 'all', label: 'Cozinha e balcão' }, { value: 'bar', label: 'Só balcão' }]}
+                onChange={(v) => save({ stations: v === 'all' ? ['kitchen', 'bar'] : [v as 'kitchen' | 'bar'] })}
+              />
+            </Field>
             <Field label="Pedido pronto some da TV depois de" hint="Contado de quando ficou pronto ou da última chamada. “Nunca” = só sai ao marcar entregue.">
               <Segmented
                 value={String(d.readyMinutes)}

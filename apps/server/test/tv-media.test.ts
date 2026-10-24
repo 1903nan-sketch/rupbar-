@@ -253,7 +253,7 @@ describe('exibição da TV (som e anúncios)', () => {
     const defaults = await owner.ok('GET', '/api/tv/display');
     expect(defaults).toEqual({
       volume: 100, chimeRepeat: 2, callRepeat: 1, adsMode: 'off', boardSeconds: 20, adsSeconds: 30, boardAfterCallSeconds: 20,
-      readyTicker: true, videoSound: false, videoVolume: 60, readyMinutes: 10,
+      readyTicker: true, videoSound: false, videoVolume: 60, readyMinutes: 10, stations: ['kitchen'],
     });
     expect((await waiter.fail('GET', '/api/tv/display')).status).toBe(403);
     expect((await waiter.fail('PUT', '/api/tv/display', { volume: 10 })).status).toBe(403);

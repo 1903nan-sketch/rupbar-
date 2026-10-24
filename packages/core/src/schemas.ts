@@ -690,6 +690,8 @@ export const tvDisplaySettingsSchema = z.object({
   videoVolume: z.number().int().min(0, 'Volume entre 0 e 100%').max(100, 'Volume entre 0 e 100%').default(60),
   /** Minutos que um pedido pronto fica na TV depois de ficar pronto/ser chamado (0 = até marcar entregue). */
   readyMinutes: z.number().int().min(0, 'Entre 0 e 120 minutos').max(120, 'Entre 0 e 120 minutos').default(10),
+  /** Setores cujos pedidos aparecem no telão (padrão: só a cozinha; bebidas saem na hora no balcão). */
+  stations: z.array(z.enum(['kitchen', 'bar'])).min(1, 'Escolha ao menos um setor').default(['kitchen']),
 });
 export type TvDisplaySettings = z.infer<typeof tvDisplaySettingsSchema>;
 

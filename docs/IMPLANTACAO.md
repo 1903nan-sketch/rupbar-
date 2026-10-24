@@ -58,6 +58,8 @@ Escolha o papel (58 mm = 32 colunas, 80 mm = 48 colunas), o setor (cozinha, bebi
 
 Chamada: um toque alto de atenção e depois a voz ("Carlos, comanda vinte e três. Seu pedido está pronto…"). A voz vem do Windows (pt-BR, offline); sem ela, a TV usa a voz do navegador. O volume, o número de toques e as repetições ficam em Configurações → Conectar TV → **Som da chamada**, que tem o botão "Testar som na TV".
 
+Pedidos no telão: por padrão a TV mostra **só os pedidos da cozinha** (porções, lanches). As bebidas saem na hora no balcão e não aparecem. Para mudar: Configurações → Conectar TV → **Pedidos que aparecem no telão** ("Só cozinha", "Cozinha e balcão" ou "Só balcão"). Num pedido com comida e bebida, a TV acompanha só a parte da cozinha.
+
 Anúncios (Configurações → Conectar TV → **Anúncios na TV** e **Fotos e vídeos**):
 - Envie fotos (JPG, PNG ou WEBP, até 20 MB) e vídeos (MP4 ou WEBM, até 300 MB). Arraste para ordenar e defina o tempo de cada foto.
 - **Carrossel**: alterna entre os pedidos e os anúncios. **Anúncios sempre**: os pedidos só aparecem quando alguém é chamado.

@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/local-ui",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "type": "module",
   "description": "Interface do RupBar servida pelo PC do bar (Windows, celulares, tablets, cozinha e TV).",

@@ -208,7 +208,7 @@ export class KitchenService {
    * Painel público da TV: somente número do pedido, primeiro nome e status.
    * Nunca inclui CPF, telefone, valores ou forma de pagamento.
    */
-  tvBoard(readyMinutes = 0) {
+  tvBoard(readyMinutes = 0, stations: readonly string[] = ['kitchen', 'bar']) {
     const nowMs = this.ctx.clock.now().getTime();
     const day = businessDay(this.ctx.clock.now());
     const since = new Date(this.ctx.clock.now().getTime() - 4 * 3_600_000).toISOString();
@@ -219,9 +219,9 @@ export class KitchenService {
       `SELECT o.id AS order_id, o.number, c.customer_name, c.number AS comanda_number, c.card_number, c.kind AS comanda_kind,
               GROUP_CONCAT(t.status) AS statuses, MAX(t.ready_at) AS last_ready, MAX(t.called_at) AS last_call
        FROM orders o JOIN comandas c ON c.id = o.comanda_id JOIN order_tickets t ON t.order_id = o.id
-       WHERE o.business_day = ? AND o.created_at >= ?
+       WHERE o.business_day = ? AND o.created_at >= ? AND t.station IN (${stations.map(() => '?').join(',')})
        GROUP BY o.id ORDER BY o.number`,
-      day, since,
+      day, since, ...stations,
     );
     type Entry = { number: number; name: string; displayName: string; comandaDisplayNumber: number | null };
     const preparing: Entry[] = [];
