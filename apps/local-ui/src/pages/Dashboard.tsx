@@ -1,4 +1,4 @@
-import { AlertTriangle, ChefHat, ClipboardList, ClipboardPlus, Maximize2, Minimize2, PackageMinus, Printer, ScanBarcode, Wallet, Wind, Zap } from 'lucide-react';
+import { AlertTriangle, ChefHat, ClipboardList, ClipboardPlus, FileBarChart, Maximize2, Minimize2, PackageMinus, Printer, ScanBarcode, Wallet, Wind, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, ErrorBox, Loading, PageHeader, Stat } from '../components/ui';
@@ -62,6 +62,9 @@ export function DashboardPage() {
         )}
         {can('comandas.view') && (
           <ActionTile icon={<ClipboardList size={26} />} title="Comandas" hint={plural(data.openComandas, 'aberta agora', 'abertas agora')} onClick={() => navigate('/comandas')} />
+        )}
+        {can('reports.financial') && (
+          <ActionTile icon={<FileBarChart size={26} />} title="Venda do dia" hint="Quanto vendeu, imprimir e salvar em PDF" onClick={() => navigate('/relatorios')} />
         )}
         <ActionTile
           icon={shell.fullscreen ? <Minimize2 size={26} /> : <Maximize2 size={26} />}

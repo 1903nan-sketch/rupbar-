@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
-import { PERMISSION_GROUPS, PERMISSIONS, OWNER_ONLY, SENSITIVE } from '@rupbar/core';
+import { PERMISSION_GROUPS, PERMISSIONS, OWNER_ONLY, reportFileName, SENSITIVE } from '@rupbar/core';
+import { renderReportPdf } from '@rupbar/core/pdf';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { discountDecisionSchema } from '@rupbar/core/schemas';
 import { z } from 'zod';
@@ -434,6 +435,16 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
   // ------------------------------------------------------ relatórios
 
   r('GET', '/api/reports/sales', (req, a) => s.reports.sales(a, q(req)));
+  // Relatório completo do dia do bar (05:00 às 05:00) ou de vários dias: tela, PDF e impressora do caixa.
+  r('GET', '/api/reports/full', (req, a) => s.reports.full(a, q(req)));
+  r('POST', '/api/reports/full/print', (req, a) => s.printing.printReport(a, s.reports.full(a, req.body)));
+  r('GET', '/api/reports/full.pdf', (req, a, reply) => {
+    const report = s.reports.full(a, q(req));
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="${reportFileName(report.de, report.ate)}"`);
+    reply.header('Cache-Control', 'no-store');
+    return reply.send(Buffer.from(renderReportPdf(report)));
+  });
   r('GET', '/api/reports/operational', (req, a) => s.reports.operational(a, q(req)));
   r('GET', '/api/reports/losses', (req, a) => s.reports.losses(a, q(req)));
   r('POST', '/api/reports/compare', (req, a) => s.reports.compareProducts(a, req.body));

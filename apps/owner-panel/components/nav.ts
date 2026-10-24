@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ClipboardList, Cloud, LayoutDashboard, PackageMinus, Tags, Users, Wallet, type LucideIcon } from 'lucide-react';
+import { BarChart3, Boxes, ClipboardList, Cloud, FileBarChart, LayoutDashboard, PackageMinus, Tags, Users, Wallet, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -11,9 +11,10 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Visão geral', short: 'Início', icon: LayoutDashboard, primary: true },
-  { href: '/vendas', label: 'Vendas', short: 'Vendas', icon: BarChart3, primary: true },
+  { href: '/relatorios', label: 'Relatórios e PDF', short: 'Relatórios', icon: FileBarChart, primary: true },
   { href: '/comandas', label: 'Comandas', short: 'Comandas', icon: ClipboardList, primary: true },
   { href: '/estoque', label: 'Estoque', short: 'Estoque', icon: Boxes, primary: true },
+  { href: '/vendas', label: 'Vendas (gráficos)', short: 'Vendas', icon: BarChart3 },
   { href: '/produtos', label: 'Produtos', short: 'Produtos', icon: Tags },
   { href: '/perdas', label: 'Perdas', short: 'Perdas', icon: PackageMinus },
   { href: '/caixas', label: 'Caixas e sangrias', short: 'Caixas', icon: Wallet },

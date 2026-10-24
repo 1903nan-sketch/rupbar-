@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/core",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Regras de domínio compartilhadas do RupBar (dinheiro, unidades, permissões, ESC/POS, sincronização).",
@@ -9,7 +9,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./escpos": "./src/escpos.ts",
-    "./schemas": "./src/schemas.ts"
+    "./schemas": "./src/schemas.ts",
+    "./pdf": "./src/report-pdf.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

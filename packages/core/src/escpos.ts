@@ -8,6 +8,7 @@
  */
 
 import { formatBRL } from './money';
+import { paymentLabel, reportTitle, reportTotals, reportWindowLabel, type FullReport } from './report';
 
 export type PaperWidth = 58 | 80;
 export type CodePage = 'cp850' | 'cp860' | 'ascii';
@@ -476,6 +477,71 @@ export function renderCashClose(data: CashCloseData, opts: PrintOptions): Uint8A
   p.pair('Dinheiro contado', formatBRL(data.countedCash));
   p.bold(true).pair(data.difference < 0 ? 'FALTA' : data.difference > 0 ? 'SOBRA' : 'DIFERENÇA', formatBRL(Math.abs(data.difference))).bold(false);
   p.feed(2).line('Assinatura: ______________________');
+  return p.cut().build();
+}
+
+/** Venda do dia (ou período) na impressora do caixa: resumo, recebimentos, produtos e caixa. */
+export function renderReportTicket(r: FullReport, opts: PrintOptions): Uint8Array {
+  const p = new EscPosBuilder(opts.paper, opts.codepage);
+  const s = r.summary;
+  const t = reportTotals(r);
+  p.align('center').bold(true).wrapped(r.barName).line(r.de === r.ate ? 'VENDA DO DIA' : 'RELATÓRIO DE VENDAS').bold(false);
+  p.wrapped(reportTitle(r.de, r.ate)).wrapped(reportWindowLabel(r.de, r.ate));
+  p.align('left').separator('=');
+  p.pair('Vendido (itens)', formatBRL(s.grossCents));
+  if (s.discountsCents) p.pair('Descontos', '-' + formatBRL(s.discountsCents));
+  if (s.serviceFeeCents) p.pair('Taxa de serviço', formatBRL(s.serviceFeeCents));
+  p.bold(true).pair('LÍQUIDO', formatBRL(t.netCents)).bold(false);
+  p.separator();
+  p.bold(true).line('RECEBIMENTOS').bold(false);
+  for (const m of r.payments) p.pair(`${paymentLabel(m.method)} (${m.count})`, formatBRL(m.totalCents));
+  p.bold(true).pair('TOTAL RECEBIDO', formatBRL(s.receivedCents)).bold(false);
+  p.separator();
+  p.pair('Comandas encerradas', String(s.closedComandas));
+  p.pair('Vendas rápidas', String(s.quickSales));
+  p.pair('Ticket médio', formatBRL(t.averageTicketCents));
+  p.pair('Itens vendidos', String(s.itemsSold));
+  p.pair('Custo estimado', formatBRL(s.costCents));
+  p.pair(`Lucro bruto (${t.marginPct}%)`, formatBRL(t.marginCents));
+  if (s.canceledCents) p.pair('Itens cancelados', formatBRL(s.canceledCents));
+  if (s.reversedCents) p.pair('Estornos', formatBRL(s.reversedCents));
+  if (s.staffCents) p.pair('Consumo funcionários', formatBRL(s.staffCents));
+  if (s.lossesCents) p.pair('Perdas (custo)', formatBRL(s.lossesCents));
+  if (s.stillOpen) p.pair(`Ainda abertas (${s.stillOpen})`, formatBRL(s.stillOpenCents));
+  if (r.byCategory.length) {
+    p.separator().bold(true).line('POR CATEGORIA').bold(false);
+    for (const c of r.byCategory) p.pair(`${c.qty}x ${c.category}`, formatBRL(c.totalCents));
+  }
+  if (r.products.length) {
+    p.separator().bold(true).line('PRODUTOS').bold(false);
+    for (const x of r.products) {
+      const name = x.presentation && x.presentation !== 'Unidade' && x.presentation.toLowerCase() !== x.name.toLowerCase() ? `${x.name} ${x.presentation}` : x.name;
+      p.pair(`${x.qty}x ${name}`, formatBRL(x.totalCents));
+    }
+  }
+  if (r.discounts.length) {
+    p.separator().bold(true).line('DESCONTOS').bold(false);
+    for (const x of r.discounts) {
+      p.pair(x.comanda, '-' + formatBRL(x.discountCents));
+      if (x.reason) p.wrapped(`  ${x.reason}`);
+    }
+  }
+  if (r.cashSessions.length) {
+    p.separator().bold(true).line('CAIXA').bold(false);
+    for (const c of r.cashSessions) {
+      p.line(`Caixa nº ${c.number}${c.status === 'open' ? ' (aberto)' : ''}`);
+      p.pair('  Troco inicial', formatBRL(c.openingCents));
+      if (c.expectedCents !== null) p.pair('  Esperado', formatBRL(c.expectedCents));
+      if (c.countedCents !== null) p.pair('  Contado', formatBRL(c.countedCents));
+      if (c.differenceCents) p.bold(true).pair(c.differenceCents < 0 ? '  FALTA' : '  SOBRA', formatBRL(Math.abs(c.differenceCents))).bold(false);
+    }
+    const out = r.cashMovements.filter((m) => m.type === 'withdrawal').reduce((a, m) => a + m.amountCents, 0);
+    const inn = r.cashMovements.filter((m) => m.type === 'supply').reduce((a, m) => a + m.amountCents, 0);
+    if (out) p.pair('Sangrias', '-' + formatBRL(out));
+    if (inn) p.pair('Suprimentos', formatBRL(inn));
+  }
+  p.separator();
+  p.align('center').line(`Impresso em ${fmtDateTime(new Date(r.generatedAt))}`).line('RupBar by Ruptix');
   return p.cut().build();
 }
 

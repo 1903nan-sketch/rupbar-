@@ -4,10 +4,11 @@ import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  backoffMs, comandaPixTxid, displayName, firstName, PAYMENT_METHODS, pickupCode, presentationSuffix, STATIONS, type PaymentMethod, type Station, comandaDisplayNumber,
+  backoffMs, comandaPixTxid, displayName, firstName, PAYMENT_METHODS, pickupCode, presentationSuffix, reportTitle, STATIONS, type FullReport, type PaymentMethod,
+  type Station, comandaDisplayNumber,
 } from '@rupbar/core';
 import {
-  renderBillReceipt, renderCashClose, renderOrderTicket, renderPickupTicket, renderTestPage, type CodePage, type PaperWidth, type PrintOptions,
+  renderBillReceipt, renderCashClose, renderOrderTicket, renderPickupTicket, renderReportTicket, renderTestPage, type CodePage, type PaperWidth, type PrintOptions,
 } from '@rupbar/core/escpos';
 import { printerSchema } from '@rupbar/core/schemas';
 import { bool, json, type Row } from '../db/db';
@@ -584,6 +585,17 @@ export class PrintingService {
         { type: 'cash_session', id: sessionId }, createdBy,
       ),
     );
+  }
+
+  /** Venda do dia (ou período) na impressora de contas do caixa. */
+  printReport(actor: Actor, report: FullReport) {
+    requirePerm(actor, 'reports.financial');
+    const printers = this.ctx.db.all('SELECT * FROM printers WHERE active = 1 AND print_receipts = 1');
+    if (!printers.length) throw badRequest('Nenhuma impressora configurada para contas. Ative "Imprimir contas" em uma impressora.', 'NO_RECEIPT_PRINTER');
+    const title = report.de === report.ate ? `Venda do dia ${reportTitle(report.de, report.ate)}` : `Vendas ${reportTitle(report.de, report.ate)}`;
+    return this.ctx.tx(() => ({
+      jobs: printers.map((p) => this.enqueue(String(p.id), 'report', title, renderReportTicket(report, this.opts(p)), { type: 'report', id: report.de }, actor.userId)),
+    }));
   }
 
   test(actor: Actor, printerId: string) {

@@ -1715,3 +1715,19 @@ body {
 .discount-notice.no .discount-notice-icon {
   background: var(--red);
 }
+
+/* Relatórios: escolha do dia ou do período */
+.report-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+.report-actions {
+  gap: 10px;
+  align-items: center;
+}
+.table tr.total-row td {
+  font-weight: 700;
+  border-top: 2px solid var(--separator);
+}

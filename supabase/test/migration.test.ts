@@ -204,5 +204,12 @@ describe('nuvem RupBar', () => {
     expect(summary.grossCents).toBe(2_400);
     const other = await as('authenticated', OTHER, () => rpc<{ grossCents: number; byDay: unknown[] }>('rupbar_sales_summary', { p_establishment_id: EST, p_from: '2020-01-01', p_to: '2100-01-01' }));
     expect(other.byDay).toEqual([]);
+    // Relatório completo: só o proprietário; anônimo nem executa.
+    const full = await as('authenticated', OWNER, () => rpc<{ summary: { grossCents: number; staffCents: number }; de: string }>('rupbar_full_report', { p_establishment_id: EST, p_de: '2020-01-01', p_ate: '2099-12-31' }));
+    expect(full.summary).toMatchObject({ grossCents: 2_400, staffCents: 2_400 });
+    expect(full.de).toBe('2020-01-01');
+    const otherFull = await as('authenticated', OTHER, () => rpc<{ summary: { grossCents: number } }>('rupbar_full_report', { p_establishment_id: EST, p_de: '2020-01-01', p_ate: '2099-12-31' }));
+    expect(otherFull.summary.grossCents).toBe(0);
+    await expect(as('anon', null, () => rpc('rupbar_full_report', { p_establishment_id: EST, p_de: '2020-01-01', p_ate: '2099-12-31' }))).rejects.toThrow(/permission denied/);
   });
 });

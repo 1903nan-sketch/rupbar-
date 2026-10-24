@@ -12,7 +12,7 @@ import { buildApp } from './http/app';
 import { createLogger, type Level } from './lib/log';
 import { createServices } from './services';
 
-const VERSION = process.env.RUPBAR_VERSION ?? '0.4.0';
+const VERSION = process.env.RUPBAR_VERSION ?? '0.5.0';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

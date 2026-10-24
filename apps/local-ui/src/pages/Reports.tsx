@@ -1,43 +1,65 @@
-import { PAYMENT_METHODS, type PaymentMethod } from '@rupbar/core';
-import { BarChart3 } from 'lucide-react';
+import { addDays, barDay, paymentLabel, reportFileName, reportTitle, reportTotals, reportWindow, reportWindowLabel, type FullReport } from '@rupbar/core';
+import { BarChart3, ChevronLeft, ChevronRight, FileDown, Printer } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Card, Empty, ErrorBox, Field, Input, Loading, PageHeader, Stat, Tabs } from '../components/ui';
+import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, PageHeader, Segmented, Stat, Tabs, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
-import { dayRange, fmtDateTime, formatBRL, formatQty, fromInputDate, toInputDate } from '../lib/format';
+import { fmtDateTime, formatBRL, formatQty } from '../lib/format';
 import { useLoad } from '../lib/hooks';
 import { useSession } from '../lib/session';
 import type { Product } from './Products';
 
 type Tab = 'vendas' | 'produtos' | 'operacional' | 'perdas' | 'caixas' | 'auditoria';
+type Mode = 'dia' | 'periodo';
 
 export function ReportsPage() {
   const { can } = useSession();
   const fin = can('reports.financial');
   const [tab, setTab] = useState<Tab>(fin ? 'vendas' : 'operacional');
-  const [from, setFrom] = useState(toInputDate(new Date(Date.now() - 6 * 86_400_000)));
-  const [to, setTo] = useState(toInputDate(new Date()));
-  const start = dayRange(fromInputDate(from)).from;
-  const end = dayRange(fromInputDate(to)).to;
+  const today = barDay();
+  const [mode, setMode] = useState<Mode>('dia');
+  const [day, setDay] = useState(today);
+  const [from, setFrom] = useState(addDays(today, -6));
+  const [to, setTo] = useState(today);
+  const de = mode === 'dia' ? day : from <= to ? from : to;
+  const ate = mode === 'dia' ? day : from <= to ? to : from;
+  // O dia do bar vai das 05:00 às 05:00 do dia seguinte.
+  const w = reportWindow(de, ate);
   return (
     <div className="stack">
-      <PageHeader title="Relatórios" actions={
-        <div className="row">
-          <Field label="De"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-          <Field label="Até"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-        </div>
-      } />
+      <PageHeader title="Relatórios" subtitle={`${reportTitle(de, ate)} · ${reportWindowLabel(de, ate)}`} />
+      <div className="card tight report-period">
+        <Segmented value={mode} onChange={setMode} options={[{ value: 'dia', label: 'Um dia' }, { value: 'periodo', label: 'Período' }]} />
+        {mode === 'dia' ? (
+          <div className="row wrap" style={{ gap: 8 }}>
+            <Button variant="plain" icon={<ChevronLeft size={18} />} aria-label="Dia anterior" onClick={() => setDay(addDays(day, -1))} />
+            <Input type="date" aria-label="Dia" value={day} max={today} onChange={(e) => e.target.value && setDay(e.target.value)} style={{ width: 170 }} />
+            <Button variant="plain" icon={<ChevronRight size={18} />} aria-label="Próximo dia" disabled={day >= today} onClick={() => setDay(addDays(day, 1))} />
+            <button type="button" className={`chip ${day === today ? 'active' : ''}`} onClick={() => setDay(today)}>Hoje</button>
+            <button type="button" className={`chip ${day === addDays(today, -1) ? 'active' : ''}`} onClick={() => setDay(addDays(today, -1))}>Ontem</button>
+          </div>
+        ) : (
+          <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
+            <Field label="De"><Input type="date" value={from} max={today} onChange={(e) => e.target.value && setFrom(e.target.value)} /></Field>
+            <Field label="Até"><Input type="date" value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} /></Field>
+            {[7, 15, 30].map((n) => (
+              <button key={n} type="button" className={`chip ${from === addDays(today, -(n - 1)) && to === today ? 'active' : ''}`} onClick={() => { setFrom(addDays(today, -(n - 1))); setTo(today); }}>{n} dias</button>
+            ))}
+            <button type="button" className="chip" onClick={() => { setFrom(`${today.slice(0, 8)}01`); setTo(today); }}>Este mês</button>
+          </div>
+        )}
+      </div>
       <Tabs value={tab} onChange={setTab} options={[
-        { value: 'vendas', label: 'Vendas', hidden: !fin },
+        { value: 'vendas', label: mode === 'dia' ? 'Venda do dia' : 'Vendas', hidden: !fin },
         { value: 'produtos', label: 'Comparar produtos', hidden: !fin },
         { value: 'operacional', label: 'Operacional' },
         { value: 'perdas', label: 'Perdas', hidden: !can('losses.view') },
         { value: 'caixas', label: 'Caixas', hidden: !fin },
         { value: 'auditoria', label: 'Auditoria', hidden: !can('audit.view') },
       ]} />
-      {tab === 'vendas' && <Sales from={start} to={end} />}
-      {tab === 'produtos' && <Compare from={start} to={end} />}
-      {tab === 'operacional' && <Operational from={start} to={end} />}
-      {tab === 'perdas' && <LossesReport from={start} to={end} />}
+      {tab === 'vendas' && <FullReportView de={de} ate={ate} />}
+      {tab === 'produtos' && <Compare from={w.from} to={w.to} />}
+      {tab === 'operacional' && <Operational from={w.from} to={w.to} />}
+      {tab === 'perdas' && <LossesReport from={w.from} to={w.to} />}
       {tab === 'caixas' && <CashSessions />}
       {tab === 'auditoria' && <Audit />}
     </div>
@@ -58,55 +80,132 @@ function Bars({ rows, label, value }: { rows: Record<string, any>[]; label: stri
   );
 }
 
-function Sales({ from, to }: { from: string; to: string }) {
-  const { data, error } = useLoad(() => api.get(`/api/reports/sales${qs({ from, to })}`), [from, to]);
-  if (error) return <ErrorBox error={error} />;
-  if (!data) return <Loading />;
-  const margin = data.grossCents ? Math.round((data.marginCents / data.grossCents) * 100) : 0;
+const pct = (part: number, total: number) => (total ? `${Math.round((part / total) * 100)}%` : '—');
+const productLabel = (p: { name: string; presentation: string }) =>
+  p.presentation && p.presentation !== 'Unidade' && p.presentation.toLowerCase() !== p.name.toLowerCase() ? `${p.name} · ${p.presentation}` : p.name;
+
+/** Tudo do dia (ou do período): resumo, recebimentos, produtos, descontos, cancelamentos, caixa. Imprime e salva em PDF. */
+function FullReportView({ de, ate }: { de: string; ate: string }) {
+  const toast = useToast();
+  const [printing, setPrinting] = useState(false);
+  const { data: r, error, reload } = useLoad(() => api.get<FullReport>(`/api/reports/full${qs({ de, ate })}`), [de, ate]);
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  if (!r) return <Loading />;
+  const s = r.summary;
+  const t = reportTotals(r);
+  const print = async () => {
+    setPrinting(true);
+    try {
+      await api.post('/api/reports/full/print', { de, ate });
+      toast.success('Enviado para a impressora do caixa');
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setPrinting(false);
+    }
+  };
+  const hours = de === ate ? r.byHour.map((h) => ({ label: `${String(h.hour).padStart(2, '0')}h`, total: h.totalCents })) : r.byDay.map((d) => ({ label: reportTitle(d.day, d.day).replace('-feira', ''), total: d.totalCents }));
+  const facts = [
+    s.canceledCents ? `Cancelados: ${formatBRL(s.canceledCents)}` : null,
+    s.reversedCents ? `Estornos: ${formatBRL(s.reversedCents)}` : null,
+    s.canceledComandas ? `Comandas canceladas: ${s.canceledComandas}` : null,
+    s.staffCents ? `Consumo de funcionários: ${formatBRL(s.staffCents)}` : null,
+    s.lossesCents ? `Perdas: ${formatBRL(s.lossesCents)}` : null,
+    r.hookah.sessions ? `Narguilés: ${r.hookah.sessions} (${formatBRL(r.hookah.totalCents)})` : null,
+    s.stillOpen ? `Ainda abertas: ${s.stillOpen} (${formatBRL(s.stillOpenCents)})` : null,
+  ].filter(Boolean);
   return (
     <div className="stack">
-      <div className="grid-4">
-        <Stat label="Faturamento" value={formatBRL(data.grossCents)} hint={`${data.itemsSold} itens`} />
-        <Stat label="Custo estimado" value={formatBRL(data.costCents)} />
-        <Stat label="Margem bruta" value={formatBRL(data.marginCents)} hint={`${margin}%`} />
-        <Stat label="Descontos" value={formatBRL(data.discountsCents)} />
+      <div className="row wrap report-actions">
+        <Button variant="primary" icon={<Printer size={16} />} loading={printing} onClick={() => void print()}>Imprimir no caixa</Button>
+        <a className="btn" href={`/api/reports/full.pdf${qs({ de, ate })}`} download={reportFileName(de, ate)}><FileDown size={16} /> Salvar PDF</a>
+        <span className="small muted">{reportWindowLabel(de, ate)}</span>
       </div>
+      <div className="grid-4">
+        <Stat label="Vendido (itens)" value={formatBRL(s.grossCents)} hint={`${s.itemsSold} itens`} />
+        <Stat label="Descontos" value={<span className={s.discountsCents ? 'warning-text' : ''}>{s.discountsCents ? `− ${formatBRL(s.discountsCents)}` : formatBRL(0)}</span>} hint={s.serviceFeeCents ? `taxa de serviço + ${formatBRL(s.serviceFeeCents)}` : `${r.discounts.length} comanda(s)`} />
+        <Stat label="Líquido" value={formatBRL(t.netCents)} hint="vendido − descontos + taxa" />
+        <Stat label="Recebido" value={formatBRL(s.receivedCents)} hint="pagamentos no período" />
+        <Stat label="Custo estimado" value={formatBRL(s.costCents)} />
+        <Stat label="Lucro bruto" value={formatBRL(t.marginCents)} hint={`margem ${t.marginPct}%`} />
+        <Stat label="Atendimentos" value={t.tickets} hint={`${s.closedComandas} comandas · ${s.quickSales} vendas rápidas`} />
+        <Stat label="Ticket médio" value={formatBRL(t.averageTicketCents)} />
+      </div>
+      {facts.length > 0 && <p className="small muted" style={{ margin: 0 }}>{facts.join('   ·   ')}</p>}
       <div className="grid-2">
-        <Card title="Por dia">
-          {data.byDay.length ? <Bars rows={data.byDay} label="day" value="total" /> : <Empty title="Sem vendas" />}
+        <Card title="Recebimentos por forma de pagamento" flush>
+          {r.payments.length ? (
+            <div className="table-wrap"><table className="table"><thead><tr><th>Forma</th><th className="right">Pagamentos</th><th className="right">%</th><th className="right">Valor</th></tr></thead><tbody>
+              {r.payments.map((p) => <tr key={p.method}><td>{paymentLabel(p.method)}</td><td className="right num">{p.count}</td><td className="right num muted">{pct(p.totalCents, s.receivedCents)}</td><td className="right num strong">{formatBRL(p.totalCents)}</td></tr>)}
+              <tr className="total-row"><td>Total</td><td className="right num">{r.payments.reduce((a, p) => a + p.count, 0)}</td><td /><td className="right num">{formatBRL(s.receivedCents)}</td></tr>
+            </tbody></table></div>
+          ) : <Empty title="Nenhum pagamento" />}
         </Card>
-        <Card title="Por forma de pagamento">
-          {data.payments.length ? <Bars rows={data.payments.map((p: { method: PaymentMethod; total: number }) => ({ ...p, label: PAYMENT_METHODS[p.method] ?? p.method }))} label="label" value="total" /> : <Empty title="Sem pagamentos" />}
+        <Card title={de === ate ? 'Vendas por hora' : 'Vendas por dia'}>
+          {hours.length ? <Bars rows={hours} label="label" value="total" /> : <Empty title="Sem vendas" />}
         </Card>
         <Card title="Por categoria">
-          {data.byCategory.length ? <Bars rows={data.byCategory} label="category" value="total" /> : <Empty title="Sem vendas" />}
+          {r.byCategory.length ? <Bars rows={r.byCategory} label="category" value="totalCents" /> : <Empty title="Sem vendas" />}
         </Card>
         <Card title="Por atendente">
-          {data.byWaiter.length ? <Bars rows={data.byWaiter} label="name" value="total" /> : <Empty title="Sem pedidos" />}
+          {r.byWaiter.length ? <Bars rows={r.byWaiter.map((w) => ({ ...w, label: `${w.name} · ${w.orders} pedido(s)` }))} label="label" value="totalCents" /> : <Empty title="Sem pedidos" />}
         </Card>
       </div>
-      <Card title="Produtos mais vendidos" flush>
-        <div className="table-wrap"><table className="table"><thead><tr><th>Produto</th><th className="right">Qtd.</th><th className="right">Faturamento</th><th className="right">Custo</th><th className="right">Margem</th></tr></thead><tbody>
-          {data.topProducts.map((p: { product_id: string; product_name: string; presentation_name: string; qty: number; total: number; cost: number }) => (
-            <tr key={`${p.product_id}-${p.presentation_name}`}><td>{p.product_name} <span className="muted">· {p.presentation_name}</span></td><td className="right num">{p.qty}</td><td className="right num">{formatBRL(p.total)}</td><td className="right num muted">{formatBRL(p.cost)}</td><td className="right num">{p.total ? Math.round(((p.total - p.cost) / p.total) * 100) : 0}%</td></tr>
-          ))}
-        </tbody></table></div>
+      <Card title={`Produtos vendidos · ${r.products.length}`} flush>
+        {r.products.length ? (
+          <div className="table-wrap"><table className="table"><thead><tr><th>Produto</th><th className="right">Qtd.</th><th className="right">Custo</th><th className="right">Margem</th><th className="right">Vendido</th></tr></thead><tbody>
+            {r.products.map((p, i) => <tr key={i}><td>{productLabel(p)}</td><td className="right num">{p.qty}</td><td className="right num muted">{formatBRL(p.costCents)}</td><td className="right num">{pct(p.totalCents - p.costCents, p.totalCents)}</td><td className="right num strong">{formatBRL(p.totalCents)}</td></tr>)}
+            <tr className="total-row"><td>Total</td><td className="right num">{s.itemsSold}</td><td className="right num">{formatBRL(s.costCents)}</td><td className="right num">{t.marginPct}%</td><td className="right num">{formatBRL(s.grossCents)}</td></tr>
+          </tbody></table></div>
+        ) : <Empty title="Nenhum produto vendido" />}
       </Card>
-      {data.staffConsumption?.length > 0 && (
+      <Card title={`Descontos · ${formatBRL(s.discountsCents)}`} flush>
+        {r.discounts.length ? (
+          <div className="table-wrap"><table className="table"><thead><tr><th>Comanda</th><th>Cliente</th><th>Motivo</th><th>Encerrada</th><th className="right">Desconto</th></tr></thead><tbody>
+            {r.discounts.map((d, i) => <tr key={i}><td className="strong">{d.comanda}</td><td>{d.customer ?? '—'}</td><td>{d.reason ?? '—'}</td><td className="small">{d.closedAt ? fmtDateTime(d.closedAt) : '—'}{d.closedBy && <div className="tiny muted">{d.closedBy}</div>}</td><td className="right num warning-text">− {formatBRL(d.discountCents)}</td></tr>)}
+          </tbody></table></div>
+        ) : <Empty title="Nenhum desconto" />}
+      </Card>
+      <Card title={`Cancelamentos · ${formatBRL(s.canceledCents)}`} flush>
+        {r.cancellations.length ? (
+          <div className="list">{r.cancellations.map((c, i) => (
+            <div key={i} className="list-item"><div className="grow"><div>{c.qty}× {c.product}</div><div className="tiny muted">{fmtDateTime(c.at)} · {c.by ?? '—'} · {c.reason ?? 'sem motivo'}</div></div><span className="num danger-text">{formatBRL(c.totalCents)}</span></div>
+          ))}</div>
+        ) : <Empty title="Nenhum item cancelado" />}
+      </Card>
+      {r.staffConsumption.length > 0 && (
         <Card title="Consumo de funcionários" flush>
           <p className="small muted" style={{ padding: '0 16px 8px' }}>Fora das vendas: não foi cobrado. Valor a preço de cardápio e o custo do que saiu do estoque.</p>
           <div className="table-wrap"><table className="table"><thead><tr><th>Funcionário</th><th className="right">Itens</th><th className="right">Valor de cardápio</th><th className="right">Custo</th></tr></thead><tbody>
-            {data.staffConsumption.map((r: { name: string; items: number; value: number; cost: number }) => (
-              <tr key={r.name}><td>{r.name}</td><td className="right num">{r.items}</td><td className="right num">{formatBRL(r.value)}</td><td className="right num muted">{formatBRL(r.cost)}</td></tr>
-            ))}
+            {r.staffConsumption.map((x) => <tr key={x.name}><td>{x.name}</td><td className="right num">{x.items}</td><td className="right num">{formatBRL(x.valueCents)}</td><td className="right num muted">{formatBRL(x.costCents)}</td></tr>)}
           </tbody></table></div>
         </Card>
       )}
-      {data.cancellations.length > 0 && (
-        <Card title="Cancelamentos" flush>
-          <div className="list">{data.cancellations.map((c: { product_name: string; quantity: number; unit_price_cents: number; cancel_reason: string; canceled_at: string; canceled_by_name: string }, i: number) => (
-            <div key={i} className="list-item"><div className="grow"><div>{c.quantity}× {c.product_name}</div><div className="tiny muted">{fmtDateTime(c.canceled_at)} · {c.canceled_by_name} · {c.cancel_reason}</div></div><span className="num">{formatBRL(c.quantity * c.unit_price_cents)}</span></div>
+      <Card title="Caixas" flush>
+        {r.cashSessions.length ? (
+          <div className="table-wrap"><table className="table"><thead><tr><th>Caixa</th><th>Abertura</th><th>Fechamento</th><th className="right">Troco</th><th className="right">Esperado</th><th className="right">Contado</th><th className="right">Diferença</th></tr></thead><tbody>
+            {r.cashSessions.map((c) => (
+              <tr key={c.number}>
+                <td className="strong">nº {c.number}</td>
+                <td className="small">{fmtDateTime(c.openedAt)}<div className="tiny muted">{c.openedBy}</div></td>
+                <td className="small">{c.status === 'open' ? <Badge color="green">Aberto</Badge> : <>{fmtDateTime(c.closedAt)}<div className="tiny muted">{c.closedBy}</div></>}</td>
+                <td className="right num">{formatBRL(c.openingCents)}</td>
+                <td className="right num">{c.expectedCents === null ? '—' : formatBRL(c.expectedCents)}</td>
+                <td className="right num">{c.countedCents === null ? '—' : formatBRL(c.countedCents)}</td>
+                <td className={`right num strong ${c.differenceCents && c.differenceCents < 0 ? 'danger-text' : c.differenceCents ? 'warning-text' : ''}`}>{c.differenceCents === null ? '—' : formatBRL(c.differenceCents)}</td>
+              </tr>
+            ))}
+          </tbody></table></div>
+        ) : <Empty title="Nenhum caixa aberto no período" />}
+        {r.cashMovements.length > 0 && (
+          <div className="list">{r.cashMovements.map((m, i) => (
+            <div key={i} className="list-item"><Badge color={m.type === 'withdrawal' ? 'orange' : 'blue'}>{m.type === 'withdrawal' ? 'Sangria' : 'Suprimento'}</Badge><div className="grow"><div>{m.reason}</div><div className="tiny muted">{fmtDateTime(m.at)} · {m.by ?? '—'}</div></div><span className="num">{m.type === 'withdrawal' ? '− ' : '+ '}{formatBRL(m.amountCents)}</span></div>
           ))}</div>
+        )}
+      </Card>
+      {r.losses.length > 0 && (
+        <Card title={`Perdas · ${formatBRL(s.lossesCents)}`} flush>
+          <div className="list">{r.losses.map((l, i) => <div key={i} className="list-item"><span className="grow">{l.product} <span className="muted">· {l.reason}</span></span><Badge>{l.count}</Badge><span className="num">{formatBRL(l.costCents)}</span></div>)}</div>
         </Card>
       )}
     </div>

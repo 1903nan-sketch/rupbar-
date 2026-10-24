@@ -14,6 +14,7 @@ import { buildApp } from '../../apps/server/src/http/app';
 import { setPasswordHashCost } from '../../apps/server/src/lib/crypto';
 import { createServices } from '../../apps/server/src/services';
 import type { CloudApi } from '../../apps/server/src/services/sync';
+import { barDay } from '../../packages/core/src/report';
 
 setPasswordHashCost(1 << 10);
 const root = join(__dirname, '..');
@@ -252,5 +253,29 @@ describe('contrato PC ⇄ Supabase', () => {
     const direct = await owner('comanda.discount', { comandaId: comanda.id, discountCents: 3_000, reason: 'Aniversário' });
     await s.sync.runOnce();
     expect(await statusOf(direct)).toMatchObject({ status: 'applied', result: { message: 'Desconto de R$ 30,00 na Comanda 14 (fica R$ 90,00).' } });
+  });
+
+  it('relatório completo: o painel online mostra exatamente o que o PC mostra', async () => {
+    const est = (await call('GET', '/api/branding')).establishmentId as string;
+    // Fecha a comanda com desconto (paga) para entrar nos descontos, e uma venda rápida.
+    const comanda = (await call('GET', '/api/comandas')).find((c: { cardNumber: number | null }) => c.cardNumber === 14);
+    const d = await call('GET', `/api/comandas/${comanda.id}`);
+    await call('POST', '/api/payments', { comandaId: d.id, method: 'pix', amountCents: d.remaining, clientRequestId: randomUUID() });
+    await call('POST', `/api/comandas/${d.id}/close`, { expectedVersion: (await call('GET', `/api/comandas/${d.id}`)).version });
+    await call('POST', '/api/cash/movements', { type: 'withdrawal', amountCents: 1_000, reason: 'Gelo', clientRequestId: randomUUID() });
+    await s.sync.runOnce();
+    await s.sync.runOnce();
+
+    const de = barDay();
+    const pc = await call('GET', `/api/reports/full?de=${de}`);
+    const cloud = await as('authenticated', OWNER_ID, () => rpc<Record<string, unknown>>('rupbar_full_report', { p_establishment_id: est, p_de: de, p_ate: de }));
+    const strip = (r: Record<string, unknown>) => ({ ...r, generatedAt: null });
+    expect(pc.summary.grossCents).toBeGreaterThan(0);
+    expect(pc.discounts.length).toBeGreaterThan(0);
+    expect(pc.cashSessions.length).toBeGreaterThan(0);
+    expect(strip(cloud)).toEqual(strip(pc));
+    // Outra conta não vê nada.
+    const other = await as('authenticated', randomUUID(), () => rpc<{ summary: { grossCents: number } }>('rupbar_full_report', { p_establishment_id: est, p_de: de, p_ate: de }));
+    expect(other.summary.grossCents).toBe(0);
   });
 });

@@ -14,3 +14,4 @@ export * from './cloud';
 export * from './pix';
 export * from './whatsapp';
 export * from './import';
+export * from './report';
