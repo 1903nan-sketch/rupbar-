@@ -177,6 +177,18 @@ describe('nuvem RupBar', () => {
     expect(rows.rows.map((r) => r.status)).toEqual(['active', 'voided']);
   });
 
+  it('desconto da comanda chega com o motivo e quem encerrou', async () => {
+    const at = new Date().toISOString();
+    const comanda = randomUUID();
+    const closedBy = randomUUID();
+    await as('anon', null, () => rpc('rupbar_device_push', { p_device_id: device.device_id, p_secret: device.device_secret, p_records: [{
+      outboxId: `comanda:${comanda}:1`, entity: 'comanda', id: comanda, version: 1, updatedAt: at,
+      data: { number: 14, kind: 'regular', status: 'closed', discount_cents: 3_500, discount_reason: 'levou caixa fechada', service_fee_bp: 0, opened_at: at, closed_at: at, closed_by: closedBy },
+    }] }));
+    const rows = await as('authenticated', OWNER, () => db.query('select discount_cents, discount_reason, closed_by from v_comandas where id = $1', [comanda]));
+    expect(rows.rows[0]).toEqual({ discount_cents: 3_500, discount_reason: 'levou caixa fechada', closed_by: closedBy });
+  });
+
   it('heartbeat registra última sincronização; novo registro revoga o PC anterior', async () => {
     await as('anon', null, () => rpc('rupbar_device_heartbeat', { p_device_id: device.device_id, p_secret: device.device_secret, p_status: { pending: 3, version: '0.1.0' } }));
     const d = await as('authenticated', OWNER, () => db.query<{ pending_count: number; last_sync_at: string | null }>('select pending_count, last_sync_at from devices where id = $1', [device.device_id]));

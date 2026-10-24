@@ -1,5 +1,6 @@
 import { formatBRL } from '@rupbar/core';
 import { BarChart3, ChartSpline, Coins, CreditCard, GitCompareArrows, Layers, Percent, Receipt, Trophy, Wallet } from 'lucide-react';
+import Link from 'next/link';
 import { AreaChart } from '@/components/charts/AreaChart';
 import { BarList } from '@/components/charts/BarList';
 import { Donut } from '@/components/charts/Donut';
@@ -21,10 +22,12 @@ export default async function Sales({ searchParams }: { searchParams: Promise<Re
   // Aceita ?comparar=a,b (link) e ?comparar=a&comparar=b (formulário).
   const rawIds = Array.isArray(params.comparar) ? params.comparar : typeof params.comparar === 'string' ? [params.comparar] : [];
   const ids = [...new Set(rawIds.flatMap((x) => x.split(',')).filter((x) => /^[0-9a-f-]{36}$/.test(x)))].slice(0, 8);
-  const [s, { data: products }, compare] = await Promise.all([
+  const [s, { data: products }, compare, { data: discounted }] = await Promise.all([
     salesSummary(sb, est.id, p.from, p.to),
     sb.from('v_products').select('id, name').eq('establishment_id', est.id).eq('active', true).order('name'),
     ids.length ? sb.rpc('rupbar_product_comparison', { p_establishment_id: est.id, p_from: p.from, p_to: p.to, p_product_ids: ids }) : Promise.resolve({ data: null }),
+    // Descontos dados nas comandas encerradas no período.
+    sb.from('v_comandas').select('discount_cents').eq('establishment_id', est.id).eq('status', 'closed').neq('kind', 'staff').gt('discount_cents', 0).gte('closed_at', p.from).lt('closed_at', p.to),
   ]);
   const header = <PageHeader title="Vendas" eyebrow="Relatórios" subtitle="Faturamento, custos e margens do período." icon={BarChart3} actions={<PeriodForm de={p.de} ate={p.ate} />} />;
   if (!s) {
@@ -47,6 +50,7 @@ export default async function Sales({ searchParams }: { searchParams: Promise<Re
   const days = [...new Set([...daysBetween(p.de, p.ate), ...byDay.keys()])].sort();
   const points = days.map((d) => ({ label: dayMonth(d), full: weekdayLabel(d), value: byDay.get(d) ?? 0 }));
   const segments = paymentSegments(s.byMethod);
+  const discountCents = (discounted ?? []).reduce((a, c) => a + Number(c.discount_cents), 0);
 
   return (
     <div className="stack-l">
@@ -57,6 +61,12 @@ export default async function Sales({ searchParams }: { searchParams: Promise<Re
         <Stat label="Custo estimado" value={<CountUp value={cost} format="brl" />} hint="custo médio dos itens vendidos" icon={Coins} tone="amber" />
         <Stat label="Margem bruta" value={<CountUp value={margin} format="percent" />} hint={formatBRL(gross - cost)} icon={Percent} tone="violet" />
       </div>
+      {discountCents > 0 && (
+        <p className="small muted staff-note">
+          Descontos dados nas comandas encerradas no período: <strong className="discount-text">{formatBRL(discountCents)}</strong> ({discounted?.length} comanda{discounted?.length === 1 ? '' : 's'}).{' '}
+          <Link href={`/comandas?de=${p.de}&ate=${p.ate}#descontos`}>Ver motivos</Link>
+        </p>
+      )}
       {Number(s.staffCents ?? 0) > 0 && (
         <p className="small muted staff-note">
           Consumo de funcionários no período (fora das vendas, não cobrado): {formatBRL(Number(s.staffCents))} a preço de cardápio · custo {formatBRL(Number(s.staffCostCents ?? 0))}.

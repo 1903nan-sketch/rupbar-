@@ -1,5 +1,5 @@
-import { COMANDA_STATUS, comandaLabel, formatBRL, PAYMENT_METHODS, type ComandaStatus, type PaymentMethod } from '@rupbar/core';
-import { ChevronRight, CircleDollarSign, ClipboardList, ClipboardPlus, History, PlusCircle, Receipt, ShieldCheck, X, Zap } from 'lucide-react';
+import { billTotals, COMANDA_STATUS, comandaLabel, formatBRL, PAYMENT_METHODS, type ComandaStatus, type PaymentMethod } from '@rupbar/core';
+import { BadgePercent, ChevronRight, CircleDollarSign, ClipboardList, ClipboardPlus, History, PlusCircle, Receipt, ShieldCheck, X, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { ActionForm } from '@/components/ActionForm';
 import { CommandFeed } from '@/components/CommandFeed';
@@ -23,6 +23,10 @@ interface ComandaRow {
   status: ComandaStatus;
   opened_at: string;
   closed_at: string | null;
+  discount_cents?: number | null;
+  discount_reason?: string | null;
+  service_fee_bp?: number | null;
+  closed_by?: string | null;
 }
 
 const UUID = /^[0-9a-f-]{36}$/;
@@ -30,6 +34,9 @@ const STATUS_COLOR: Record<string, 'green' | 'red' | 'gray'> = { open: 'green', 
 const FEED_TYPES = ['comanda.open', 'order.create', 'comanda_item.cancel'] as const;
 
 const labelOf = (c: ComandaRow) => comandaLabel({ number: c.number, cardNumber: c.card_number ?? null, kind: c.kind ?? 'regular' });
+/** Conta da comanda como no PC: itens − desconto + taxa de serviço. */
+const billOf = (c: ComandaRow, items: number, paid = 0) =>
+  billTotals([{ quantity: 1, unitPrice: items }], { discount: Number(c.discount_cents ?? 0), serviceFeeBp: Number(c.service_fee_bp ?? 0), paid });
 
 function ComandaName({ c }: { c: ComandaRow }) {
   if (c.kind === 'quick') {
@@ -63,17 +70,22 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
   if (status) q = q.eq('status', status);
   if (tipo) q = q.eq('kind', tipo);
   // Abertas agora (de qualquer dia) e a comanda tocada, mesmo fora do período.
-  const [{ data }, { data: openData }, { data: selData }, { data: di }, { data: dp }] = await Promise.all([
+  const [{ data }, { data: openData }, { data: selData }, { data: di }, { data: dp }, { data: discData }, { data: users }] = await Promise.all([
     q,
     sb.from('v_comandas').select('*').eq('establishment_id', est.id).eq('status', 'open').neq('kind', 'quick').order('opened_at').limit(200),
     selected ? sb.from('v_comandas').select('*').eq('establishment_id', est.id).eq('id', selected).limit(1) : Promise.resolve({ data: null }),
     selected ? sb.from('v_comanda_items').select('*').eq('establishment_id', est.id).eq('comanda_id', selected).order('created_at') : Promise.resolve({ data: null }),
     selected ? sb.from('v_payments').select('*').eq('establishment_id', est.id).eq('comanda_id', selected).order('created_at') : Promise.resolve({ data: null }),
+    // Descontos dados no período (independe dos filtros da lista).
+    sb.from('v_comandas').select('*').eq('establishment_id', est.id).gt('discount_cents', 0).neq('status', 'canceled').gte('opened_at', p.from).lt('opened_at', p.to).order('opened_at', { ascending: false }).limit(200),
+    sb.from('v_users').select('id, name').eq('establishment_id', est.id),
   ]);
   const comandas = (data ?? []) as ComandaRow[];
   const open = (openData ?? []) as ComandaRow[];
   const sel = ((selData ?? []) as ComandaRow[])[0] ?? null;
   const detail = sel ? { items: (di ?? []) as Record<string, unknown>[], payments: (dp ?? []) as Record<string, unknown>[] } : null;
+  const discounts = (discData ?? []) as ComandaRow[];
+  const userName = new Map((users ?? []).map((u) => [u.id as string, u.name as string]));
 
   const totalsFor = async (ids: string[]) => {
     const totals = new Map<string, number>();
@@ -82,7 +94,7 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
     for (const i of items ?? []) if (i.status === 'active') totals.set(i.comanda_id as string, (totals.get(i.comanda_id as string) ?? 0) + Number(i.quantity) * Number(i.unit_price_cents));
     return totals;
   };
-  const [totals, openTotals] = await Promise.all([totalsFor(comandas.map((c) => c.id)), totalsFor(open.map((c) => c.id))]);
+  const [totals, openTotals, discTotals] = await Promise.all([totalsFor(comandas.map((c) => c.id)), totalsFor(open.map((c) => c.id)), totalsFor(discounts.map((c) => c.id))]);
 
   // Itens à venda para lançar na comanda aberta (nome, apresentação e preço).
   let saleOptions: SaleOption[] = [];
@@ -106,10 +118,14 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
   const keep: Record<string, string> = { ...(status ? { status } : {}), ...(tipo ? { tipo } : {}) };
   const qs = (extra: Record<string, string>) => `?${new URLSearchParams({ de: p.de, ate: p.ate, ...keep, ...extra }).toString()}`;
   const sum = [...totals.values()].reduce((a, b) => a + b, 0);
+  // Desconto efetivo (nunca maior que os itens), como na conta do PC.
+  const discountOf = (c: ComandaRow) => billOf(c, discTotals.get(c.id) ?? 0).discount;
+  const discountSum = discounts.reduce((a, c) => a + discountOf(c), 0);
   const quickCount = comandas.filter((c) => c.kind === 'quick').length;
   const activeItems = (detail?.items ?? []).filter((i) => i.status === 'active');
   const selTotal = activeItems.reduce((a, i) => a + Number(i.quantity) * Number(i.unit_price_cents), 0);
   const paid = (detail?.payments ?? []).filter((x) => x.status === 'active').reduce((a, x) => a + Number(x.amount_cents), 0);
+  const bill = sel ? billOf(sel, selTotal, paid) : null;
 
   return (
     <div className="stack-l">
@@ -182,15 +198,44 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
                 <ItemLauncher comandaId={sel.id} comandaLabel={labelOf(sel)} options={saleOptions} />
               </div>
             )}
+            {bill && (bill.discount > 0 || bill.serviceFee > 0) && (
+              <dl className="bill-lines">
+                <div>
+                  <dt>Itens</dt>
+                  <dd className="num">{formatBRL(bill.subtotal)}</dd>
+                </div>
+                {bill.discount > 0 && (
+                  <div className="bill-discount">
+                    <dt>
+                      Desconto
+                      {sel.discount_reason ? <span className="tiny muted"> · {sel.discount_reason}</span> : null}
+                    </dt>
+                    <dd className="num">− {formatBRL(bill.discount)}</dd>
+                  </div>
+                )}
+                {bill.serviceFee > 0 && (
+                  <div>
+                    <dt>Taxa de serviço ({(Number(sel.service_fee_bp) / 100).toLocaleString('pt-BR')}%)</dt>
+                    <dd className="num">+ {formatBRL(bill.serviceFee)}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
             <div className="detail-total">
               <div>
-                <span className="muted small">Total dos itens</span>
-                <strong className="num">{formatBRL(selTotal)}</strong>
+                <span className="muted small">{bill && (bill.discount > 0 || bill.serviceFee > 0) ? 'Total' : 'Total dos itens'}</span>
+                <strong className="num">{formatBRL(bill?.total ?? selTotal)}</strong>
               </div>
               <div>
                 <span className="muted small">Pago</span>
                 <strong className="num">{formatBRL(paid)}</strong>
               </div>
+              {sel.status === 'open' && sel.kind !== 'staff' && bill && bill.remaining > 0 && (
+                <div>
+                  <span className="muted small">Falta</span>
+                  <strong className="num">{formatBRL(bill.remaining)}</strong>
+                </div>
+              )}
               {sel.status === 'closed' ? (
                 <Badge color="green">
                   <ShieldCheck size={12} aria-hidden="true" /> Encerrada
@@ -226,7 +271,7 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
                   </span>
                   <span className="open-tile-foot">
                     <span className="tiny muted num">desde {fmtShort(c.opened_at)}</span>
-                    <strong className="num">{formatBRL(openTotals.get(c.id) ?? 0)}</strong>
+                    <strong className="num">{formatBRL(billOf(c, openTotals.get(c.id) ?? 0).total)}</strong>
                   </span>
                 </Link>
               ))}
@@ -298,9 +343,39 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
 
       <div className="grid-3 stagger">
         <Stat label="Atendimentos" value={comandas.length.toLocaleString('pt-BR')} hint={`${quickCount} venda${quickCount === 1 ? '' : 's'} rápida${quickCount === 1 ? '' : 's'}`} icon={ClipboardList} />
-        <Stat label="Abertas agora" value={open.length.toLocaleString('pt-BR')} hint="de qualquer dia" icon={Receipt} tone="teal" />
+        <Stat label="Descontos" value={formatBRL(discountSum)} hint={`${discounts.length} comanda${discounts.length === 1 ? '' : 's'} com desconto`} icon={BadgePercent} tone="rose" />
         <Stat label="Total lançado" value={formatBRL(sum)} hint="itens ativos das comandas listadas" icon={CircleDollarSign} tone="violet" />
       </div>
+
+      <Card id="descontos" title="Descontos" subtitle="Comandas com desconto no período, com o motivo" icon={BadgePercent} tone="rose" flush className="reveal">
+        {!discounts.length ? (
+          <p className="small muted card-note">Nenhum desconto no período. Quando o caixa der desconto numa comanda no PC do bar, ele aparece aqui com o valor e o motivo.</p>
+        ) : (
+          <ul className="list">
+            {discounts.map((c) => {
+              const b = billOf(c, discTotals.get(c.id) ?? 0);
+              return (
+                <li key={c.id} className="list-item">
+                  <Link href={qs({ id: c.id })} scroll={false} className="discount-row">
+                    <span className="grow">
+                      <span className="row" style={{ gap: 8 }}>
+                        <ComandaName c={c} />
+                        {c.customer_name ? <span className="small muted ellipsis">{c.customer_name}</span> : null}
+                      </span>
+                      <span className="small">{c.discount_reason || <span className="muted">sem motivo</span>}</span>
+                      <span className="tiny muted">
+                        {fmtShort(c.closed_at ?? c.opened_at)}
+                        {c.status === 'closed' ? ` · encerrada por ${(c.closed_by && userName.get(c.closed_by)) || '—'}` : ' · ainda aberta'} · itens {formatBRL(b.subtotal)} → total {formatBRL(b.total)}
+                      </span>
+                    </span>
+                    <span className="num strong discount-text">− {formatBRL(b.discount)}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
 
       <Card flush className="reveal">
         {!comandas.length ? (
@@ -336,7 +411,10 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
                         {COMANDA_STATUS[c.status] ?? c.status}
                       </Badge>
                     </td>
-                    <td className="right num strong">{formatBRL(totals.get(c.id) ?? 0)}</td>
+                    <td className="right num strong">
+                      {formatBRL(billOf(c, totals.get(c.id) ?? 0).total)}
+                      {Number(c.discount_cents ?? 0) > 0 && <div className="tiny discount-text">− {formatBRL(billOf(c, totals.get(c.id) ?? 0).discount)} desconto</div>}
+                    </td>
                   </LinkRow>
                 ))}
               </tbody>
