@@ -507,6 +507,10 @@ body::after {
   .topbar-action.secondary {
     display: none;
   }
+  /* Celular: tela cheia não serve e o cargo já aparece no menu; sobra lugar para o tema. */
+  .topbar .topbar-extra {
+    display: none;
+  }
 }
 
 /* indicador de sincronização: sem piscar; azul gira devagar só ao se recuperar */

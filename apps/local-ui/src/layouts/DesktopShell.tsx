@@ -159,12 +159,12 @@ export function DesktopShell() {
           {canQuick && <Button size="small" variant="primary" className="topbar-action" icon={<Zap size={15} />} title="Venda rápida (F2)" onClick={() => setQuick(true)}>Venda rápida</Button>}
           {canLaunch && <Button size="small" className="topbar-action" icon={<ClipboardPlus size={15} />} title="Lançar na comanda (F3)" onClick={() => setLaunch({})}>Lançar na comanda</Button>}
           {canLookup && <Button size="small" className="topbar-action secondary" icon={<ScanBarcode size={15} />} title="Conferir pedido: bipe o ticket ou busque pelo número (F4)" onClick={() => setLookup({ q: '' })}>Conferir pedido</Button>}
-          <Button size="small" variant="plain" icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} title={fullscreen ? 'Sair da tela cheia (F11)' : 'Tela cheia (F11)'} aria-label="Tela cheia" onClick={toggleFullscreen} />
+          <Button size="small" variant="plain" className="topbar-extra" icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} title={fullscreen ? 'Sair da tela cheia (F11)' : 'Tela cheia (F11)'} aria-label="Tela cheia" onClick={toggleFullscreen} />
           <SyncIndicator />
           <div className="row" style={{ gap: 4 }}>
             <UserRound size={16} className="muted" />
             <span className="small strong ellipsis" style={{ maxWidth: 160 }}>{user?.name}</span>
-            <span className="badge">{user?.roleName}</span>
+            <span className="badge topbar-extra">{user?.roleName}</span>
           </div>
           <ThemeButton />
           <NavLink to="/minha-senha" className="btn plain small icon" title="Alterar minha senha"><KeyRound size={16} /></NavLink>
