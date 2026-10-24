@@ -164,6 +164,19 @@ describe('nuvem RupBar', () => {
     expect(products.rows).toHaveLength(0);
   });
 
+  it('caixa aberto: sangria anulada no PC chega com status para ficar fora da conta', async () => {
+    const at = new Date().toISOString();
+    const session = randomUUID();
+    const move = (n: number, data: Record<string, unknown>) => ({
+      outboxId: `cash_movement:m${n}:1`, entity: 'cash_movement', id: randomUUID(), version: 1, updatedAt: at,
+      data: { session_id: session, type: 'withdrawal', amount_cents: 5_000, reason: 'Fornecedor', created_by: randomUUID(), created_at: at, ...data },
+    });
+    // Registro de versão antiga do PC (sem status) conta como ativo.
+    await as('anon', null, () => rpc('rupbar_device_push', { p_device_id: device.device_id, p_secret: device.device_secret, p_records: [move(1, {}), move(2, { status: 'voided' })] }));
+    const rows = await as('authenticated', OWNER, () => db.query<{ status: string }>('select status from v_cash_movements where session_id = $1 order by status', [session]));
+    expect(rows.rows.map((r) => r.status)).toEqual(['active', 'voided']);
+  });
+
   it('heartbeat registra última sincronização; novo registro revoga o PC anterior', async () => {
     await as('anon', null, () => rpc('rupbar_device_heartbeat', { p_device_id: device.device_id, p_secret: device.device_secret, p_status: { pending: 3, version: '0.1.0' } }));
     const d = await as('authenticated', OWNER, () => db.query<{ pending_count: number; last_sync_at: string | null }>('select pending_count, last_sync_at from devices where id = $1', [device.device_id]));

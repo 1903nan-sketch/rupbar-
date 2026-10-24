@@ -93,6 +93,7 @@ Em produção, o RupBar foi instalado no projeto Supabase já usado pelo Barberf
 | 20261013041205 | `rupbar_07_cards_quick_sale` | cartões numerados e venda rápida nas visões |
 | 20261021023359 | `rupbar_08_owner_actions` | ações do painel (comanda, itens, caixa, equipe, produtos) e visão `v_presentations` |
 | 20261023222958 | `rupbar_09_staff_consumption` | consumo de funcionário fora das vendas (`v_comanda_items.staff`, resumo de vendas e comparação de produtos) |
+| 20261024012741 | `rupbar_10_cash_movement_status` | caixa aberto no painel: `v_cash_movements.status` (sangria/suprimento anulado fica fora do dinheiro esperado) |
 
 Consequências de compartilhar o projeto:
 

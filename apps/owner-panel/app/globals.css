@@ -2110,8 +2110,8 @@ a.now-tile:hover {
 
 .mini-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(140px, 42%), 1fr));
+  gap: 10px;
 }
 .mini-stat {
   display: flex;
@@ -2131,6 +2131,32 @@ a.now-tile:hover {
   font-size: 20px;
   font-weight: 720;
   letter-spacing: -0.02em;
+}
+.mini-stat.accent {
+  background: color-mix(in srgb, var(--accent) 12%, var(--fill));
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* caixa aberto: dinheiro que deveria estar na gaveta agora */
+.drawer-now {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--fill));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.drawer-now .now-value {
+  font-size: 34px;
+}
+.drawer-now + .mini-stats {
+  margin-bottom: 18px;
+}
+.list-item.voided .num {
+  text-decoration: line-through;
+  color: var(--text-3);
 }
 
 /* ============================================================ gráficos */
