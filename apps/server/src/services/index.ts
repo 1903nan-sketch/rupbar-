@@ -115,8 +115,10 @@ export function createServices(opts: CreateOptions) {
     notifications.enqueueCashClosed(sessionId);
   };
   sales.onCompleted = ({ comandaId, orderId, printReceipt }, actor) => {
-    const tickets = settings.operation().autoPrintOrders ? printing.enqueuePickupTicket(orderId, { createdBy: actor.userId }).length : 0;
-    if (printReceipt) {
+    // Liga/desliga lembrados: ticket e comprovante da venda rápida.
+    const sw = printing.switches();
+    const tickets = sw.quickTicket ? printing.enqueuePickupTicket(orderId, { createdBy: actor.userId }).length : 0;
+    if (printReceipt ?? sw.quickReceipt) {
       try {
         printing.printBill(actor, comandaId);
       } catch (err) {

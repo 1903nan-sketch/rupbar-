@@ -436,6 +436,9 @@ export function registerRoutes(app: FastifyInstance, s: Services, hub: { count()
 
   r('GET', '/api/reports/sales', (req, a) => s.reports.sales(a, q(req)));
   // Relatório completo do dia do bar (05:00 às 05:00) ou de vários dias: tela, PDF e impressora do caixa.
+  // Liga/desliga da impressão de pedidos e da venda rápida (barra do topo).
+  r('GET', '/api/printing/switches', () => s.printing.switches());
+  r('POST', '/api/printing/switches', (req, a) => s.printing.setSwitches(a, req.body));
   r('GET', '/api/reports/full', (req, a) => s.reports.full(a, q(req)));
   r('POST', '/api/reports/full/print', (req, a) => s.printing.printReport(a, s.reports.full(a, req.body)));
   r('GET', '/api/reports/full.pdf', (req, a, reply) => {

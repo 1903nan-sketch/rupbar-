@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/desktop",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Aplicativo Windows do RupBar (Tauri v2): janela, bandeja e instalador NSIS com o serviço local.",
   "scripts": {

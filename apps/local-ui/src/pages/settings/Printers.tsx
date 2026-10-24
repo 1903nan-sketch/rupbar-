@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { fmtDateTime } from '../../lib/format';
 import { useLoad } from '../../lib/hooks';
 import { useRealtime } from '../../lib/realtime';
+import { PrintSwitchesPanel } from '../../components/PrintSwitches';
 
 interface PrinterCfg {
   id: string;
@@ -46,6 +47,10 @@ export function PrintersSettings() {
   return (
     <div className="stack-l">
       <PageHeader title="Impressoras" subtitle="Térmicas ESC/POS de 58 mm ou 80 mm, ligadas por USB no PC ou pela rede." actions={<Button variant="primary" icon={<Plus size={16} />} onClick={() => setEdit('new')}>Adicionar impressora</Button>} />
+      <Card title="Liga e desliga">
+        <p className="small muted" style={{ margin: '0 0 12px' }}>Bar vazio? Desligue os pedidos e não sai papel; ao ligar, só os pedidos novos saem. O botão “Pedidos” no topo faz o mesmo com um toque.</p>
+        <PrintSwitchesPanel />
+      </Card>
       {!data ? <Loading /> : data.length === 0 ? (
         <Card>
           <Empty icon={<Printer size={40} />} title="Nenhuma impressora">

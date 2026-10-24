@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/e2e",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "description": "Teste ponta a ponta no navegador: configuração inicial, comandas, cozinha, TV e celular do garçom.",

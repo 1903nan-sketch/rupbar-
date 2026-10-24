@@ -505,7 +505,8 @@ export const quickSaleSchema = z.object({
     .min(1, 'Informe o pagamento')
     .max(6),
   notes: optionalText(200),
-  printReceipt: z.boolean().default(false),
+  /** Sem valor: vale o liga/desliga lembrado do comprovante. */
+  printReceipt: z.boolean().optional(),
 });
 
 export const closeComandaSchema = versionSchema;

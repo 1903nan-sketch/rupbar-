@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { ConnectionBanner, Logo, RupbarSignature, SyncIndicator } from '../components/brand';
 import { DiscountNotices } from '../components/DiscountRequest';
+import { PrintToggle } from '../components/PrintSwitches';
 import { ThemeButton } from '../components/ThemeSwitch';
 import { Button, Loading } from '../components/ui';
 import { api } from '../lib/api';
@@ -160,6 +161,7 @@ export function DesktopShell() {
           {canLaunch && <Button size="small" className="topbar-action" icon={<ClipboardPlus size={15} />} title="Lançar na comanda (F3)" onClick={() => setLaunch({})}>Lançar na comanda</Button>}
           {canLookup && <Button size="small" className="topbar-action secondary" icon={<ScanBarcode size={15} />} title="Conferir pedido: bipe o ticket ou busque pelo número (F4)" onClick={() => setLookup({ q: '' })}>Conferir pedido</Button>}
           <Button size="small" variant="plain" className="topbar-extra" icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} title={fullscreen ? 'Sair da tela cheia (F11)' : 'Tela cheia (F11)'} aria-label="Tela cheia" onClick={toggleFullscreen} />
+          <PrintToggle />
           <SyncIndicator />
           <div className="row" style={{ gap: 4 }}>
             <UserRound size={16} className="muted" />

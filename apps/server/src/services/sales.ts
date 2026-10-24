@@ -17,7 +17,8 @@ export class SalesService {
    * se pedido, o comprovante. Ligado em services/index.ts; devolve quantos
    * tickets foram para a fila.
    */
-  onCompleted: (info: { comandaId: string; orderId: string; printReceipt: boolean }, actor: Actor) => number = () => 0;
+  /** printReceipt sem valor: vale o que ficou lembrado na venda rápida. */
+  onCompleted: (info: { comandaId: string; orderId: string; printReceipt?: boolean }, actor: Actor) => number = () => 0;
 
   constructor(
     private readonly ctx: Ctx,

@@ -6,6 +6,7 @@ import { formatBRL, PAYMENT_METHODS } from '../lib/format';
 import '../styles/quick.css';
 import { CartLines, MenuPicker, useCart } from './MenuPicker';
 import { PixQr } from './PixQr';
+import { usePrintSwitches } from './PrintSwitches';
 import { Button, Input, MoneyInput, Switch, useToast } from './ui';
 
 interface SaleResult {
@@ -36,15 +37,6 @@ const METHOD_ICON: Record<PaymentMethod, ReactNode> = {
   other: <Wallet size={18} />,
 };
 const MAIN_METHODS: PaymentMethod[] = ['cash', 'pix', 'debit', 'credit'];
-const PRINT_KEY = 'rupbar.quickSale.print';
-
-const readPrintPref = () => {
-  try {
-    return localStorage.getItem(PRINT_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
 
 /** Notas para sugerir o valor recebido em dinheiro (próximas cédulas acima do total). */
 function cashSuggestions(total: number): number[] {
@@ -67,7 +59,8 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
   const cart = useCart();
   const [name, setName] = useState('');
   const [payments, setPayments] = useState<PayLine[]>([{ method: 'pix', amountCents: null, receivedCents: null }]);
-  const [print, setPrint] = useState(readPrintPref);
+  // Ticket e comprovante: ficam como foram deixados para as próximas vendas (gravado no PC).
+  const { sw: printSw, set: setPrintSw } = usePrintSwitches();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SaleResult | null>(null);
   const saleKey = useRef<string | null>(null);
@@ -105,13 +98,8 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
           amountCents: l.amountCents,
           ...(l.method === 'cash' && l.receivedCents !== null ? { receivedCents: l.receivedCents } : {}),
         })),
-        printReceipt: print,
+        ...(printSw ? { printReceipt: printSw.quickReceipt } : {}),
       });
-      try {
-        localStorage.setItem(PRINT_KEY, print ? '1' : '0');
-      } catch {
-        /* armazenamento indisponível */
-      }
       setResult(r);
     } catch (e) {
       toast.error(isOfflineError(e) ? 'Sem conexão com o PC. Tente de novo — a venda não será duplicada.' : e);
@@ -258,7 +246,12 @@ export function QuickSale({ onClose }: { onClose: () => void }) {
                 </Button>
               )}
               {change > 0 && <div className="quick-change pop-in"><span>Troco</span><strong className="num">{formatBRL(change)}</strong></div>}
-              <Switch checked={print} onChange={setPrint} label={<span className="row"><Printer size={15} /> Imprimir também o comprovante de pagamento</span>} description="O ticket do pedido sai sempre na impressora do caixa." />
+              {printSw && (
+                <div className="quick-print">
+                  <Switch checked={printSw.quickTicket} onChange={(v) => void setPrintSw({ quickTicket: v })} label={<span className="row"><Printer size={15} /> Imprimir o ticket do pedido</span>} />
+                  <Switch checked={printSw.quickReceipt} onChange={(v) => void setPrintSw({ quickReceipt: v })} label={<span className="row"><Printer size={15} /> Imprimir o comprovante de pagamento</span>} description="Os dois ficam como você deixar para as próximas vendas." />
+                </div>
+              )}
               <Button variant="primary" size="large" block disabled={!ready} loading={busy} icon={<CheckCircle2 size={20} />} onClick={finish}>
                 Finalizar {total > 0 && formatBRL(total)}
               </Button>

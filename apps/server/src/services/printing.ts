@@ -12,10 +12,11 @@ import {
 } from '@rupbar/core/escpos';
 import { printerSchema } from '@rupbar/core/schemas';
 import { bool, json, type Row } from '../db/db';
-import { badRequest, notFound } from '../lib/errors';
+import { z } from 'zod';
+import { badRequest, forbidden, notFound } from '../lib/errors';
 import { addMs } from '../lib/time';
 import type { ComandasService } from './comandas';
-import { requirePerm, type Actor, type Ctx } from './context';
+import { hasPerm, requirePerm, type Actor, type Ctx } from './context';
 import type { PixCharge, SettingsService } from './settings';
 
 const MAX_ATTEMPTS = 8;
@@ -585,6 +586,46 @@ export class PrintingService {
         { type: 'cash_session', id: sessionId }, createdBy,
       ),
     );
+  }
+
+  /**
+   * Liga e desliga rápidos (barra do topo e venda rápida). Ficam gravados até
+   * mudar de novo e valem para todos os aparelhos.
+   * - orders: pedidos das comandas (cozinha, balcão e ticket no caixa)
+   * - quickTicket: ticket do pedido da venda rápida
+   * - quickReceipt: comprovante de pagamento da venda rápida
+   */
+  switches() {
+    return {
+      orders: this.settings.operation().autoPrintOrders,
+      quickTicket: this.ctx.meta('print_quick_ticket') !== '0',
+      quickReceipt: this.ctx.meta('print_quick_receipt') === '1',
+      queued: Number(this.ctx.db.value("SELECT COUNT(*) FROM print_jobs WHERE status IN ('pending','failed')")),
+    };
+  }
+
+  /** Ligar ou desligar descarta a fila de pedidos parada: ao ligar, só saem os pedidos novos. */
+  setSwitches(actor: Actor, raw: unknown) {
+    if (!(['orders.create', 'cash.payment', 'printers.manage'] as const).some((p) => hasPerm(actor, p))) throw forbidden('Sem permissão para ligar ou desligar a impressão.');
+    const input = z.object({ orders: z.boolean().optional(), quickTicket: z.boolean().optional(), quickReceipt: z.boolean().optional() }).parse(raw ?? {});
+    return this.ctx.tx(() => {
+      const before = this.switches();
+      let discarded = 0;
+      const ticketsChanged = (input.orders !== undefined && input.orders !== before.orders) || (input.quickTicket !== undefined && input.quickTicket !== before.quickTicket);
+      if (ticketsChanged) {
+        discarded = this.ctx.db.run(
+          `UPDATE print_jobs SET status = 'canceled', last_error = 'Descartado ao ligar/desligar a impressão de pedidos'
+           WHERE status IN ('pending','failed') AND kind IN ('order_ticket','pickup_ticket')`,
+        ).changes;
+      }
+      if (input.orders !== undefined && input.orders !== before.orders) this.settings.saveOperation({ ...this.settings.operation(), autoPrintOrders: input.orders });
+      if (input.quickTicket !== undefined) this.ctx.setMeta('print_quick_ticket', input.quickTicket ? '1' : '0');
+      if (input.quickReceipt !== undefined) this.ctx.setMeta('print_quick_receipt', input.quickReceipt ? '1' : '0');
+      const after = this.switches();
+      this.ctx.audit(actor, 'printing.switches', 'settings', 'printing', { orders: after.orders, quickTicket: after.quickTicket, quickReceipt: after.quickReceipt, discarded });
+      this.ctx.emit({ channel: 'system', type: 'print.switches', data: { ...after } });
+      return { ...after, discarded };
+    });
   }
 
   /** Venda do dia (ou período) na impressora de contas do caixa. */
