@@ -5,6 +5,7 @@ import { NavLink, Outlet, useLocation, useNavigate, useParams, useSearchParams }
 import { ScreenErrorBoundary } from '../../lib/update';
 import { ConnectionBanner, Logo } from '../../components/brand';
 import { DiscountNotices } from '../../components/DiscountRequest';
+import { ThemeButton } from '../../components/ThemeSwitch';
 import { OrderComposer } from '../../components/OrderComposer';
 import { LaunchedItems } from '../../components/SwapItem';
 import { Badge, Button, Empty, ErrorBox, Input, Loading, useToast } from '../../components/ui';
@@ -31,6 +32,7 @@ export function MobileShell() {
           <Logo branding={branding} size={30} />
           <strong className="grow ellipsis">{branding?.tradeName}</strong>
           <span className="small muted row"><UserRound size={14} /> {user?.name.split(' ')[0]}</span>
+          <ThemeButton />
           <Button variant="plain" size="small" icon={<LogOut size={16} />} aria-label="Sair" onClick={() => void logout()} />
         </div>
       </header>

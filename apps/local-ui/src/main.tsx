@@ -1,4 +1,5 @@
 import './lib/polyfills';
+import { initTheme } from './lib/theme';
 import { ShieldOff, WifiOff } from 'lucide-react';
 import { lazy, StrictMode, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -18,6 +19,9 @@ import { MobileComanda, MobileComandas, MobileOrders, MobileShell } from './page
 import { MobileQuickSale } from './pages/mobile/MobileQuickSale';
 import './styles.css';
 import './styles/premium.css';
+
+// Claro, escuro ou automático: aplicado antes de desenhar a primeira tela.
+initTheme();
 
 // Páginas carregadas sob demanda: o celular do garçom baixa só o necessário.
 const CashPage = lazy(() => import('./pages/Cash').then((m) => ({ default: m.CashPage })));

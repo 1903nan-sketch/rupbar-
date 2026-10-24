@@ -1731,3 +1731,49 @@ body {
   font-weight: 700;
   border-top: 2px solid var(--separator);
 }
+
+/* Aparência: claro, escuro ou automático */
+.theme-chooser {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--separator-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-option.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.theme-preview {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 54px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+}
+.theme-option.light .theme-preview {
+  background: #f5f5f7;
+  color: #1d1d1f;
+}
+.theme-option.dark .theme-preview {
+  background: #10131c;
+  color: #f5f5f7;
+}
+.theme-option.system .theme-preview {
+  background: linear-gradient(135deg, #f5f5f7 50%, #10131c 50%);
+  color: #7c7c80;
+}

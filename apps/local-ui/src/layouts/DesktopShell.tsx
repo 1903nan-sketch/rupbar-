@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { ConnectionBanner, Logo, RupbarSignature, SyncIndicator } from '../components/brand';
 import { DiscountNotices } from '../components/DiscountRequest';
+import { ThemeButton } from '../components/ThemeSwitch';
 import { Button, Loading } from '../components/ui';
 import { api } from '../lib/api';
 import { useFullscreen } from '../lib/fullscreen';
@@ -165,6 +166,7 @@ export function DesktopShell() {
             <span className="small strong ellipsis" style={{ maxWidth: 160 }}>{user?.name}</span>
             <span className="badge">{user?.roleName}</span>
           </div>
+          <ThemeButton />
           <NavLink to="/minha-senha" className="btn plain small icon" title="Alterar minha senha"><KeyRound size={16} /></NavLink>
           <Button variant="plain" size="small" icon={<LogOut size={16} />} title="Sair" onClick={() => void logout()} />
         </header>

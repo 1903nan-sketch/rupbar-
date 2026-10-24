@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../../components/brand';
 import { Button, Card, ErrorBox, Field, Input, Loading, MoneyInput, PageHeader, Select, Switch, useToast } from '../../components/ui';
+import { ThemeChooser } from '../../components/ThemeSwitch';
 import { api } from '../../lib/api';
 import { useLoad } from '../../lib/hooks';
 import { applyBrandColors, useSession } from '../../lib/session';
@@ -25,6 +26,10 @@ export function SettingsHome() {
   return (
     <div className="stack-l">
       <PageHeader title="Configurações" />
+      <Card title="Aparência">
+        <p className="small muted" style={{ margin: '0 0 12px' }}>Vale só para este aparelho: o PC do caixa pode ser claro e o celular do garçom escuro.</p>
+        <ThemeChooser />
+      </Card>
       <div className="grid-auto">
         {items.filter((i) => i.show).map((i) => (
           <Link key={i.to} to={i.to} className="card interactive" style={{ color: 'inherit' }}>
