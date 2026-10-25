@@ -474,3 +474,31 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* ------------------------------------------------------------ fichas técnicas */
+.card-heading { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; }
+.card-heading svg { color: var(--accent); }
+.recipes-table td[data-label='Ficha'] { min-width: 220px; }
+.recipe-line { display: grid; grid-template-columns: minmax(0, 1fr) 110px 76px 76px auto; gap: 8px; align-items: center; }
+.recipe-line .recipe-unit { min-width: 0; }
+.recipe-line-cost { text-align: right; }
+.recipe-summary strong { font-variant-numeric: tabular-nums; }
+.recipes-low { display: flex; align-items: center; gap: 10px; }
+@media (max-width: 700px) {
+  .recipes-table td[data-label='Ficha'],
+  .recipes-table td[data-label='Usado em'] { grid-column: 1 / -1; min-width: 0; }
+  .recipes-table td[data-label='Custo'],
+  .recipes-table td[data-label='Preço'],
+  .recipes-table td[data-label='Margem'],
+  .recipes-table td[data-label='Dá para fazer'],
+  .recipes-table td[data-label='Saldo'] { text-align: left; }
+  .recipes-table td[data-label='Custo']::before,
+  .recipes-table td[data-label='Preço']::before,
+  .recipes-table td[data-label='Margem']::before,
+  .recipes-table td[data-label='Dá para fazer']::before,
+  .recipes-table td[data-label='Usado em']::before { content: attr(data-label) ': '; color: var(--text-2); font-weight: 400; }
+  .recipe-line { grid-template-columns: minmax(0, 1fr) 90px 70px auto; }
+  .recipe-line > .grow { grid-column: 1 / -1; }
+  .recipe-line-cost { display: none; }
+  .recipes-low { flex-wrap: wrap; }
+}

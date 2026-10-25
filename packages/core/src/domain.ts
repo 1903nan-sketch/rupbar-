@@ -107,6 +107,8 @@ export const DEFAULT_CATEGORIES: { name: string; station: Station; icon: string 
   { name: 'Essências', station: 'none', icon: 'leaf' },
   { name: 'Carvão', station: 'none', icon: 'flame' },
   { name: 'Narguilés', station: 'none', icon: 'wind' },
+  // Batata, queijo, bacon, pão: têm estoque e entram nas fichas técnicas, sem ir ao cardápio.
+  { name: 'Insumos', station: 'none', icon: 'carrot' },
   { name: 'Outros', station: 'none', icon: 'package' },
 ];
 

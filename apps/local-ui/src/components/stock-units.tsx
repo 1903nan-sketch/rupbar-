@@ -4,13 +4,13 @@
  * e exibição do saldo nas duas formas.
  */
 import {
-  buyModeOf, costPer, describeEntry, describeStock, entrySuggestion, fmtCount, formatBRL, isFemininePt, MILLI, packName,
+  bigUnitName, buyModeOf, costPer, describeEntry, describeStock, entrySuggestion, fmtCount, formatBRL, isFemininePt, KILO, MILLI, packName,
   theoreticalYield, totalCostFrom, unitName, unitsPerPack, type BuyMode, type Measure, type Packaging, type SellMode, type StockLevel,
 } from '@rupbar/core';
 import { Boxes, CircleAlert, Leaf, Package, UtensilsCrossed, Wine, type LucideIcon } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
-  BUY_MEASURE, cap, costModes, modeLabel, PACK_DEFAULTS, previewPackaging, priceLabel, qtyOf, sellModesFor,
+  BUY_MEASURE, cap, costModes, modeLabel, PACK_DEFAULTS, previewPackaging, priceLabel, qtyModes, qtyOf, sellModesFor,
   type CostDraft, type PackDraft, type QtyDraft, type SellDraft,
 } from '../lib/stock-units';
 import { Button, DecimalInput, Field, Input, MoneyInput } from './ui';
@@ -81,7 +81,7 @@ export function QtyEntry({ label, packaging, value, onChange, hint, autoFocus, p
         {single
           ? <span className="qty-entry-unit">{modeLabel('unit', packaging)}</span>
           : <ModeToggle label={`${label}: contar em`} value={value.mode} onChange={(mode) => onChange({ ...value, mode })}
-              options={[{ value: 'pack', label: modeLabel('pack', packaging) }, { value: 'unit', label: modeLabel('unit', packaging) }]} />}
+              options={qtyModes(packaging).map((m) => ({ value: m, label: modeLabel(m, packaging) }))} />}
       </div>
       {suggestion && dismissed !== key ? (
         <div className="entry-suggestion" role="status">
@@ -140,6 +140,7 @@ export function EntrySentence({ packaging, qty, cost, doseQty, sale, verb = 'lan
   if (totalCents !== null) {
     if (packaging.measure === 'unit') costs.push(<span key="u">Custo por {unitName(packaging, 1)}: <strong>{formatBRL(costPer(totalCents, total, MILLI)!)}</strong></span>);
     if (buy !== 'single') costs.push(<span key="p">por {packName(packaging, 1)}: <strong>{formatBRL(costPer(totalCents, total, packaging.packageQty)!)}</strong></span>);
+    if (packaging.measure !== 'unit' && packaging.packageQty !== KILO) costs.push(<span key="k">por {bigUnitName(packaging.measure)}: <strong>{formatBRL(costPer(totalCents, total, KILO)!)}</strong></span>);
     if (doseQty && packaging.measure !== 'unit') costs.push(<span key="d">por {packaging.measure === 'mass' ? 'porção' : 'dose'}: <strong>{formatBRL(costPer(totalCents, total, doseQty)!)}</strong></span>);
     costs.push(<span key="t">total: <strong>{formatBRL(totalCents)}</strong></span>);
   }

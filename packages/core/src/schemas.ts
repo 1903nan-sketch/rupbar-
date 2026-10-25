@@ -225,6 +225,19 @@ export const componentSchema = z.object({
   qty: zMilli.positive('Quantidade do ingrediente deve ser maior que zero'),
 });
 
+/**
+ * Ficha técnica de um prato (Fichas técnicas): o que uma unidade consome dos insumos.
+ * Quantidades em milésimos da unidade-base (200 g = 200_000). Insumo repetido soma.
+ */
+export const recipeSchema = z.object({
+  priceCents: zCents.min(0).optional(),
+  components: z.array(z.object({
+    productId: zUuid,
+    qty: zMilli.positive('Quantidade do insumo deve ser maior que zero'),
+  })).min(1, 'Adicione ao menos um insumo à ficha técnica').max(30),
+});
+export type RecipeInput = z.infer<typeof recipeSchema>;
+
 export const presentationSchema = z.object({
   id: zUuid.optional(),
   name: trimmed(60).min(1),

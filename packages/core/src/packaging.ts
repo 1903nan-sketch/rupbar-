@@ -18,10 +18,13 @@ import { MILLI } from './units';
 export type BuyMode = 'single' | 'pack' | 'bottle' | 'bag';
 /** Como o produto sai no balcão. */
 export type SellMode = 'unit' | 'dose' | 'ingredient';
-/** Em que a pessoa está digitando: embalagens fechadas ou unidades soltas (latas, ml, g). */
-export type QtyMode = 'pack' | 'unit';
-/** Como o custo foi informado: por embalagem, por unidade solta ou o total pago. */
-export type CostMode = 'pack' | 'unit' | 'total';
+/**
+ * Em que a pessoa está digitando: embalagens fechadas, unidades soltas (latas, ml, g)
+ * ou, para ml e g, a unidade grande (L, kg): "5 kg" = 5.000 g.
+ */
+export type QtyMode = 'pack' | 'unit' | 'kilo';
+/** Como o custo foi informado: por embalagem, por unidade solta, por kg/L ou o total pago. */
+export type CostMode = 'pack' | 'unit' | 'kilo' | 'total';
 
 export interface Packaging {
   measure: Measure;
@@ -108,6 +111,14 @@ function baseLabel(measure: Measure): string {
   return measure === 'volume' ? 'ml' : measure === 'mass' ? 'g' : 'un';
 }
 
+/** 1 kg = 1.000 g e 1 L = 1.000 ml (em milli). */
+export const KILO = 1000 * MILLI;
+
+/** Unidade grande de ml e g ("L", "kg"); unidades contadas não têm. */
+export function bigUnitName(measure: Measure): 'kg' | 'L' | null {
+  return measure === 'mass' ? 'kg' : measure === 'volume' ? 'L' : null;
+}
+
 /** Nome da unidade solta: "lata"/"latas", "ml", "g". */
 export function unitName(p: Packaging, n = 1): string {
   if (p.measure !== 'unit') return baseLabel(p.measure);
@@ -188,7 +199,8 @@ export function stockText(qty: QtyMilli, p: Packaging): string {
 
 /** Fator (milli) de 1 unidade digitada no modo escolhido. */
 export function modeFactor(mode: QtyMode, p: Packaging): number {
-  return mode === 'pack' ? p.packageQty : MILLI;
+  if (mode === 'pack') return p.packageQty;
+  return mode === 'kilo' && p.measure !== 'unit' ? KILO : MILLI;
 }
 
 /** Número digitado (em embalagens ou unidades soltas) → milli. */
@@ -252,6 +264,11 @@ export function describeEntry(amount: number, mode: QtyMode, p: Packaging, doseQ
   let lead: string;
   if (buy === 'single') {
     lead = unitsText(qty, p);
+  } else if (mode === 'kilo' && p.measure !== 'unit') {
+    lead = `${fmtCount(amount, 3)} ${bigUnitName(p.measure)}`;
+    equals.push(unitsText(qty, p));
+    const packs = qty >= p.packageQty ? packBreakdownText(qty, p) : null;
+    if (packs) equals.push(packs);
   } else if (mode === 'pack') {
     const n = unitsPerPack(p);
     lead = buy === 'pack'
@@ -288,7 +305,7 @@ export interface EntrySuggestion {
  */
 export function entrySuggestion(amount: number | null | undefined, mode: QtyMode, p: Packaging): EntrySuggestion | null {
   const buy = buyModeOf(p);
-  if (buy === 'single' || !amount || amount <= 0 || !Number.isInteger(amount)) return null;
+  if (buy === 'single' || mode === 'kilo' || !amount || amount <= 0 || !Number.isInteger(amount)) return null;
   const perPack = unitsPerPack(p);
   if (mode === 'unit') {
     const looksLikePacks = buy === 'pack' ? amount < perPack : amount <= 20 && amount * MILLI <= p.packageQty / 10;

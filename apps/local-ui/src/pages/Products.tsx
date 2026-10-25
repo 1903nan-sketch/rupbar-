@@ -53,6 +53,8 @@ export interface Product {
     active: boolean;
     components: { productId: string; productName: string; qty: number; measure: Measure; isSelf: boolean }[];
     available: number | null;
+    /** Custo de uma unidade pela ficha técnica (null sem custo lançado ou sem permissão). */
+    costCents?: number | null;
     /** Escolhas só desta apresentação (ex.: Dose com energético). */
     optionGroups?: { groupId: string; quantity: number }[];
     /** Meio a meio: as porções que podem ser metade. */

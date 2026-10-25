@@ -3,7 +3,7 @@
  * As conversões de quantidade ficam em @rupbar/core (packaging.ts).
  */
 import {
-  buyModeOf, DEFAULT_PACKAGE_LABEL, isFemininePt, MILLI, packName, qtyFrom, unitName, amountIn, preferredMode,
+  bigUnitName, buyModeOf, DEFAULT_PACKAGE_LABEL, KILO, isFemininePt, MILLI, packName, qtyFrom, unitName, amountIn, preferredMode,
   type BuyMode, type CostMode, type Measure, type Packaging, type QtyMode, type SellMode,
 } from '@rupbar/core';
 
@@ -167,10 +167,17 @@ export function qtyDraftFrom(qty: number, p: Packaging): QtyDraft {
   return { amount: qty === 0 ? null : amountIn(qty, mode, p), mode };
 }
 
-/** Rótulo do botão de modo: "Fardos" / "Latas" / "Garrafas" / "ml". */
+/** Rótulo do botão de modo: "Fardos" / "Latas" / "Garrafas" / "ml" / "L" / "kg". */
 export function modeLabel(mode: QtyMode, p: Packaging): string {
   if (mode === 'pack') return cap(packName(p, 2));
+  if (mode === 'kilo') return bigUnitName(p.measure) ?? unitName(p, 2);
   return p.measure === 'unit' ? cap(unitName(p, 2)) : unitName(p, 2);
+}
+
+/** Modos do campo de quantidade: embalagem e unidade solta; ml e g também em L e kg (5 kg = 5.000 g). */
+export function qtyModes(p: Packaging): QtyMode[] {
+  if (buyModeOf(p) === 'single') return ['unit'];
+  return p.measure === 'unit' ? ['pack', 'unit'] : ['pack', 'unit', 'kilo'];
 }
 
 export function costModes(p: Packaging): { value: CostMode; label: string }[] {
@@ -178,7 +185,9 @@ export function costModes(p: Packaging): { value: CostMode; label: string }[] {
   const total = { value: 'total' as const, label: 'Total' };
   if (buy === 'single') return [{ value: 'unit', label: `Por ${unitName(p, 1)}` }, total];
   if (buy === 'pack') return [{ value: 'pack', label: `Por ${packName(p, 1)}` }, { value: 'unit', label: `Por ${unitName(p, 1)}` }, total];
-  return [{ value: 'pack', label: `Por ${packName(p, 1)}` }, total];
+  // "Por kg"/"Por L" só quando difere da embalagem (pacote de 2,5 kg; na garrafa de 1 L seria repetido).
+  if (p.packageQty === KILO) return [{ value: 'pack', label: `Por ${packName(p, 1)}` }, total];
+  return [{ value: 'pack', label: `Por ${packName(p, 1)}` }, { value: 'kilo', label: `Por ${bigUnitName(p.measure)}` }, total];
 }
 
 /** Campos da compra enviados à API: embalagens quando digitou em embalagens, senão a quantidade solta. */

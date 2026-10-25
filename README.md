@@ -58,6 +58,17 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 
 ## Gerar o instalador do Windows
 
+### Fichas técnicas (0.6.0)
+
+No menu lateral, em Estoque: **Fichas técnicas**. Um insumo (batata, queijo, bacon, pão) tem estoque e pode entrar em vários pratos; um prato pode usar vários insumos.
+
+- **Novo insumo**: nome, como chega (pacote de X g, garrafa de X ml, unidade), saldo, custo e mínimo. Já abre em **kg** (ou **L**): digitar 5 kg grava 5.000 g. A entrada de mercadoria também aceita kg e L, e o custo pode ser "por kg".
+- **Nova ficha técnica**: nome do prato, preço e quanto de cada insumo vai em uma unidade (em g ou kg, ml ou L, un). O prato não tem estoque próprio: cada venda baixa de cada insumo a quantidade da ficha × a quantidade vendida, dentro da mesma transação do pedido. Se o pedido falha, nada é baixado; cancelar o item devolve.
+- **Custo e margem**: custo do prato = soma dos insumos pelo custo médio das entradas. A tela mostra custo, preço, margem e **quantos dá para fazer** com o estoque atual. Garçom não vê custo.
+- **Alerta de mínimo**: insumo no mínimo ou abaixo aparece em destaque na tela (com "Dar entrada"), no alerta do Estoque e nas notificações. Os pratos que usam o insumo mostram o aviso.
+- Exemplo: 5 kg de batata; "Porção de batata" usa 200 g e "Batata com cheddar" usa 300 g de batata + 50 g de cheddar. Duas porções e uma com cheddar deixam 4,3 kg.
+- Por dentro: o insumo é um produto com estoque fora do cardápio e a ficha é a lista de componentes da apresentação (`presentation_components`). As quantidades ficam em milésimos de g, ml e un, que é o padrão do estoque. Uma "Porção 300 g" que baixa do próprio produto continua funcionando como antes.
+
 ### Ajustes após a 0.2.0
 
 - **Narguilé sem devolução**: aluguel e trocas entram na comanda na hora e a locação termina sozinha quando a comanda é encerrada. O aluguel pode ser feito sem escolher aparelho.

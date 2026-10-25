@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   costModes, defaultSell, draftFromPackaging, entryPayload, modeLabel, PACK_DEFAULTS, packagingFromDraft, presentationsFor, priceLabel,
-  qtyDraftFrom, qtyOf,
+  qtyDraftFrom, qtyModes, qtyOf,
 } from './stock-units';
 
 const fardo = { measure: 'unit' as const, packageQty: 12_000, packageLabel: 'fardo', unitLabel: 'lata' };
@@ -69,5 +69,12 @@ describe('quantidade e custo', () => {
     expect(modeLabel('unit', garrafa)).toBe('ml');
     expect(costModes(fardo).map((m) => m.label)).toEqual(['Por fardo', 'Por lata', 'Total']);
     expect(costModes(garrafa).map((m) => m.label)).toEqual(['Por garrafa', 'Total']);
+    // Insumo em g/ml: quantidade e custo também em kg/L (5 kg = 5.000 g).
+    const batata = { measure: 'mass' as const, packageQty: 2_500_000, packageLabel: 'pacote' };
+    expect(qtyModes(batata).map((m) => modeLabel(m, batata))).toEqual(['Pacotes', 'g', 'kg']);
+    expect(costModes(batata).map((m) => m.label)).toEqual(['Por pacote', 'Por kg', 'Total']);
+    expect(qtyOf({ amount: 5, mode: 'kilo' }, batata)).toBe(5_000_000);
+    expect(entryPayload({ amount: 5, mode: 'kilo' }, batata)).toEqual({ qty: 5_000_000 });
+    expect(qtyModes(fardo)).toEqual(['pack', 'unit']);
   });
 });

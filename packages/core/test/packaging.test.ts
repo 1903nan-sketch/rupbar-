@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  amountIn, buyModeOf, countQty, costPer, describeEntry, describePack, describeStock, entryQtyMilli, entrySuggestion,
+  amountIn, bigUnitName, buyModeOf, countQty, costPer, describeEntry, describePack, describeStock, entryQtyMilli, entrySuggestion,
   formatProductCode, isFemininePt, matchesProductCode, nextProductCode, packBreakdownText, packName, pluralPt,
   preferredMode, productCodeKey, qtyFrom, stockText, totalCostFrom, unitName, type Packaging,
 } from '../src';
@@ -128,6 +128,27 @@ describe('frase de conferência e prevenção de enganos', () => {
     expect(entrySuggestion(2.5, 'unit', fardo)).toBeNull();
     expect(entrySuggestion(2, 'unit', avulsa)).toBeNull();
     expect(entrySuggestion(null, 'unit', fardo)).toBeNull();
+  });
+});
+
+describe('kg e litro na entrada', () => {
+  const batata: Packaging = { measure: 'mass', packageQty: 2_500_000, packageLabel: 'pacote' };
+  it('5 kg = 5.000 g; 1,5 L = 1.500 ml (guardado em milésimos de g e ml)', () => {
+    expect(qtyFrom(5, 'kilo', batata)).toBe(5_000_000);
+    expect(qtyFrom(0.2, 'kilo', batata)).toBe(200_000);
+    expect(qtyFrom(1.5, 'kilo', garrafa)).toBe(1_500_000);
+    expect(amountIn(4_300_000, 'kilo', batata)).toBe(4.3);
+    expect(bigUnitName('mass')).toBe('kg');
+    expect(bigUnitName('volume')).toBe('L');
+    expect(bigUnitName('unit')).toBeNull();
+    // Unidade contada não tem kg: vale como unidade solta.
+    expect(qtyFrom(2, 'kilo', fardo)).toBe(2_000);
+  });
+  it('frase de conferência e custo por kg', () => {
+    expect(describeEntry(5, 'kilo', batata)).toEqual({ lead: '5 kg', equals: ['5.000 g', '2 pacotes'] });
+    expect(describeEntry(0.75, 'kilo', garrafa)).toEqual({ lead: '0,75 L', equals: ['750 ml'] });
+    expect(totalCostFrom(1_200, 'kilo', 5_000_000, batata)).toBe(6_000); // R$ 12/kg × 5 kg
+    expect(entrySuggestion(5, 'kilo', batata)).toBeNull();
   });
 });
 

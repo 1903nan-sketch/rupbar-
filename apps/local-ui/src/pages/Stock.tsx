@@ -321,7 +321,7 @@ function newLine(p?: Product): PurchaseLine {
   };
 }
 
-function PurchaseModal({ initialProduct, onClose, onDone }: { initialProduct?: Product; onClose: () => void; onDone: () => void }) {
+export function PurchaseModal({ initialProduct, onClose, onDone }: { initialProduct?: Product; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const products = useTracked();
   const suppliers = useLoad(() => api.get<{ id: string; name: string }[]>('/api/suppliers'));

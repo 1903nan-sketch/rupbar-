@@ -1,5 +1,5 @@
-import { DEFAULT_CATEGORIES, entryQtyMilli, packageBreakdown, stockLevel, theoreticalYield, type Measure } from '@rupbar/core';
-import { categorySchema, optionGroupSchema, productSchema, supplierSchema, type ProductInput } from '@rupbar/core/schemas';
+import { costOf, DEFAULT_CATEGORIES, entryQtyMilli, packageBreakdown, stockLevel, theoreticalYield, type Measure } from '@rupbar/core';
+import { categorySchema, optionGroupSchema, productSchema, recipeSchema, supplierSchema, type ProductInput } from '@rupbar/core/schemas';
 import { bool, type Row } from '../db/db';
 import { allocateProductCode, peekProductCode } from '../db/product-codes';
 import { badRequest, conflict, notFound } from '../lib/errors';
@@ -21,6 +21,8 @@ export interface PresentationView {
   halves: string[];
   /** Quantas unidades desta apresentação o estoque atual permite (null = não controlado). */
   available: number | null;
+  /** Custo de uma unidade: soma dos insumos da ficha pelo custo médio (null sem custo lançado ou sem permissão). */
+  costCents: number | null;
 }
 
 export class CatalogService {
@@ -168,7 +170,17 @@ export class CatalogService {
     return min;
   }
 
-  private presentationsOf(productId: string): PresentationView[] {
+  /** Custo de uma unidade pela ficha: cada insumo × custo médio das entradas. */
+  private recipeCost(components: PresentationView['components']): number | null {
+    let total: number | null = null;
+    for (const c of components) {
+      const unitCost = Number(this.ctx.db.value('SELECT unit_cost_e4 FROM products WHERE id = ?', c.productId) ?? 0);
+      if (unitCost > 0) total = (total ?? 0) + costOf(c.qty, unitCost);
+    }
+    return total;
+  }
+
+  private presentationsOf(productId: string, showCost = true): PresentationView[] {
     return this.ctx.db
       .all('SELECT * FROM presentations WHERE product_id = ? ORDER BY sort_order, price_cents', productId)
       .map((pr) => {
@@ -176,6 +188,7 @@ export class CatalogService {
         return {
           id: String(pr.id), name: String(pr.name), priceCents: Number(pr.price_cents), menuVisible: bool(pr.menu_visible),
           active: bool(pr.active), sortOrder: Number(pr.sort_order), components, available: this.availability(components),
+          costCents: showCost ? this.recipeCost(components) : null,
           optionGroups: this.ctx.db
             .all<{ group_id: string; quantity: number }>('SELECT group_id, quantity FROM presentation_option_groups WHERE presentation_id = ? ORDER BY sort_order', String(pr.id))
             .map((l) => ({ groupId: l.group_id, quantity: l.quantity })),
@@ -189,7 +202,7 @@ export class CatalogService {
   productView(p: Row, actor: Actor | null, withPresentations = true) {
     const showCost = !actor || hasPerm(actor, 'reports.financial') || hasPerm(actor, 'stock.entry');
     const measure = p.measure as Measure;
-    const presentations = withPresentations ? this.presentationsOf(String(p.id)) : [];
+    const presentations = withPresentations ? this.presentationsOf(String(p.id), showCost) : [];
     const smallestDose = presentations
       .flatMap((pr) => pr.components.filter((c) => c.isSelf).map((c) => c.qty))
       .reduce<number | null>((m, q) => (m === null ? q : Math.min(m, q)), null);
@@ -420,6 +433,47 @@ export class CatalogService {
         };
       });
     return { categories, items, optionGroups };
+  }
+
+  /**
+   * Fichas técnicas: troca o que uma apresentação consome (e, se informado, o preço)
+   * sem mexer no resto do cadastro. A baixa acontece na venda, dentro da transação do pedido.
+   */
+  saveRecipe(actor: Actor, presentationId: string, raw: unknown) {
+    requirePerm(actor, 'products.manage');
+    const input = recipeSchema.parse(raw);
+    return this.ctx.tx(() => {
+      const pr = this.ctx.db.get<{ id: string; name: string; product_id: string }>(
+        `SELECT pr.id, pr.name, pr.product_id FROM presentations pr JOIN products p ON p.id = pr.product_id
+         WHERE pr.id = ? AND p.deleted_at IS NULL`,
+        presentationId,
+      );
+      if (!pr) throw notFound('Apresentação');
+      const merged = new Map<string, number>();
+      for (const c of input.components) {
+        const ing = this.ctx.db.get<{ name: string; stock_tracked: number }>('SELECT name, stock_tracked FROM products WHERE id = ? AND deleted_at IS NULL', c.productId);
+        if (!ing) throw badRequest(`Insumo não encontrado na ficha de "${pr.name}".`, 'INGREDIENT_NOT_FOUND');
+        if (c.productId !== pr.product_id && !bool(ing.stock_tracked)) {
+          throw badRequest(`${ing.name} não tem controle de estoque. Ative o estoque dele para usar como insumo.`, 'INGREDIENT_NOT_TRACKED');
+        }
+        merged.set(c.productId, (merged.get(c.productId) ?? 0) + c.qty);
+      }
+      const now = this.ctx.nowIso();
+      this.ctx.db.run('DELETE FROM presentation_components WHERE presentation_id = ?', presentationId);
+      for (const [productId, qty] of merged) {
+        this.ctx.db.run('INSERT INTO presentation_components (id, presentation_id, ingredient_product_id, qty) VALUES (?,?,?,?)', this.ctx.id(), presentationId, productId, qty);
+      }
+      // A versão nova leva a ficha para a nuvem e avisa as telas abertas.
+      this.ctx.db.run(
+        'UPDATE presentations SET price_cents = COALESCE(?, price_cents), version = version + 1, updated_at = ? WHERE id = ?',
+        input.priceCents ?? null, now, presentationId,
+      );
+      this.ctx.audit(actor, 'products.recipe_updated', 'presentation', presentationId, {
+        priceCents: input.priceCents, components: [...merged].map(([productId, qty]) => ({ productId, qty })),
+      });
+      this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId: pr.product_id } });
+      return { id: presentationId };
+    });
   }
 
   private validateComponents(input: ProductInput, productId: string) {

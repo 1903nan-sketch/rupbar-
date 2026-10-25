@@ -32,6 +32,7 @@ const ReportsPage = lazy(() => import('./pages/Reports').then((m) => ({ default:
 const SetupPage = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupPage })));
 const StaffPage = lazy(() => import('./pages/Staff').then((m) => ({ default: m.StaffPage })));
 const StockPage = lazy(() => import('./pages/Stock').then((m) => ({ default: m.StockPage })));
+const RecipesPage = lazy(() => import('./pages/Recipes').then((m) => ({ default: m.RecipesPage })));
 const TvPage = lazy(() => import('./pages/Tv').then((m) => ({ default: m.TvPage })));
 const NotificationSettings = lazy(() => import('./pages/settings/Notifications').then((m) => ({ default: m.NotificationSettings })));
 const SyncSettings = lazy(() => import('./pages/settings/Cloud').then((m) => ({ default: m.SyncSettings })));
@@ -134,6 +135,7 @@ function App() {
           <Route path="caixa" element={<Guard perm="cash.view"><CashPage /></Guard>} />
           <Route path="produtos" element={<Guard perm="products.view"><ProductsPage /></Guard>} />
           <Route path="estoque" element={<Guard perm="stock.view"><StockPage /></Guard>} />
+          <Route path="fichas" element={<Guard perm="products.view"><RecipesPage /></Guard>} />
           <Route path="perdas" element={<Guard perm="losses.view"><LossesPage /></Guard>} />
           <Route path="narguiles" element={<Guard perm="hookah.view"><HookahsPage /></Guard>} />
           <Route path="relatorios" element={<Guard perm="reports.operational"><ReportsPage /></Guard>} />

@@ -41,6 +41,7 @@ jobs:
           pnpm --filter @rupbar/e2e exec playwright install --with-deps chromium
           node tests/e2e/smoke.mjs tests/e2e/screenshots
           node tests/e2e/stock.mjs tests/e2e/screenshots/stock
+          node tests/e2e/recipes.mjs tests/e2e/screenshots/recipes
       - uses: actions/upload-artifact@v4
         if: always()
         with:

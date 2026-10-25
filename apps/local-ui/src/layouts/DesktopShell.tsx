@@ -1,7 +1,7 @@
 import { parsePickupCode, type Permission } from '@rupbar/core';
 import {
   BarChart3, Boxes, ChefHat, ClipboardList, ClipboardPlus, Cog, KeyRound, LayoutDashboard, LogOut, Maximize2, Menu, Minimize2, PackageMinus,
-  ScanBarcode, Smartphone, Tv, UserRound, Users, Wallet, Wind, Wine, Zap,
+  ScanBarcode, ScrollText, Smartphone, Tv, UserRound, Users, Wallet, Wind, Wine, Zap,
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom';
@@ -105,6 +105,7 @@ export function DesktopShell() {
       items: [
         { to: '/produtos', label: 'Produtos', icon: <Wine size={18} />, perm: 'products.view' },
         { to: '/estoque', label: 'Estoque', icon: <Boxes size={18} />, perm: 'stock.view', count: dash?.stockAlerts || undefined },
+        { to: '/fichas', label: 'Fichas técnicas', icon: <ScrollText size={18} />, perm: 'products.view' },
         { to: '/perdas', label: 'Perdas', icon: <PackageMinus size={18} />, perm: 'losses.view', count: dash?.lossConflicts || undefined },
       ],
     },
@@ -196,6 +197,7 @@ function titleFor(path: string): string {
   if (path.startsWith('/caixa')) return 'Caixa';
   if (path.startsWith('/produtos')) return 'Produtos';
   if (path.startsWith('/estoque')) return 'Estoque';
+  if (path.startsWith('/fichas')) return 'Fichas técnicas';
   if (path.startsWith('/perdas')) return 'Perdas';
   if (path.startsWith('/narguiles')) return 'Narguilés';
   if (path.startsWith('/relatorios')) return 'Relatórios';
