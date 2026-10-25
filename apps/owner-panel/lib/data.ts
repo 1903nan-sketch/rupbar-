@@ -53,7 +53,7 @@ export async function currentEstablishment() {
 }
 
 /** Versão do RupBar no PC a partir da qual ele aplica as ações enviadas pelo painel. */
-export const OWNER_ACTIONS_VERSION = '0.7.0';
+export const OWNER_ACTIONS_VERSION = '0.8.0';
 
 /** `v` (ex.: "0.2.0") é igual ou mais nova que `min`? Sem versão conta como antiga. */
 export function versionAtLeast(v: string | null | undefined, min: string): boolean {

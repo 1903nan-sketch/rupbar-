@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/core",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "description": "Regras de domínio compartilhadas do RupBar (dinheiro, unidades, permissões, ESC/POS, sincronização).",

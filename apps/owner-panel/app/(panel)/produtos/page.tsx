@@ -1,10 +1,13 @@
 import { formatBRL } from '@rupbar/core';
-import { Ban, PackageCheck, RotateCcw, Tags } from 'lucide-react';
+import { Ban, Boxes, PackageCheck, RotateCcw, Tag, Tags, X } from 'lucide-react';
+import Link from 'next/link';
 import { ActionForm } from '@/components/ActionForm';
 import { CommandFeed } from '@/components/CommandFeed';
+import { ScrollHere } from '@/components/ScrollHere';
 import { Badge, Card, Empty, LinkTabs, PageHeader } from '@/components/ui';
 import { currentEstablishment } from '@/lib/data';
 import { setProductActive } from '../acoes';
+import { PriceEditor } from './PriceEditor';
 
 export const metadata = { title: 'Produtos' };
 
@@ -15,10 +18,13 @@ export default async function Products({ searchParams }: { searchParams: Promise
   if (!est) return null;
   const view = params.ver === 'fora' ? 'fora' : 'venda';
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('pt-BR') : '';
+  const selectedId = typeof params.produto === 'string' && /^[0-9a-f-]{36}$/.test(params.produto) ? params.produto : null;
+  const keep = new URLSearchParams({ ...(view === 'fora' ? { ver: 'fora' } : {}), ...(q ? { q } : {}) }).toString();
+  const href = (id: string) => `?${keep ? `${keep}&` : ''}produto=${id}`;
   const [{ data: products }, { data: cats }, { data: pres }] = await Promise.all([
-    sb.from('v_products').select('id, name, category_id, active').eq('establishment_id', est.id).order('name'),
+    sb.from('v_products').select('id, name, category_id, active, stock_tracked').eq('establishment_id', est.id).order('name'),
     sb.from('v_categories').select('id, name').eq('establishment_id', est.id),
-    sb.from('v_presentations').select('product_id, name, price_cents, active').eq('establishment_id', est.id).eq('active', true),
+    sb.from('v_presentations').select('id, product_id, name, price_cents, active, sort_order').eq('establishment_id', est.id).eq('active', true).order('sort_order'),
   ]);
   const cat = new Map((cats ?? []).map((c) => [c.id as string, c.name as string]));
   const prices = new Map<string, number[]>();
@@ -26,6 +32,8 @@ export default async function Products({ searchParams }: { searchParams: Promise
   const all = (products ?? []).map((p) => ({ id: p.id as string, name: p.name as string, active: p.active as boolean, category: cat.get(p.category_id as string) ?? '—', prices: prices.get(p.id as string) ?? [] }));
   const rows = all.filter((p) => (view === 'fora' ? !p.active : p.active) && (!q || `${p.name} ${p.category}`.toLocaleLowerCase('pt-BR').includes(q)));
   const onSale = all.filter((p) => p.active).length;
+  const sel = selectedId ? (products ?? []).find((p) => p.id === selectedId) : null;
+  const selPrices = sel ? (pres ?? []).filter((x) => x.product_id === sel.id).map((x) => ({ id: x.id as string, name: x.name as string, priceCents: Number(x.price_cents) })) : [];
 
   return (
     <div className="stack-l">
@@ -33,7 +41,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
         title="Produtos"
         eyebrow="Cardápio"
         icon={Tags}
-        subtitle="Tire um produto da venda (some do cardápio do PC e dos celulares) ou volte a vender. O histórico de vendas continua."
+        subtitle="Toque no nome para mudar os preços. Tire um produto da venda (some do cardápio do PC e dos celulares) ou volte a vender. O histórico de vendas continua."
         actions={
           <LinkTabs
             label="Produtos"
@@ -44,6 +52,38 @@ export default async function Products({ searchParams }: { searchParams: Promise
           />
         }
       />
+      {sel && (
+        <Card
+          key={sel.id as string}
+          id="produto"
+          className="detail-card"
+          title={
+            <div>
+              <h2 className="card-title">Preços — {sel.name as string}</h2>
+              <p className="card-sub">{cat.get(sel.category_id as string) ?? '—'} · o novo preço vale para os próximos pedidos (os já lançados não mudam).</p>
+            </div>
+          }
+          icon={Tag}
+          tone="violet"
+          actions={
+            <Link href={`/produtos${keep ? `?${keep}` : ''}`} className="btn ghost icon" aria-label="Fechar o produto na tela" scroll={false}>
+              <X size={18} aria-hidden="true" />
+            </Link>
+          }
+        >
+          <ScrollHere />
+          {selPrices.length ? (
+            <PriceEditor productId={sel.id as string} productName={sel.name as string} rows={selPrices} />
+          ) : (
+            <p className="small muted">Este produto não tem preço de venda (é insumo ou só estoque).</p>
+          )}
+          {Boolean(sel.stock_tracked) && (
+            <Link href={`/estoque?produto=${sel.id as string}`} className="btn ghost small stock-shortcut">
+              <Boxes size={15} aria-hidden="true" /> Estoque deste produto: entrada, contagem e mínimo
+            </Link>
+          )}
+        </Card>
+      )}
       <div className="split-form wide-first">
         <Card title={view === 'fora' ? 'Fora de venda' : 'À venda'} icon={PackageCheck} flush
           actions={
@@ -61,7 +101,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
               {rows.map((p) => (
                 <li key={p.id} className="list-item">
                   <div className="grow">
-                    <div className="strong">{p.name}</div>
+                    <Link href={href(p.id)} scroll={false} className="strong row-link">{p.name}</Link>
                     <div className="tiny muted">
                       {p.category}
                       {p.prices.length ? ` · ${p.prices.length > 1 ? `de ${formatBRL(Math.min(...p.prices))} a ${formatBRL(Math.max(...p.prices))}` : formatBRL(p.prices[0]!)}` : ' · só estoque (sem preço)'}
@@ -79,7 +119,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
             </ul>
           )}
         </Card>
-        <CommandFeed types={['product.set_active']} path="/produtos" />
+        <CommandFeed types={['product.set_active', 'product.update']} path="/produtos" />
       </div>
     </div>
   );

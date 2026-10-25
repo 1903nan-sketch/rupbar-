@@ -1,6 +1,8 @@
 'use client';
-import { Search, SearchX, X } from 'lucide-react';
+import { ChevronRight, Search, SearchX, X } from 'lucide-react';
+import Link from 'next/link';
 import { useMemo, useState, type CSSProperties } from 'react';
+import { LinkRow } from '@/components/LinkRow';
 
 export interface StockRow {
   id: string;
@@ -16,10 +18,14 @@ export interface StockRow {
 }
 
 /** Busca sem acento e sem maiúscula: "agua" acha "Água", "aneis" acha "Anéis". */
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
 
-/** Lista do estoque com busca por produto/categoria e filtro de categoria. No celular vira lista. */
-export function StockBrowser({ rows }: { rows: StockRow[] }) {
+/**
+ * Lista do estoque com busca por produto/categoria e filtro de categoria. No celular vira lista.
+ * Tocar num produto abre o painel dele (entrada, contagem e mínimo): `?produto=`.
+ */
+export function StockBrowser({ rows, query = '', selectedId }: { rows: StockRow[]; query?: string; selectedId?: string | null }) {
+  const href = (id: string) => `?${query ? `${query}&` : ''}produto=${id}`;
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const indexed = useMemo(() => rows.map((r) => ({ r, key: fold(`${r.name} ${r.category}`) })), [rows]);
@@ -99,8 +105,8 @@ export function StockBrowser({ rows }: { rows: StockRow[] }) {
               </thead>
               <tbody>
                 {shown.map((p) => (
-                  <tr key={p.id}>
-                    <td className="strong">{p.name}</td>
+                  <LinkRow key={p.id} href={href(p.id)} selected={p.id === selectedId}>
+                    <td className="strong"><Link href={href(p.id)} scroll={false} className="row-link">{p.name}</Link></td>
                     <td className="muted">{p.category}</td>
                     <td className="right num strong">{p.qty}</td>
                     <td>
@@ -111,7 +117,7 @@ export function StockBrowser({ rows }: { rows: StockRow[] }) {
                     <td>
                       <Level color={p.color} label={p.label} />
                     </td>
-                  </tr>
+                  </LinkRow>
                 ))}
               </tbody>
             </table>
@@ -119,7 +125,8 @@ export function StockBrowser({ rows }: { rows: StockRow[] }) {
 
           <ul className="list only-sm stock-list">
             {shown.map((p) => (
-              <li key={p.id} className="list-item">
+              <li key={p.id}>
+                <Link href={href(p.id)} scroll={false} className={`list-item stock-link ${p.id === selectedId ? 'selected' : ''}`}>
                 <div className="grow">
                   <div className="strong">{p.name}</div>
                   <div className="tiny muted">
@@ -133,6 +140,8 @@ export function StockBrowser({ rows }: { rows: StockRow[] }) {
                   <span className="num strong">{p.qty}</span>
                   <Level color={p.color} label={p.label} />
                 </div>
+                <ChevronRight size={16} className="muted stock-chevron" aria-hidden="true" />
+                </Link>
               </li>
             ))}
           </ul>

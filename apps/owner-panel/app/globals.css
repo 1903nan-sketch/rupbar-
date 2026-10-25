@@ -4063,3 +4063,75 @@ button.chip {
 .close-comanda p {
   margin: 0;
 }
+
+/* ------------------------------------------------------------ estoque e preços pelo painel */
+.stock-forms {
+  display: grid;
+  gap: 0;
+}
+.stock-form {
+  padding: 18px 20px;
+  border-top: 1px solid var(--separator);
+}
+.stock-form:first-child {
+  border-top: 0;
+}
+.stock-form .btn {
+  justify-self: start;
+}
+.qty-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 120px);
+  gap: 8px;
+  align-items: center;
+}
+.qty-row .input {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.qty-unit {
+  font-size: 14px;
+}
+.entry-preview strong {
+  color: var(--text);
+}
+a.stock-link {
+  color: inherit;
+  text-decoration: none;
+}
+a.stock-link.selected {
+  background: var(--accent-soft);
+}
+.stock-chevron {
+  align-self: center;
+  flex: none;
+}
+.price-editor {
+  padding: 4px 20px 18px;
+}
+.price-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px);
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+}
+.price-line.changed .input {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.price-editor .btn {
+  justify-self: start;
+}
+.stock-shortcut {
+  margin: 0 20px 18px;
+  justify-self: start;
+}
+@media (max-width: 700px) {
+  .stock-form,
+  .price-editor {
+    padding-inline: 14px;
+  }
+  .stock-shortcut {
+    margin-inline: 14px;
+  }
+}

@@ -143,6 +143,62 @@ export async function closeCash(_prev: ActionState | null, form: FormData): Prom
   return send('cash.close', { countedCashCents: value, notes: notes || null, label: `Fechar caixa com R$ ${(value / 100).toFixed(2).replace('.', ',')} contados` }, '/caixas');
 }
 
+// --------------------------------------------------------- estoque e preços
+
+/** Quantidade em milésimos (calculada na tela a partir de fardos, latas, kg…). */
+function milli(raw: FormDataEntryValue | null, allowZero = false): number | null {
+  const n = Number(String(raw ?? ''));
+  return String(raw ?? '') !== '' && Number.isSafeInteger(n) && (allowZero ? n >= 0 : n > 0) && n <= 1_000_000_000_000 ? n : null;
+}
+const productOf = (form: FormData) => ({ productId: String(form.get('productId') ?? ''), name: String(form.get('productName') ?? 'produto').slice(0, 80) });
+
+export async function stockEntry(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const { productId, name } = productOf(form);
+  const qty = milli(form.get('qty'));
+  const totalCostCents = cents(form.get('totalCost'));
+  if (!UUID.test(productId)) return { ok: false, message: 'Produto inválido.' };
+  if (qty === null) return { ok: false, message: 'Informe quanto chegou.' };
+  if (totalCostCents === null) return { ok: false, message: 'Valor pago inválido.' };
+  const invoiceNumber = String(form.get('invoice') ?? '').trim().slice(0, 40) || null;
+  const qtyText = String(form.get('qtyText') ?? '').slice(0, 40);
+  return send('stock.entry', { productId, qty, totalCostCents, invoiceNumber, label: `Entrada: ${qtyText} de ${name} (${brl(totalCostCents)})` }, '/estoque');
+}
+
+export async function stockAdjust(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const { productId, name } = productOf(form);
+  const countedQty = milli(form.get('countedQty'), true);
+  const reason = String(form.get('reason') ?? '').trim().slice(0, 200);
+  if (!UUID.test(productId)) return { ok: false, message: 'Produto inválido.' };
+  if (countedQty === null) return { ok: false, message: 'Informe quanto tem agora.' };
+  if (reason.length < 3) return { ok: false, message: 'Informe o motivo (ex.: contagem do fim de semana).' };
+  return send('stock.adjust', { productId, countedQty, reason, label: `Corrigir saldo de ${name} para ${String(form.get('qtyText') ?? '').slice(0, 40)}` }, '/estoque');
+}
+
+export async function updateMinStock(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const { productId, name } = productOf(form);
+  const minStock = milli(form.get('minStock'), true);
+  if (!UUID.test(productId)) return { ok: false, message: 'Produto inválido.' };
+  if (minStock === null) return { ok: false, message: 'Informe o estoque mínimo.' };
+  return send('product.update', { productId, minStock, label: `Mínimo de ${name}: ${String(form.get('qtyText') ?? '').slice(0, 40)}` }, '/estoque');
+}
+
+/** Novos preços das apresentações (só as que mudaram). */
+export async function updatePrices(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const { productId, name } = productOf(form);
+  if (!UUID.test(productId)) return { ok: false, message: 'Produto inválido.' };
+  let raw: { presentationId?: string; priceCents?: number; name?: string }[] = [];
+  try {
+    raw = JSON.parse(String(form.get('prices') ?? '[]'));
+  } catch {
+    return { ok: false, message: 'Preços inválidos.' };
+  }
+  const prices = (Array.isArray(raw) ? raw : []).slice(0, 30).map((p) => ({ presentationId: String(p.presentationId), priceCents: Number(p.priceCents), name: String(p.name ?? '').slice(0, 40) }));
+  if (!prices.length) return { ok: false, message: 'Nenhum preço mudou.' };
+  if (prices.some((p) => !UUID.test(p.presentationId) || !Number.isSafeInteger(p.priceCents) || p.priceCents < 0 || p.priceCents > 1_000_000_00)) return { ok: false, message: 'Confira os preços.' };
+  const label = `Preços de ${name}: ${prices.map((p) => `${p.name} ${brl(p.priceCents)}`).join(', ')}`.slice(0, 300);
+  return send('product.update', { productId, prices: prices.map(({ presentationId, priceCents }) => ({ presentationId, priceCents })), label }, '/produtos');
+}
+
 // ------------------------------------------------------ equipe e produtos
 
 export async function removeUser(_prev: ActionState | null, form: FormData): Promise<ActionState> {

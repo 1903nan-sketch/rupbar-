@@ -58,6 +58,12 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 
 ## Gerar o instalador do Windows
 
+### Estoque e preços pelo painel online (0.8.0)
+
+- **Estoque**: toque num produto para abrir o painel dele. **Dar entrada** (em fardos ou latas; garrafas, ml ou L; pacotes, g ou kg) com quanto pagou e, se quiser, a nota fiscal. A tela mostra a conta ("2 fardos de 12 = 24 latas, custo por lata R$ 4,50"). **Corrigir saldo**: digite quanto contou e o motivo. **Estoque mínimo**: zero tira o aviso.
+- **Produtos**: toque no nome para mudar os preços de cada apresentação (Unidade, Dose, Balde…). Só o que mudou é enviado; o preço novo vale para os próximos pedidos.
+- O PC do bar aplica (entrada refaz o custo médio, a contagem fica no histórico, o mínimo abre ou fecha o alerta) e o resultado aparece em "Ações enviadas". Precisa do RupBar 0.8.0 no PC.
+
 ### Encerrar comanda pelo painel online (0.7.0)
 
 No site, abra a comanda e use **Encerrar comanda**: o que falta já vem preenchido em Pix; troque a forma ou toque em **Dividir em outra forma** (ex.: Pix + crédito). O botão só libera quando a soma fecha com o que falta. Comanda já paga ou de funcionário: é só encerrar.

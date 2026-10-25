@@ -1,5 +1,5 @@
 import { costOf, DEFAULT_CATEGORIES, entryQtyMilli, packageBreakdown, stockLevel, theoreticalYield, type Measure } from '@rupbar/core';
-import { categorySchema, optionGroupSchema, productSchema, recipeSchema, supplierSchema, type ProductInput } from '@rupbar/core/schemas';
+import { categorySchema, optionGroupSchema, productQuickUpdateSchema, productSchema, recipeSchema, supplierSchema, type ProductInput } from '@rupbar/core/schemas';
 import { bool, type Row } from '../db/db';
 import { allocateProductCode, peekProductCode } from '../db/product-codes';
 import { badRequest, conflict, notFound } from '../lib/errors';
@@ -433,6 +433,42 @@ export class CatalogService {
         };
       });
     return { categories, items, optionGroups };
+  }
+
+  /**
+   * Alteração rápida (painel online): preços das apresentações e estoque mínimo,
+   * sem mexer no resto do cadastro. Devolve o que mudou, para a mensagem.
+   */
+  quickUpdate(actor: Actor, raw: unknown) {
+    requirePerm(actor, 'products.manage');
+    const input = productQuickUpdateSchema.parse(raw);
+    return this.ctx.tx(() => {
+      const p = this.ctx.db.get<{ name: string; stock_tracked: number; min_stock: number; measure: Measure }>(
+        'SELECT name, stock_tracked, min_stock, measure FROM products WHERE id = ? AND deleted_at IS NULL', input.productId,
+      );
+      if (!p) throw notFound('Produto');
+      const now = this.ctx.nowIso();
+      const prices: { name: string; from: number; to: number }[] = [];
+      for (const { presentationId, priceCents } of input.prices ?? []) {
+        const pr = this.ctx.db.get<{ name: string; price_cents: number }>('SELECT name, price_cents FROM presentations WHERE id = ? AND product_id = ?', presentationId, input.productId);
+        if (!pr) throw badRequest(`Apresentação não encontrada em ${p.name}.`, 'PRESENTATION_NOT_FOUND');
+        if (pr.price_cents === priceCents) continue;
+        this.ctx.db.run('UPDATE presentations SET price_cents = ?, version = version + 1, updated_at = ? WHERE id = ?', priceCents, now, presentationId);
+        prices.push({ name: pr.name, from: pr.price_cents, to: priceCents });
+      }
+      let minStock: { from: number; to: number } | null = null;
+      if (input.minStock !== undefined && input.minStock !== p.min_stock) {
+        if (!bool(p.stock_tracked)) throw badRequest(`${p.name} não tem controle de estoque.`, 'NOT_TRACKED');
+        this.ctx.db.run('UPDATE products SET min_stock = ?, version = version + 1, updated_at = ? WHERE id = ?', input.minStock, now, input.productId);
+        minStock = { from: p.min_stock, to: input.minStock };
+        this.stock.evaluateAlert(input.productId);
+      }
+      if (prices.length || minStock) {
+        this.ctx.audit(actor, 'products.quick_updated', 'product', input.productId, { prices, minStock });
+        this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId: input.productId } });
+      }
+      return { name: p.name, measure: p.measure, prices, minStock };
+    });
   }
 
   /**

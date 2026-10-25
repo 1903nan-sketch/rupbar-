@@ -187,6 +187,20 @@ describe('contrato PC ⇄ Supabase', () => {
     await s.sync.runOnce();
     expect(await statusOf(dup)).toMatchObject({ status: 'rejected' });
 
+    // Estoque e preço pelo painel: entrada de 2 garrafas (1,5 L) por R$ 180 e a dose a R$ 28.
+    const gin = (await call('GET', '/api/products'))[0];
+    const before = Number(gin.stockQty);
+    const entry = await owner('stock.entry', { productId: gin.id, qty: 1_500_000, totalCostCents: 18_000, label: 'Entrada' });
+    const price = await owner('product.update', { productId: gin.id, prices: [{ presentationId: dose.id, priceCents: 2_800 }], label: 'Preço' });
+    await s.sync.runOnce(); // o PC aplica
+    expect((await statusOf(entry)).status).toBe('applied');
+    expect(await statusOf(price)).toMatchObject({ status: 'applied', result: { message: expect.stringContaining('Dose 50 ml R$ 25,00 → R$ 28,00') } });
+    await s.sync.runOnce(); // e o novo saldo e preço voltam à nuvem
+    const cloudGin = await as('authenticated', OWNER_ID, () => pg.query<{ stock_qty: string; unit_label: string | null }>('select stock_qty, unit_label from v_products where id = $1', [gin.id]));
+    expect(Number(cloudGin.rows[0]!.stock_qty)).toBe(before + 1_500_000);
+    const cloudDose = await as('authenticated', OWNER_ID, () => pg.query<{ price_cents: string }>('select price_cents from v_presentations where id = $1', [dose.id]));
+    expect(Number(cloudDose.rows[0]!.price_cents)).toBe(2_800);
+
     const staff = await call('POST', '/api/users', { name: 'Caio', email: 'caio@bar.com', roleId: (await call('GET', '/api/roles')).find((r: { key: string }) => r.key === 'waiter').id });
     await s.sync.runOnce();
     const removed = await owner('user.remove', { userId: staff.id });

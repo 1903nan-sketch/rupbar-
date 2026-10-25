@@ -814,5 +814,21 @@ export const remoteComandaCloseSchema = z.object({
   comandaId: zUuid,
   payments: z.array(z.object({ method: zPaymentMethod, amountCents: zPositiveCents })).max(10).default([]),
 });
+/** Entrada de estoque pelo painel: quantidade total (milli) e quanto pagou no total. */
+export const remoteStockEntrySchema = z.object({
+  productId: zUuid,
+  qty: zMilli.positive('Informe a quantidade que chegou'),
+  totalCostCents: zCents.min(0),
+  invoiceNumber: optionalText(40),
+});
+/**
+ * Alteração rápida de um produto (painel online): preços das apresentações e/ou o
+ * estoque mínimo, sem mexer no resto do cadastro.
+ */
+export const productQuickUpdateSchema = z.object({
+  productId: zUuid,
+  minStock: zMilli.min(0).optional(),
+  prices: z.array(z.object({ presentationId: zUuid, priceCents: zCents.min(0) })).max(30).optional(),
+}).refine((u) => u.minStock !== undefined || (u.prices?.length ?? 0) > 0, { message: 'Nada para alterar' });
 /** Resposta do proprietário a um pedido de desconto. */
 export const remoteDiscountDecisionSchema = z.object({ requestId: zUuid, note: optionalText(200) });

@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { formatBRL, PAYMENT_METHODS } from '@rupbar/core';
+import { formatBRL, formatQty, PAYMENT_METHODS } from '@rupbar/core';
 import {
   remoteCashCloseSchema, remoteCashOpenSchema, remoteComandaCloseSchema, remoteComandaOpenSchema, remoteDiscountDecisionSchema, remoteDiscountSchema, remoteItemCancelSchema,
-  remoteOrderSchema, remoteProductActiveSchema, remoteUserRemoveSchema,
+  remoteOrderSchema, remoteProductActiveSchema, remoteStockEntrySchema, remoteUserRemoveSchema,
 } from '@rupbar/core/schemas';
 import { Db } from '../db/db';
 import { migrate, pendingMigrations } from '../db/migrations';
@@ -189,6 +189,31 @@ export function createServices(opts: CreateOptions) {
     const c = comandas.close(actor, input.comandaId, { expectedVersion: version });
     const how = input.payments.map((p) => `${PAYMENT_METHODS[p.method]} ${formatBRL(p.amountCents)}`).join(' + ');
     return { status: 'applied', message: `${before.label} encerrada${how ? ` (${how})` : ''}. Total ${formatBRL(c.total)}.` };
+  });
+  // Estoque e produtos pelo painel: entrada, contagem e alteração rápida (preços, mínimo).
+  const stockOf = (productId: string) => db.get<{ name: string; stock_qty: number; measure: 'unit' | 'volume' | 'mass' }>('SELECT name, stock_qty, measure FROM products WHERE id = ?', productId);
+  sync.register('stock.entry', (_commandId, payload) => {
+    const input = remoteStockEntrySchema.parse(payload);
+    stock.purchase(remote(payload), {
+      invoiceNumber: input.invoiceNumber, notes: 'Pelo painel online',
+      items: [{ productId: input.productId, qty: input.qty, totalCostCents: input.totalCostCents }],
+    });
+    const p = stockOf(input.productId)!;
+    return { status: 'applied', message: `Entrada de ${formatQty(input.qty, p.measure)} de ${p.name} (${formatBRL(input.totalCostCents)}). Saldo: ${formatQty(p.stock_qty, p.measure)}.` };
+  });
+  sync.register('stock.adjust', (_commandId, payload) => {
+    const before = stockOf(String((payload as { productId?: unknown }).productId ?? ''));
+    stock.adjust(remote(payload), payload);
+    const p = stockOf(String((payload as { productId: string }).productId))!;
+    return { status: 'applied', message: `Saldo de ${p.name} corrigido: ${formatQty(before?.stock_qty ?? 0, p.measure)} → ${formatQty(p.stock_qty, p.measure)}.` };
+  });
+  sync.register('product.update', (_commandId, payload) => {
+    const r = catalog.quickUpdate(remote(payload), payload);
+    const parts = [
+      ...r.prices.map((x) => `${x.name} ${formatBRL(x.from)} → ${formatBRL(x.to)}`),
+      ...(r.minStock ? [`mínimo ${formatQty(r.minStock.from, r.measure)} → ${formatQty(r.minStock.to, r.measure)}`] : []),
+    ];
+    return { status: 'applied', message: parts.length ? `${r.name}: ${parts.join(' · ')}.` : `${r.name}: nada mudou.` };
   });
   for (const [type, approve] of [['discount.approve', true], ['discount.reject', false]] as const) {
     sync.register(type, (_commandId, payload) => {
