@@ -502,3 +502,4 @@
   .recipe-line-cost { display: none; }
   .recipes-low { flex-wrap: wrap; }
 }
+.recipe-choices { margin-top: 2px; }

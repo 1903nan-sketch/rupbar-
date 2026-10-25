@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/supabase",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "description": "Migrações do Supabase do RupBar e testes com PGlite (Postgres em WASM).",

@@ -463,13 +463,22 @@ export class CatalogService {
       for (const [productId, qty] of merged) {
         this.ctx.db.run('INSERT INTO presentation_components (id, presentation_id, ingredient_product_id, qty) VALUES (?,?,?,?)', this.ctx.id(), presentationId, productId, qty);
       }
+      if (input.optionGroups) {
+        const seen = new Set<string>();
+        const own = input.optionGroups.filter((l) => !seen.has(l.groupId) && seen.add(l.groupId));
+        for (const l of own) if (!this.ctx.db.value('SELECT id FROM option_groups WHERE id = ?', l.groupId)) throw notFound('Escolha');
+        this.ctx.db.run('DELETE FROM presentation_option_groups WHERE presentation_id = ?', presentationId);
+        own.forEach((l, k) => this.ctx.db.run(
+          'INSERT INTO presentation_option_groups (presentation_id, group_id, sort_order, quantity) VALUES (?,?,?,?)', presentationId, l.groupId, k, l.quantity,
+        ));
+      }
       // A versão nova leva a ficha para a nuvem e avisa as telas abertas.
       this.ctx.db.run(
         'UPDATE presentations SET price_cents = COALESCE(?, price_cents), version = version + 1, updated_at = ? WHERE id = ?',
         input.priceCents ?? null, now, presentationId,
       );
       this.ctx.audit(actor, 'products.recipe_updated', 'presentation', presentationId, {
-        priceCents: input.priceCents, components: [...merged].map(([productId, qty]) => ({ productId, qty })),
+        priceCents: input.priceCents, components: [...merged].map(([productId, qty]) => ({ productId, qty })), optionGroups: input.optionGroups,
       });
       this.ctx.emit({ channel: 'stock', type: 'product.updated', data: { productId: pr.product_id } });
       return { id: presentationId };

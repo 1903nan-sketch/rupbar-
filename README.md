@@ -67,6 +67,8 @@ No menu lateral, em Estoque: **Fichas técnicas**. Um insumo (batata, queijo, ba
 - **Custo e margem**: custo do prato = soma dos insumos pelo custo médio das entradas. A tela mostra custo, preço, margem e **quantos dá para fazer** com o estoque atual. Garçom não vê custo.
 - **Alerta de mínimo**: insumo no mínimo ou abaixo aparece em destaque na tela (com "Dar entrada"), no alerta do Estoque e nas notificações. Os pratos que usam o insumo mostram o aviso.
 - Exemplo: 5 kg de batata; "Porção de batata" usa 200 g e "Batata com cheddar" usa 300 g de batata + 50 g de cheddar. Duas porções e uma com cheddar deixam 4,3 kg.
+- **O garçom escolhe (0.6.1)**: na mesma ficha, a parte "2. O garçom escolhe no pedido" cria escolhas cujas opções baixam o produto ligado. Caipirinha: fixo 20 g de açúcar; "Bebida" com Vodka Smirnoff (+R$ 5, baixa 50 ml da Smirnoff) ou Cachaça 51 (baixa 50 ml da 51); "Sabor" com Limão (1 un) ou Morango (100 g). Ao escolher o produto, a opção já leva o nome dele. A tela mostra custo, preço e margem de "a" a "b" (da opção mais barata à mais cara) e onde cada insumo é usado ("Caipirinha (Bebida)"). Pode ter só escolhas, sem nada fixo.
+- **Meio a meio** usa as fichas: cada metade baixa metade da ficha da sua porção (batata grande 600 g + calabresa grande 600 g → 300 g de cada) e cobra a mais cara.
 - Por dentro: o insumo é um produto com estoque fora do cardápio e a ficha é a lista de componentes da apresentação (`presentation_components`). As quantidades ficam em milésimos de g, ml e un, que é o padrão do estoque. Uma "Porção 300 g" que baixa do próprio produto continua funcionando como antes.
 
 ### Ajustes após a 0.2.0

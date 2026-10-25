@@ -194,7 +194,8 @@ function OptionGroupEditor({ group, products, onCancel, onSaved }: {
               <Field label="Baixa do estoque">
                 <Select value={c.productId} onChange={(e) => {
                   const p = stock.find((x) => x.id === e.target.value);
-                  set(i, { productId: e.target.value, qty: p && !c.qty ? DEFAULT_QTY[p.measure] : c.qty });
+                  // Sem nome ainda: a opção leva o nome do produto ligado ("Vodka Smirnoff").
+                  set(i, { productId: e.target.value, qty: p && !c.qty ? DEFAULT_QTY[p.measure] : c.qty, ...(p && !c.name.trim() ? { name: p.name } : {}) });
                 }}>
                   <option value="">Não baixa estoque</option>
                   {stock.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

@@ -105,4 +105,54 @@ describe('fichas técnicas', () => {
     // Garçom não vê custo.
     expect((await waiter.ok('GET', `/api/products/${simples.id}`)).presentations[0].costCents).toBeNull();
   });
+
+  it('caipirinha: o que sempre vai na ficha e o garçom escolhe sabor e bebida, tudo baixando do estoque', async () => {
+    const bebidas = await category(owner, 'Destilados');
+    const garrafa = async (name: string) => (await owner.ok('POST', '/api/products', {
+      name, categoryId: bebidas, measure: 'volume', packageQty: 1_000_000, packageLabel: 'garrafa', stockTracked: true,
+      presentations: [{ name: 'Dose 50 ml', priceCents: 1_200, components: [{ productId: null, qty: 50_000 }] }],
+      initialStock: { qty: 2_000_000, totalCostCents: 6_000 },
+    })).id as string;
+    const smirnoff = await garrafa('Vodka Smirnoff');
+    const cachaca = await garrafa('Cachaça 51');
+    const acucar = await insumo('Açúcar', 1_000_000, 2_000_000, 1_000);
+    const limao = (await owner.ok('POST', '/api/products', {
+      name: 'Limão', categoryId: await category(owner, 'Insumos'), measure: 'unit', stockTracked: true, menuVisible: false, presentations: [],
+      initialStock: { qty: 50_000, totalCostCents: 2_500 },
+    })).id as string;
+    const morango = await insumo('Morango', 1_000_000, 1_000_000, 3_000);
+    const group = async (name: string, choices: { name: string; productId: string; qty: number; priceDeltaCents?: number }[]) =>
+      (await owner.ok('POST', '/api/option-groups', { name, required: true, choices: choices.map((c) => ({ priceDeltaCents: 0, ...c })) })).id as string;
+    const sabor = await group('Sabor', [{ name: 'Limão', productId: limao, qty: 1_000 }, { name: 'Morango', productId: morango, qty: 100_000, priceDeltaCents: 300 }]);
+    const bebida = await group('Bebida', [{ name: 'Vodka Smirnoff', productId: smirnoff, qty: 50_000, priceDeltaCents: 500 }, { name: 'Cachaça 51', productId: cachaca, qty: 50_000 }]);
+
+    // Só o açúcar é fixo; sabor e bebida o garçom escolhe.
+    const caipi = await prato('Caipirinha', 2_000, [{ productId: acucar, qty: 20_000 }]);
+    await owner.ok('PUT', `/api/presentations/${caipi.pres}/recipe`, {
+      components: [{ productId: acucar, qty: 20_000 }], optionGroups: [{ groupId: sabor }, { groupId: bebida }],
+    });
+    expect((await owner.ok('GET', `/api/products/${caipi.id}`)).presentations[0].optionGroups).toEqual([{ groupId: sabor, quantity: 1 }, { groupId: bebida, quantity: 1 }]);
+
+    const c = await owner.ok('POST', '/api/comandas', { customerName: 'Bia' });
+    const choiceOf = async (groupId: string, name: string) => ({ groupId, choiceId: (await owner.ok('GET', '/api/option-groups')).find((g: { id: string }) => g.id === groupId).choices.find((x: { name: string }) => x.name === name).id });
+    // Sem escolher a bebida não entra.
+    expect((await owner.fail('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [{ presentationId: caipi.pres, quantity: 1, options: [await choiceOf(sabor, 'Limão')] }] })).status).toBe(400);
+    await owner.ok('POST', '/api/orders', { comandaId: c.id, clientRequestId: uuid(), items: [
+      { presentationId: caipi.pres, quantity: 2, options: [await choiceOf(sabor, 'Morango'), await choiceOf(bebida, 'Vodka Smirnoff')] },
+      { presentationId: caipi.pres, quantity: 1, options: [await choiceOf(sabor, 'Limão'), await choiceOf(bebida, 'Cachaça 51')] },
+    ] });
+    expect(stockOf(acucar)).toBe(2_000_000 - 3 * 20_000);
+    expect(stockOf(morango)).toBe(1_000_000 - 2 * 100_000);
+    expect(stockOf(smirnoff)).toBe(2_000_000 - 2 * 50_000);
+    expect(stockOf(limao)).toBe(50_000 - 1_000);
+    expect(stockOf(cachaca)).toBe(2_000_000 - 50_000);
+    // Preço: R$ 20 + morango R$ 3 + Smirnoff R$ 5.
+    const items = (await owner.ok('GET', `/api/comandas/${c.id}`)).items;
+    expect(items.map((i: { unitPriceCents: number }) => i.unitPriceCents).sort()).toEqual([2_000, 2_800]);
+
+    // Ficha só com escolhas (nada fixo) também vale; vazia de tudo, não.
+    await owner.ok('PUT', `/api/presentations/${caipi.pres}/recipe`, { components: [], optionGroups: [{ groupId: sabor }, { groupId: bebida }] });
+    expect((await owner.fail('PUT', `/api/presentations/${caipi.pres}/recipe`, { components: [] })).status).toBe(400);
+    expect((await owner.fail('PUT', `/api/presentations/${caipi.pres}/recipe`, { components: [], optionGroups: [{ groupId: uuid() }] })).status).toBe(404);
+  });
 });

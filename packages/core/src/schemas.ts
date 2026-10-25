@@ -226,7 +226,8 @@ export const componentSchema = z.object({
 });
 
 /**
- * Ficha técnica de um prato (Fichas técnicas): o que uma unidade consome dos insumos.
+ * Ficha técnica de um prato (Fichas técnicas): o que uma unidade sempre consome dos
+ * insumos e o que o garçom escolhe no pedido (Bebida: Smirnoff 50 ml ou cachaça 50 ml).
  * Quantidades em milésimos da unidade-base (200 g = 200_000). Insumo repetido soma.
  */
 export const recipeSchema = z.object({
@@ -234,7 +235,11 @@ export const recipeSchema = z.object({
   components: z.array(z.object({
     productId: zUuid,
     qty: zMilli.positive('Quantidade do insumo deve ser maior que zero'),
-  })).min(1, 'Adicione ao menos um insumo à ficha técnica').max(30),
+  })).max(30).default([]),
+  /** Escolhas desta apresentação, na ordem. Sem o campo, mantém as atuais. */
+  optionGroups: z.array(z.object({ groupId: zUuid, quantity: z.number().int().min(1).max(50).default(1) })).max(10).optional(),
+}).refine((r) => r.components.length > 0 || (r.optionGroups?.length ?? 0) > 0, {
+  message: 'Adicione ao menos um insumo ou uma escolha à ficha técnica', path: ['components'],
 });
 export type RecipeInput = z.infer<typeof recipeSchema>;
 
