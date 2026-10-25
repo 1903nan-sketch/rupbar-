@@ -58,6 +58,14 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 
 ## Gerar o instalador do Windows
 
+### Encerrar comanda pelo painel online (0.7.0)
+
+No site, abra a comanda e use **Encerrar comanda**: o que falta já vem preenchido em Pix; troque a forma ou toque em **Dividir em outra forma** (ex.: Pix + crédito). O botão só libera quando a soma fecha com o que falta. Comanda já paga ou de funcionário: é só encerrar.
+
+- O PC do bar recebe, registra os pagamentos e encerra numa transação só. Se a comanda mudou depois que você olhou (alguém lançou mais um item), nada é registrado e aparece em "Ações enviadas" quanto falta agora.
+- Dinheiro só entra com o caixa do PC aberto (o site avisa e desabilita "Dinheiro"). Se o PC exigir caixa aberto para todo pagamento, a ação volta recusada com esse motivo.
+- Precisa do RupBar 0.7.0 no PC.
+
 ### Fichas técnicas (0.6.0)
 
 No menu lateral, em Estoque: **Fichas técnicas**. Um insumo (batata, queijo, bacon, pão) tem estoque e pode entrar em vários pratos; um prato pode usar vários insumos.

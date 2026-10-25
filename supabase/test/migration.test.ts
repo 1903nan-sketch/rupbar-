@@ -127,6 +127,9 @@ describe('nuvem RupBar', () => {
     await expect(cmd('cash.open', { big: 'x'.repeat(21_000) })).rejects.toThrow(/Dados inválidos/);
     const a = await cmd('cash.open', { openingBalanceCents: 10_000 });
     const b = await cmd('comanda.open', { customerName: 'Lia', cardNumber: 12 });
+    // Encerrar comanda (com o que falta receber) também é ação do painel.
+    const closeId = await cmd('comanda.close', { comandaId: EST, payments: [{ method: 'pix', amountCents: 1_000 }] });
+    await as('authenticated', OWNER, () => rpc('rupbar_owner_cancel_command', { p_command_id: closeId }));
     const pulled = await as('anon', null, () => rpc<{ id: string; type: string; payload: Record<string, unknown> }[]>('rupbar_device_pull', { p_device_id: device.device_id, p_secret: device.device_secret, p_limit: 10 }));
     expect(pulled.map((c) => c.id)).toEqual([a, b]);
     expect(pulled[1]).toMatchObject({ type: 'comanda.open', payload: { customerName: 'Lia', cardNumber: 12, registeredByName: 'marina@bar.com (painel online)' } });

@@ -64,7 +64,7 @@ export interface PushResponse {
  */
 export const REMOTE_COMMAND_TYPES = [
   'loss.register', 'comanda.open', 'order.create', 'comanda_item.cancel', 'cash.open', 'cash.close', 'user.remove', 'product.set_active',
-  'comanda.discount', 'discount.approve', 'discount.reject',
+  'comanda.discount', 'discount.approve', 'discount.reject', 'comanda.close',
 ] as const;
 export type RemoteCommandType = (typeof REMOTE_COMMAND_TYPES)[number];
 
@@ -80,6 +80,7 @@ export const REMOTE_COMMAND_LABELS: Record<RemoteCommandType, string> = {
   'comanda.discount': 'Dar desconto',
   'discount.approve': 'Aceitar desconto',
   'discount.reject': 'Recusar desconto',
+  'comanda.close': 'Encerrar comanda',
 };
 
 export interface RemoteCommand {

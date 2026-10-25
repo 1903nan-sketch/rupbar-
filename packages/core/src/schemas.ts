@@ -806,5 +806,13 @@ export const remoteUserRemoveSchema = z.object({ userId: zUuid });
 export const remoteProductActiveSchema = z.object({ productId: zUuid, active: z.boolean() });
 /** Desconto dado pelo proprietário no painel (0 tira o desconto). */
 export const remoteDiscountSchema = z.object({ comandaId: zUuid, discountCents: zCents.min(0), reason: trimmed(200).min(3, 'Informe o motivo') });
+/**
+ * Encerrar comanda pelo painel: recebe o que falta (uma ou mais formas de pagamento)
+ * e encerra, tudo de uma vez. Sem pagamentos quando já está pago ou é de funcionário.
+ */
+export const remoteComandaCloseSchema = z.object({
+  comandaId: zUuid,
+  payments: z.array(z.object({ method: zPaymentMethod, amountCents: zPositiveCents })).max(10).default([]),
+});
 /** Resposta do proprietário a um pedido de desconto. */
 export const remoteDiscountDecisionSchema = z.object({ requestId: zUuid, note: optionalText(200) });

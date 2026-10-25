@@ -9,6 +9,7 @@ import { Badge, Card, Empty, PageHeader, PeriodForm, Stat } from '@/components/u
 import { currentEstablishment, periodFrom } from '@/lib/data';
 import { fmtShort } from '@/lib/format';
 import { giveDiscount, openComanda } from '../acoes';
+import { CloseComanda } from './CloseComanda';
 import { DiscountFields } from './DiscountFields';
 import { CancelItemButton, ItemLauncher, type SaleOption } from './ItemLauncher';
 
@@ -32,7 +33,7 @@ interface ComandaRow {
 
 const UUID = /^[0-9a-f-]{36}$/;
 const STATUS_COLOR: Record<string, 'green' | 'red' | 'gray'> = { open: 'green', closed: 'gray', canceled: 'red' };
-const FEED_TYPES = ['comanda.open', 'order.create', 'comanda_item.cancel', 'comanda.discount', 'discount.approve', 'discount.reject'] as const;
+const FEED_TYPES = ['comanda.open', 'order.create', 'comanda_item.cancel', 'comanda.discount', 'discount.approve', 'discount.reject', 'comanda.close'] as const;
 
 const labelOf = (c: ComandaRow) => comandaLabel({ number: c.number, cardNumber: c.card_number ?? null, kind: c.kind ?? 'regular' });
 /** Conta da comanda como no PC: itens − desconto + taxa de serviço. */
@@ -87,6 +88,10 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
   const detail = sel ? { items: (di ?? []) as Record<string, unknown>[], payments: (dp ?? []) as Record<string, unknown>[] } : null;
   const discounts = (discData ?? []) as ComandaRow[];
   const userName = new Map((users ?? []).map((u) => [u.id as string, u.name as string]));
+  // Caixa aberto no PC (dinheiro só entra com caixa aberto).
+  const cashOpen = sel?.status === 'open'
+    ? !!(await sb.from('v_cash_sessions').select('id').eq('establishment_id', est.id).eq('status', 'open').limit(1)).data?.length
+    : false;
 
   const totalsFor = async (ids: string[]) => {
     const totals = new Map<string, number>();
@@ -257,6 +262,12 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
                 </Badge>
               )}
             </div>
+            {sel.status === 'open' && sel.kind !== 'quick' && bill && (
+              <div className="detail-launch close-section">
+                <h3 className="mini-label">Encerrar comanda</h3>
+                <CloseComanda comandaId={sel.id} comandaLabel={labelOf(sel)} remainingCents={bill.remaining} staff={sel.kind === 'staff'} cashOpen={cashOpen} />
+              </div>
+            )}
           </Card>
           <CommandFeed types={[...FEED_TYPES]} path="/comandas" />
         </div>

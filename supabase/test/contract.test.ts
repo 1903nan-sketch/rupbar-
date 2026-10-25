@@ -253,15 +253,20 @@ describe('contrato PC ⇄ Supabase', () => {
     const direct = await owner('comanda.discount', { comandaId: comanda.id, discountCents: 3_000, reason: 'Aniversário' });
     await s.sync.runOnce();
     expect(await statusOf(direct)).toMatchObject({ status: 'applied', result: { message: 'Desconto de R$ 30,00 na Comanda 14 (fica R$ 90,00).' } });
+
   });
 
   it('relatório completo: o painel online mostra exatamente o que o PC mostra', async () => {
     const est = (await call('GET', '/api/branding')).establishmentId as string;
-    // Fecha a comanda com desconto (paga) para entrar nos descontos, e uma venda rápida.
+    // O proprietário encerra pelo painel a comanda com desconto (R$ 90: Pix + dinheiro no caixa aberto).
+    const owner = (type: string, payload: Record<string, unknown>) =>
+      as('authenticated', OWNER_ID, () => rpc<string>('rupbar_owner_command', { p_establishment_id: est, p_type: type, p_payload: payload }));
     const comanda = (await call('GET', '/api/comandas')).find((c: { cardNumber: number | null }) => c.cardNumber === 14);
-    const d = await call('GET', `/api/comandas/${comanda.id}`);
-    await call('POST', '/api/payments', { comandaId: d.id, method: 'pix', amountCents: d.remaining, clientRequestId: randomUUID() });
-    await call('POST', `/api/comandas/${d.id}/close`, { expectedVersion: (await call('GET', `/api/comandas/${d.id}`)).version });
+    const close = await owner('comanda.close', { comandaId: comanda.id, payments: [{ method: 'pix', amountCents: 5_000 }, { method: 'cash', amountCents: 4_000 }] });
+    await s.sync.runOnce(); // o PC recebe, registra os pagamentos e encerra
+    const applied = (await pg.query<{ status: string; result: { message: string } }>('select status, result from remote_commands where id = $1', [close])).rows[0]!;
+    expect(applied).toMatchObject({ status: 'applied', result: { message: 'Comanda 14 encerrada (Pix R$ 50,00 + Dinheiro R$ 40,00). Total R$ 90,00.' } });
+    expect(await call('GET', `/api/comandas/${comanda.id}`)).toMatchObject({ status: 'closed', paid: 9_000 });
     await call('POST', '/api/cash/movements', { type: 'withdrawal', amountCents: 1_000, reason: 'Gelo', clientRequestId: randomUUID() });
     await s.sync.runOnce();
     await s.sync.runOnce();
@@ -274,6 +279,11 @@ describe('contrato PC ⇄ Supabase', () => {
     expect(pc.discounts.length).toBeGreaterThan(0);
     expect(pc.cashSessions.length).toBeGreaterThan(0);
     expect(strip(cloud)).toEqual(strip(pc));
+    // A comanda encerrada pelo painel volta para a nuvem encerrada, com os pagamentos.
+    const closed = await as('authenticated', OWNER_ID, () => pg.query<{ status: string }>('select status from v_comandas where id = $1', [comanda.id]));
+    expect(closed.rows[0]!.status).toBe('closed');
+    const pays = await as('authenticated', OWNER_ID, () => pg.query<{ method: string; amount_cents: string }>("select method, amount_cents from v_payments where comanda_id = $1 and status = 'active' order by amount_cents desc", [comanda.id]));
+    expect(pays.rows.map((p) => [p.method, Number(p.amount_cents)])).toEqual([['pix', 5_000], ['cash', 4_000]]);
     // Outra conta não vê nada.
     const other = await as('authenticated', randomUUID(), () => rpc<{ summary: { grossCents: number } }>('rupbar_full_report', { p_establishment_id: est, p_de: de, p_ate: de }));
     expect(other.summary.grossCents).toBe(0);

@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { formatBRL } from '@rupbar/core';
+import { formatBRL, PAYMENT_METHODS } from '@rupbar/core';
 import {
-  remoteCashCloseSchema, remoteCashOpenSchema, remoteComandaOpenSchema, remoteDiscountDecisionSchema, remoteDiscountSchema, remoteItemCancelSchema,
+  remoteCashCloseSchema, remoteCashOpenSchema, remoteComandaCloseSchema, remoteComandaOpenSchema, remoteDiscountDecisionSchema, remoteDiscountSchema, remoteItemCancelSchema,
   remoteOrderSchema, remoteProductActiveSchema, remoteUserRemoveSchema,
 } from '@rupbar/core/schemas';
 import { Db } from '../db/db';
@@ -171,6 +171,24 @@ export function createServices(opts: CreateOptions) {
       status: 'applied',
       message: input.discountCents ? `Desconto de ${formatBRL(input.discountCents)} na ${c.label} (fica ${formatBRL(c.total)}).` : `Desconto tirado da ${c.label}.`,
     };
+  });
+  // Encerrar pelo painel: recebe o que falta e encerra. Se a comanda mudou desde que o
+  // proprietário viu (item novo, outro pagamento), nada é feito e ele confere de novo.
+  sync.register('comanda.close', (_commandId, payload) => {
+    const input = remoteComandaCloseSchema.parse(payload);
+    const actor = remote(payload);
+    const before = comandas.detail(actor, input.comandaId);
+    const sent = input.payments.reduce((a, p) => a + p.amountCents, 0);
+    const due = before.kind === 'staff' ? 0 : Math.max(0, before.remaining);
+    if (before.status !== 'open') return { status: 'rejected', message: `A ${before.label} já foi ${before.status === 'canceled' ? 'cancelada' : 'encerrada'}.` };
+    if (sent !== due) {
+      return { status: 'conflict', message: `A ${before.label} mudou: falta ${formatBRL(due)}, não ${formatBRL(sent)}. Confira e envie de novo.` };
+    }
+    for (const p of input.payments) cash.pay(actor, { comandaId: input.comandaId, method: p.method, amountCents: p.amountCents, clientRequestId: ctx.id() });
+    const version = Number(db.value('SELECT version FROM comandas WHERE id = ?', input.comandaId));
+    const c = comandas.close(actor, input.comandaId, { expectedVersion: version });
+    const how = input.payments.map((p) => `${PAYMENT_METHODS[p.method]} ${formatBRL(p.amountCents)}`).join(' + ');
+    return { status: 'applied', message: `${before.label} encerrada${how ? ` (${how})` : ''}. Total ${formatBRL(c.total)}.` };
   });
   for (const [type, approve] of [['discount.approve', true], ['discount.reject', false]] as const) {
     sync.register(type, (_commandId, payload) => {

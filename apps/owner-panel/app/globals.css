@@ -4029,3 +4029,37 @@ button.chip {
     font-size: 22px;
   }
 }
+
+/* ------------------------------------------------------------ encerrar comanda */
+.close-section {
+  border-top: 1px solid var(--separator);
+}
+.close-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) auto;
+  gap: 8px;
+  align-items: center;
+}
+.input-money {
+  position: relative;
+}
+.input-money > span {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font-size: 14px;
+  pointer-events: none;
+}
+.input-money .input {
+  padding-left: 40px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.close-add {
+  justify-self: start;
+}
+.close-comanda p {
+  margin: 0;
+}

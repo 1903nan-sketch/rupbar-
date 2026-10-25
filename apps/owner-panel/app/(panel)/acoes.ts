@@ -1,5 +1,5 @@
 'use server';
-import type { RemoteCommandType } from '@rupbar/core';
+import { PAYMENT_METHODS, type PaymentMethod, type RemoteCommandType } from '@rupbar/core';
 import { revalidatePath } from 'next/cache';
 import { currentEstablishment } from '@/lib/data';
 
@@ -9,6 +9,7 @@ export interface ActionState {
 }
 
 const UUID = /^[0-9a-f-]{36}$/;
+const brl = (c: number) => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
 const WAIT = 'Enviado. O PC do bar aplica em alguns segundos (veja em "Ações enviadas").';
 
 /** Valor em reais digitado ("1.234,56", "50") → centavos; null se inválido. */
@@ -69,9 +70,32 @@ export async function cancelItem(_prev: ActionState | null, form: FormData): Pro
   return send('comanda_item.cancel', { itemId, reason, label: `Tirar ${String(form.get('itemLabel') ?? 'item').slice(0, 80)}` }, '/comandas');
 }
 
-// --------------------------------------------------------------- descontos
+/**
+ * Encerrar pelo painel: recebe o que falta (uma ou mais formas) e encerra. O PC
+ * confere o saldo de novo; se a comanda mudou, recusa e nada é registrado.
+ */
+export async function closeComanda(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const comandaId = String(form.get('comandaId') ?? '');
+  const comandaLabel = String(form.get('comandaLabel') ?? 'comanda').slice(0, 40);
+  const due = Number(form.get('remainingCents') ?? 0);
+  if (!UUID.test(comandaId)) return { ok: false, message: 'Comanda inválida.' };
+  let raw: { method?: string; amountCents?: number }[] = [];
+  try {
+    raw = JSON.parse(String(form.get('payments') ?? '[]'));
+  } catch {
+    return { ok: false, message: 'Pagamentos inválidos.' };
+  }
+  if (!Array.isArray(raw) || raw.length > 10) return { ok: false, message: 'Pagamentos inválidos.' };
+  const payments = raw.map((p) => ({ method: String(p.method) as PaymentMethod, amountCents: Number(p.amountCents) }));
+  if (payments.some((p) => !(p.method in PAYMENT_METHODS) || !Number.isInteger(p.amountCents) || p.amountCents <= 0)) return { ok: false, message: 'Confira as formas de pagamento e os valores.' };
+  const sum = payments.reduce((a, p) => a + p.amountCents, 0);
+  if (!Number.isInteger(due) || sum !== due) return { ok: false, message: `A soma dos pagamentos (${brl(sum)}) tem de ser igual ao que falta (${brl(due)}).` };
+  const how = payments.map((p) => `${PAYMENT_METHODS[p.method]} ${brl(p.amountCents)}`).join(' + ');
+  const r = await send('comanda.close', { comandaId, payments, label: `Encerrar ${comandaLabel}${how ? `: ${how}` : ''}` }, '/comandas');
+  return r.ok ? { ok: true, message: 'Enviado. O PC do bar recebe o pagamento e encerra em alguns segundos (veja em "Ações enviadas").' } : r;
+}
 
-const brl = (c: number) => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
+// --------------------------------------------------------------- descontos
 
 /** Desconto direto na comanda (só o proprietário dá desconto). "10%" vale sobre os itens. */
 export async function giveDiscount(_prev: ActionState | null, form: FormData): Promise<ActionState> {
