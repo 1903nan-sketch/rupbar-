@@ -3929,3 +3929,103 @@ a.banner:hover {
     font-size: 11.5px;
   }
 }
+
+/* ============================================================ estoque: busca, categorias e lista no celular */
+
+.only-sm {
+  display: none;
+}
+button.chip {
+  font-family: inherit;
+  cursor: pointer;
+}
+.chip-count {
+  margin-left: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.stock-toolbar {
+  display: grid;
+  gap: 10px;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--separator);
+}
+.stock-toolbar .input {
+  height: 44px;
+  font-size: 16px; /* 16px: o iPhone não dá zoom ao tocar */
+}
+.stock-toolbar p {
+  margin: 0;
+}
+/* Sem o "x" do navegador: o campo já tem o botão de limpar */
+.stock-toolbar input[type='search']::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+.stock-list .list-item {
+  align-items: flex-start;
+  padding-block: 13px;
+}
+.stock-list .meter {
+  margin-top: 8px;
+  width: 120px;
+}
+.stock-side {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  text-align: right;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .only-sm {
+    display: block;
+  }
+  .stock-toolbar {
+    padding: 14px;
+  }
+  /* Categorias numa linha que desliza para o lado */
+  .stock-cats {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: -14px;
+    padding-inline: 14px;
+    scrollbar-width: none;
+  }
+  .stock-cats::-webkit-scrollbar {
+    display: none;
+  }
+  .stock-cats .chip {
+    flex: none;
+    height: 34px;
+  }
+  .stock-list .list-item {
+    padding-inline: 14px;
+  }
+  /* Os três números numa linha só, para a lista aparecer logo */
+  .grid-3.stock-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .grid-3.stock-stats > :last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+  .stock-stats .stat {
+    padding: 12px;
+    min-height: 0;
+    gap: 6px;
+  }
+  .stock-stats .icon-chip,
+  .stock-stats .stat-hint {
+    display: none;
+  }
+  .stock-stats .stat-label {
+    font-size: 11.5px;
+    line-height: 1.25;
+  }
+  .stock-stats .stat-value {
+    font-size: 22px;
+  }
+}
