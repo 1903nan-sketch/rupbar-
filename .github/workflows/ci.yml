@@ -13,7 +13,7 @@ concurrency:
 jobs:
   test:
     name: Testes (domínio, servidor, nuvem, interfaces)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -52,7 +52,7 @@ jobs:
   painel-cloudflare:
     name: Painel online (Cloudflare Workers)
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Sem as variáveis, o painel usa a nuvem padrão do RupBar.
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
@@ -78,7 +78,7 @@ jobs:
 
   rust:
     name: Rust (serviço e app Windows)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -97,7 +97,7 @@ jobs:
 
   android:
     name: App Android do garçom (APK)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

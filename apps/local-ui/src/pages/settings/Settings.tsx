@@ -183,6 +183,7 @@ interface Operation {
   pickupPlace: string;
   tvVoiceEnabled: boolean;
   lowStockAlertsEnabled: boolean;
+  deletePin: string;
 }
 
 export function OperationSettings() {
@@ -225,6 +226,11 @@ export function OperationSettings() {
             <Input type="number" min={1} max={100} step={0.5} value={f.defaultGramsPerRosh / 1000} onChange={(e) => set('defaultGramsPerRosh', Math.round(Number(e.target.value) * 1000))} />
           </Field>
           <Switch checked={f.hookahRequiresCleaning} onChange={(v) => set('hookahRequiresCleaning', v)} label="Limpeza obrigatória após devolução" />
+        </Card>
+        <Card title="Lixeira do painel online">
+          <Field label="Senha da Lixeira" hint="Pedida no painel online para apagar itens da comanda e para abrir a Lixeira (histórico do que foi apagado). De 4 a 8 números.">
+            <Input inputMode="numeric" maxLength={8} value={f.deletePin} onChange={(e) => set('deletePin', e.target.value.replace(/\D/g, '').slice(0, 8))} />
+          </Field>
         </Card>
         <Card title="Dados do cliente (LGPD)">
           <Switch checked={f.requireCustomerPhone} onChange={(v) => set('requireCustomerPhone', v)} label="Telefone obrigatório" />

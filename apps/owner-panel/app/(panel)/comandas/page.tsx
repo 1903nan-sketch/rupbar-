@@ -11,7 +11,8 @@ import { fmtShort } from '@/lib/format';
 import { giveDiscount, openComanda } from '../acoes';
 import { CloseComanda } from './CloseComanda';
 import { DiscountFields } from './DiscountFields';
-import { CancelItemButton, ItemLauncher, type SaleOption } from './ItemLauncher';
+import { DeleteItems } from './DeleteItems';
+import { ItemLauncher, type SaleOption } from './ItemLauncher';
 
 export const metadata = { title: 'Comandas' };
 
@@ -163,9 +164,21 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
             tone={sel.kind === 'quick' ? 'violet' : 'blue'}
             flush
             actions={
-              <Link href={qs({})} className="btn ghost icon" aria-label="Fechar comanda na tela" scroll={false}>
-                <X size={18} aria-hidden="true" />
-              </Link>
+              <>
+                {sel.status === 'open' && sel.kind !== 'quick' && activeItems.length > 0 && (
+                  <DeleteItems
+                    comandaLabel={labelOf(sel)}
+                    items={activeItems.map((i) => ({
+                      id: i.id as string,
+                      label: `${i.quantity}× ${i.product_name as string}${i.presentation_name && i.presentation_name !== i.product_name ? ` · ${i.presentation_name as string}` : ''}`,
+                      priceCents: Number(i.quantity) * Number(i.unit_price_cents),
+                    }))}
+                  />
+                )}
+                <Link href={qs({})} className="btn ghost icon" aria-label="Fechar comanda na tela" scroll={false}>
+                  <X size={18} aria-hidden="true" />
+                </Link>
+              </>
             }
           >
             <ScrollHere />
@@ -182,7 +195,6 @@ export default async function Comandas({ searchParams }: { searchParams: Promise
                       {!active && <div className="tiny danger-text">Cancelado: {(i.cancel_reason as string) ?? 'sem motivo'}</div>}
                     </div>
                     <span className="num">{formatBRL(Number(i.quantity) * Number(i.unit_price_cents))}</span>
-                    {active && sel.status === 'open' && <CancelItemButton itemId={i.id as string} itemLabel={`${i.quantity}× ${i.product_name as string}`} />}
                   </li>
                 );
               })}

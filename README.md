@@ -58,6 +58,13 @@ Abra `http://localhost:5173` no próprio PC para o assistente de configuração 
 
 ## Gerar o instalador do Windows
 
+### Lixeira do painel online (0.9.0)
+
+- Na comanda, o ícone de **lixeira** pede a senha da Lixeira (padrão 354500; troque no PC em Configurações → Operação → Lixeira do painel online). Com a senha, toque nos itens e escolha **Consumido / cortesia** (o estoque continua baixado, não é cobrado nem conta como venda) ou **Foi engano** (volta ao estoque).
+- O item vira cancelado no PC (fica na conta como cancelado, com motivo, hora e quem). O menu **Lixeira** do site mostra esse histórico, também com a senha.
+- A senha é conferida na nuvem sem ir para o navegador, e de novo no PC. Precisa do RupBar 0.9.0 no PC (versões antigas devolveriam o item ao estoque).
+- CI: máquinas fixas em Ubuntu 24.04 (o Playwright ainda não roda no 26.04).
+
 ### Estoque e preços pelo painel online (0.8.0)
 
 - **Estoque**: toque num produto para abrir o painel dele. **Dar entrada** (em fardos ou latas; garrafas, ml ou L; pacotes, g ou kg) com quanto pagou e, se quiser, a nota fiscal. A tela mostra a conta ("2 fardos de 12 = 24 latas, custo por lata R$ 4,50"). **Corrigir saldo**: digite quanto contou e o motivo. **Estoque mínimo**: zero tira o aviso.
