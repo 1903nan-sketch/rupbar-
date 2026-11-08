@@ -49,6 +49,33 @@ jobs:
           path: tests/e2e/screenshots
           if-no-files-found: ignore
 
+  painel-cloudflare:
+    name: Painel online (Cloudflare Workers)
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      # Sem as variáveis, o painel usa a nuvem padrão do RupBar.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_TELEMETRY_DISABLED: '1'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build para o Cloudflare (OpenNext)
+        run: pnpm --filter @rupbar/owner-panel build:cf
+      - name: Publicar no Cloudflare
+        # Só com os segredos CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID no GitHub, e só em push.
+        if: github.event_name == 'push' && env.CLOUDFLARE_API_TOKEN != ''
+        working-directory: apps/owner-panel
+        run: pnpm exec opennextjs-cloudflare deploy
+
   rust:
     name: Rust (serviço e app Windows)
     runs-on: ubuntu-latest

@@ -1,7 +1,7 @@
 import { RUPBAR_CLOUD } from '@rupbar/core';
 
 /**
- * URL e chave pública do Supabase. Valores colados na Vercel às vezes trazem
+ * URL e chave pública do Supabase. Valores colados no painel da hospedagem às vezes trazem
  * espaços, quebras de linha ou caracteres invisíveis, que quebram os
  * cabeçalhos HTTP ("non ISO-8859-1 code point"): URL e JWT são ASCII puro,
  * então removemos o resto. Sem variáveis, usa a nuvem padrão do RupBar.

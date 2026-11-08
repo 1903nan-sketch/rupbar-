@@ -19,3 +19,6 @@ apps/service-host/target/
 .vercel
 tests/e2e/screenshots/
 .claude/worktrees/
+.open-next/
+.wrangler/
+.dev.vars

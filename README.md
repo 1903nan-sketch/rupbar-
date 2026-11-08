@@ -20,7 +20,7 @@ O RupBar roda no **PC do bar** (Windows) e funciona **sem internet**: comandas, 
                                                                   ┌─────────▼───────────┐
                                                                   │ Painel do           │
                                                                   │ proprietário        │
-                                                                  │ (Next.js / Vercel)  │
+                                                                  │ (Next.js/Cloudflare)│
                                                                   └─────────────────────┘
 ```
 
@@ -33,7 +33,7 @@ O RupBar roda no **PC do bar** (Windows) e funciona **sem internet**: comandas, 
 | `apps/local-ui` | Interface React servida pelo próprio servidor: PC, celular do garçom (`/m`), produção (`/producao`) e TV (`/tv`). Sem CDN. |
 | `apps/desktop` | Aplicativo Windows (Tauri v2): janela, bandeja e instalador NSIS que instala o serviço. |
 | `apps/service-host` | `rupbar-service.exe` (Rust): serviço do Windows que supervisiona o servidor (reinício automático, parada graciosa, firewall). |
-| `apps/owner-panel` | Painel online do proprietário (Next.js + Supabase Auth), para a Vercel. |
+| `apps/owner-panel` | Painel online do proprietário (Next.js + Supabase Auth), no Cloudflare Workers (OpenNext). |
 | `apps/android` | App Android “RupBar Garçom” (Kotlin, sem bibliotecas): encontra o PC na rede Wi-Fi e abre `/m` em tela cheia. APK gerado na CI (`gradle assembleRelease`), incluído no instalador do Windows e servido pelo PC em `/download/rupbar-garcom.apk`. |
 | `supabase` | Migrações da nuvem (tabelas, RLS, RPCs) + testes em Postgres real (PGlite). |
 | `tests/e2e` | Teste ponta a ponta no Chromium. |
@@ -156,7 +156,7 @@ Detalhes de instalação, rede, impressoras, TV, nuvem e backups em [docs/IMPLAN
 
 | # | Requisito | Situação |
 |---|---|---|
-| 1 | App Windows + serviço local + SQLite; painel online Next.js/Supabase/Vercel | Implementado (instalador gerado na CI; ver limitações) |
+| 1 | App Windows + serviço local + SQLite; painel online Next.js/Supabase/Cloudflare | Implementado (instalador gerado na CI; ver limitações) |
 | 2 | Offline-first, fila persistente, idempotência, versões, conflitos, recuperação | Implementado e testado (inclui teste de contrato PC ⇄ Postgres) |
 | 3 | Assistente de primeira instalação e identidade visual | Implementado |
 | 4 | Conexão por QR Code, endereço estável, descoberta e orientação | Implementado (mDNS `rupbar.local`, redescoberta na sub-rede, aviso de troca de IP) |
@@ -184,7 +184,7 @@ Detalhes de instalação, rede, impressoras, TV, nuvem e backups em [docs/IMPLAN
 - **App Android do garçom**: compilado na CI; ainda precisa ser testado em aparelhos reais (descoberta na rede, Wi-Fi sem internet com dados móveis ligados, instalação fora da Play Store). Para que atualizações instalem por cima, configure os segredos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD` (sem eles o APK sai com uma chave de depuração temporária).
 - **HTTPS na rede local** não é usado (certificados em rede local geram alertas nos celulares). Ver [Segurança](docs/SEGURANCA-LGPD.md) para as mitigações.
 - **Comprovantes (fotos/PDF)** ficam no PC; a nuvem recebe apenas a indicação de que existem.
-- O esquema da nuvem está instalado no projeto Supabase compartilhado com o Barberflow (detalhes e cuidados em [IMPLANTACAO.md](docs/IMPLANTACAO.md#instalação-atual-dentro-de-um-projeto-supabase-já-existente)); falta publicar o painel na Vercel e conectar o PC do bar.
+- O esquema da nuvem está instalado no projeto Supabase compartilhado com o Barberflow (detalhes e cuidados em [IMPLANTACAO.md](docs/IMPLANTACAO.md#instalação-atual-dentro-de-um-projeto-supabase-já-existente)); o painel é publicado no Cloudflare Workers pela CI (ver IMPLANTACAO.md).
 - Emissão fiscal (NFC-e/SAT) não faz parte deste escopo; o cupom de conta é marcado como “não é documento fiscal”.
 
 ---
