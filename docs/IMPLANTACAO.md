@@ -103,7 +103,7 @@ Em produção, o RupBar foi instalado no projeto Supabase já usado pelo Barberf
 Consequências de compartilhar o projeto:
 
 - **Login compartilhado**: o painel usa o mesmo Supabase Auth do Barberflow. Qualquer conta do Barberflow consegue entrar no painel do RupBar, mas não vê nada (o RLS só mostra estabelecimentos dos quais a conta é proprietária).
-- **Site URL**: não altere a Site URL do projeto (ela é do Barberflow). Apenas **adicione** `https://rupbar-owner-panel.<sua-conta>.workers.dev/auth/callback` (e o seu domínio, se usar) em *Redirect URLs*.
+- **Site URL**: não altere a Site URL do projeto (ela é do Barberflow). Apenas **adicione** `https://rupbar.<sua-conta>.workers.dev/auth/callback` (e o seu domínio, se usar) em *Redirect URLs*.
 - **`supabase db push`** não deve ser usado contra esse projeto a partir deste repositório: o histórico remoto contém as migrações do Barberflow, que não estão aqui. Mudanças futuras no esquema do RupBar devem ser aplicadas como novas migrações nomeadas `rupbar_*` (pelo SQL Editor ou pela CLI do repositório do Barberflow).
 - Os objetos do RupBar são identificados pelos nomes acima (`rupbar_*`, `v_*` do RupBar e as quatro tabelas); para mover o RupBar para um projeto próprio no futuro, basta aplicar `20261012000000_rupbar_init.sql` no projeto novo e reconectar o PC.
 
@@ -113,9 +113,9 @@ O painel roda no Cloudflare Workers com o adaptador OpenNext (`apps/owner-panel/
 
 1. No Cloudflare: **My Profile → API Tokens → Create Token → modelo "Edit Cloudflare Workers"**. Copie o token. Copie também o **Account ID** (na página inicial da conta, coluna da direita).
 2. No GitHub do repositório: **Settings → Secrets and variables → Actions → New repository secret**: `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`.
-3. Faça um push (ou rode a CI de novo). O job **Painel online (Cloudflare Workers)** publica em `https://rupbar-owner-panel.<sua-conta>.workers.dev`.
-4. No Supabase, adicione `https://rupbar-owner-panel.<sua-conta>.workers.dev/auth/callback` em *Redirect URLs* (sem mexer na Site URL).
-5. Domínio próprio (opcional): no Cloudflare, **Workers & Pages → rupbar-owner-panel → Settings → Domains & Routes → Add custom domain**, e adicione também `https://<domínio>/auth/callback` no Supabase.
+3. Faça um push (ou rode a CI de novo). O job **Painel online (Cloudflare Workers)** publica em `https://rupbar.<sua-conta>.workers.dev`.
+4. No Supabase, adicione `https://rupbar.<sua-conta>.workers.dev/auth/callback` em *Redirect URLs* (sem mexer na Site URL).
+5. Domínio próprio (opcional): no Cloudflare, **Workers & Pages → rupbar → Settings → Domains & Routes → Add custom domain**, e adicione também `https://<domínio>/auth/callback` no Supabase.
 
 Variáveis são opcionais: sem `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` o painel usa a nuvem padrão do RupBar. Para outro projeto, crie essas duas como **variables** (não secrets) em *Settings → Secrets and variables → Actions → Variables*; elas entram no build.
 
