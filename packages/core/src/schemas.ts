@@ -119,6 +119,8 @@ export const operationSettingsSchema = z.object({
   pickupPlace: trimmed(40).default('no balcão'),
   tvVoiceEnabled: z.boolean().default(true),
   lowStockAlertsEnabled: z.boolean().default(true),
+  /** Senha (PIN) para apagar item da comanda e abrir a Lixeira pelo painel online. */
+  deletePin: z.string().trim().regex(/^\d{4,8}$/,'A senha da lixeira deve ter de 4 a 8 números').default('354500'),
 });
 export type OperationSettings = z.infer<typeof operationSettingsSchema>;
 
@@ -799,7 +801,14 @@ export const remoteOrderSchema = z.object({
   comandaId: zUuid,
   items: z.array(z.object({ presentationId: zUuid, quantity: z.number().int().min(1).max(99), notes: optionalText(140) })).min(1).max(30),
 });
-export const remoteItemCancelSchema = z.object({ itemId: zUuid, reason: trimmed(200).min(3, 'Informe o motivo') });
+export const remoteItemCancelSchema = z.object({
+  itemId: zUuid,
+  reason: trimmed(200).min(3, 'Informe o motivo'),
+  /** false = o item sai mas o estoque continua baixado (consumo/cortesia). */
+  returnToStock: z.boolean().default(true),
+  /** Senha da lixeira (quando o apagar vem pelo painel com a tranca). */
+  pin: z.string().trim().max(8).optional(),
+});
 export const remoteCashOpenSchema = z.object({ openingBalanceCents: zCents.min(0) });
 export const remoteCashCloseSchema = z.object({ countedCashCents: zCents.min(0), notes: optionalText(400) });
 export const remoteUserRemoveSchema = z.object({ userId: zUuid });

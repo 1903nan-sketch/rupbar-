@@ -146,8 +146,15 @@ export function createServices(opts: CreateOptions) {
   });
   sync.register('comanda_item.cancel', (_commandId, payload) => {
     const input = remoteItemCancelSchema.parse(payload);
-    comandas.cancelItem(remote(payload), input.itemId, { reason: input.reason, returnToStock: true });
-    return { status: 'applied', message: 'Item tirado da comanda (estoque devolvido).' };
+    // Apagar pela Lixeira (com a tranca) manda a senha; confere antes de mexer.
+    if (input.pin !== undefined && input.pin !== settings.operation().deletePin) {
+      return { status: 'rejected', message: 'Senha da lixeira incorreta.' };
+    }
+    comandas.cancelItem(remote(payload), input.itemId, { reason: input.reason, returnToStock: input.returnToStock });
+    return {
+      status: 'applied',
+      message: input.returnToStock ? 'Item tirado da comanda (estoque devolvido).' : 'Item apagado — consumo/cortesia (estoque mantido baixado).',
+    };
   });
   sync.register('cash.open', (_commandId, payload) => {
     const input = remoteCashOpenSchema.parse(payload);

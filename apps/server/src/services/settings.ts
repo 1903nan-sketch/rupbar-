@@ -144,6 +144,11 @@ export class SettingsService {
     const merged = operationSettingsSchema.parse({ ...this.operation(), ...(raw as object) });
     this.ctx.tx(() => {
       this.saveOperation(merged);
+      // Espelha a senha da Lixeira no cadastro do bar para o painel online conferir (sincroniza).
+      const cur = this.ctx.db.value<string>('SELECT delete_pin FROM establishment LIMIT 1');
+      if (cur !== merged.deletePin) {
+        this.ctx.db.run("UPDATE establishment SET delete_pin = ?, version = version + 1, updated_at = ?", merged.deletePin, this.ctx.nowIso());
+      }
       this.ctx.audit(actor, 'settings.operation_updated', 'settings', 'operation', merged as unknown as Record<string, unknown>);
     });
     return merged;

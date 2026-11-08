@@ -907,6 +907,12 @@ WHERE EXISTS (SELECT 1 FROM json_each(users.grants_json) WHERE value = 'comandas
 ${syncTriggersSql((t) => t.since === 14)}
 `;
 
+const M015 = /* sql */ `
+-- Senha (PIN) da Lixeira do painel online. Fica no cadastro do bar (sincroniza
+-- para o painel conferir), com o mesmo valor padrão do app.
+ALTER TABLE establishment ADD COLUMN delete_pin TEXT NOT NULL DEFAULT '354500';
+`;
+
 export interface Migration {
   id: number;
   name: string;
@@ -930,6 +936,7 @@ export const MIGRATIONS: Migration[] = [
   { id: 12, name: 'excluir funcionário', sql: M012 },
   { id: 13, name: 'consumo de funcionário e excluir produto', sql: M013 },
   { id: 14, name: 'desconto só do proprietário e pedidos de desconto', sql: M014 },
+  { id: 15, name: 'senha da lixeira (apagar item pelo painel)', sql: M015 },
 ];
 
 /** Gera gatilhos que alimentam a outbox enquanto a sincronização estiver ativa. */

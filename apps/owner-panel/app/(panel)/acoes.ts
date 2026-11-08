@@ -95,6 +95,82 @@ export async function closeComanda(_prev: ActionState | null, form: FormData): P
   return r.ok ? { ok: true, message: 'Enviado. O PC do bar recebe o pagamento e encerra em alguns segundos (veja em "Ações enviadas").' } : r;
 }
 
+// ------------------------------------------------- lixeira (apagar item com senha)
+
+/** Confere a senha da Lixeira na nuvem (não traz o valor pro navegador). */
+export async function verifyDeletePin(pin: string): Promise<boolean> {
+  const { sb, est } = await currentEstablishment();
+  if (!est || !/^\d{4,8}$/.test(pin)) return false;
+  const { data, error } = await sb.rpc('rupbar_verify_delete_pin', { p_establishment_id: est.id, p_pin: pin });
+  return !error && data === true;
+}
+
+export interface DeletedItem {
+  id: string;
+  name: string;
+  valueCents: number;
+  comanda: string;
+  reason: string | null;
+  at: string | null;
+  by: string | null;
+}
+
+/** Histórico da Lixeira: itens apagados/cancelados, só com a senha certa. */
+export async function deletedItems(pin: string): Promise<DeletedItem[] | null> {
+  if (!(await verifyDeletePin(pin))) return null;
+  const { sb, est } = await currentEstablishment();
+  if (!est) return null;
+  const [{ data: items }, { data: comandas }, { data: users }] = await Promise.all([
+    sb.from('v_comanda_items').select('id, comanda_id, product_name, presentation_name, options_label, quantity, unit_price_cents, cancel_reason, canceled_at, canceled_by')
+      .eq('establishment_id', est.id).eq('status', 'canceled').order('canceled_at', { ascending: false }).limit(300),
+    sb.from('v_comandas').select('id, number, card_number, kind, customer_name').eq('establishment_id', est.id),
+    sb.from('v_users').select('id, name').eq('establishment_id', est.id),
+  ]);
+  const cmap = new Map((comandas ?? []).map((c) => [c.id as string, c]));
+  const umap = new Map((users ?? []).map((u) => [u.id as string, u.name as string]));
+  return (items ?? []).map((i) => {
+    const c = cmap.get(i.comanda_id as string);
+    const num = c ? (c.card_number ?? c.number) : null;
+    return {
+      id: i.id as string,
+      name: `${i.quantity}× ${i.product_name}${i.presentation_name && i.presentation_name !== i.product_name ? ` · ${i.presentation_name}` : ''}`,
+      valueCents: Number(i.quantity) * Number(i.unit_price_cents),
+      comanda: c ? `${c.kind === 'quick' ? 'Venda rápida' : `Comanda ${num}`}${c.customer_name ? ` · ${c.customer_name}` : ''}` : 'Comanda',
+      reason: (i.cancel_reason as string | null) ?? null,
+      at: (i.canceled_at as string | null) ?? null,
+      by: i.canceled_by ? umap.get(i.canceled_by as string) ?? null : null,
+    };
+  });
+}
+
+/** Apagar itens selecionados da comanda (com a senha). Cada item vira cancelado no PC. */
+export async function deleteItems(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const pin = String(form.get('pin') ?? '');
+  const returnToStock = form.get('returnToStock') === '1';
+  let items: { id: string; label?: string }[] = [];
+  try {
+    items = JSON.parse(String(form.get('items') ?? '[]'));
+  } catch {
+    return { ok: false, message: 'Itens inválidos.' };
+  }
+  items = (Array.isArray(items) ? items : []).filter((i) => UUID.test(i.id)).slice(0, 50);
+  if (!items.length) return { ok: false, message: 'Selecione ao menos um item.' };
+  if (!(await verifyDeletePin(pin))) return { ok: false, message: 'Senha da lixeira incorreta.' };
+  const { sb, est } = await currentEstablishment();
+  if (!est) return { ok: false, message: 'Nenhum estabelecimento vinculado.' };
+  const reason = returnToStock ? 'Apagado pelo painel (engano)' : 'Consumo / cortesia (painel)';
+  let sent = 0;
+  for (const it of items) {
+    const label = `Apagar ${String(it.label ?? 'item').slice(0, 60)}${returnToStock ? '' : ' (cortesia)'}`;
+    const { error } = await sb.rpc('rupbar_owner_command', { p_establishment_id: est.id, p_type: 'comanda_item.cancel', p_payload: { itemId: it.id, reason, returnToStock, pin, label } });
+    if (!error) sent++;
+  }
+  revalidatePath('/comandas');
+  if (!sent) return { ok: false, message: 'Não consegui enviar. Tente de novo.' };
+  const n = sent === 1 ? '1 item' : `${sent} itens`;
+  return { ok: true, message: `Enviado (${n}). O PC do bar apaga em alguns segundos. ${returnToStock ? 'O estoque volta.' : 'O estoque continua baixado (cortesia).'}` };
+}
+
 // --------------------------------------------------------------- descontos
 
 /** Desconto direto na comanda (só o proprietário dá desconto). "10%" vale sobre os itens. */
