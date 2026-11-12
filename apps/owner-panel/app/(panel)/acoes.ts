@@ -219,6 +219,17 @@ export async function closeCash(_prev: ActionState | null, form: FormData): Prom
   return send('cash.close', { countedCashCents: value, notes: notes || null, label: `Fechar caixa com R$ ${(value / 100).toFixed(2).replace('.', ',')} contados` }, '/caixas');
 }
 
+/** Sangria (tirar dinheiro da gaveta) ou suprimento (pôr troco), como no PC. */
+export async function cashMovement(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const type = form.get('type') === 'supply' ? 'supply' : 'withdrawal';
+  const value = cents(form.get('amount'));
+  if (!value) return { ok: false, message: 'Informe um valor maior que zero.' };
+  const reason = String(form.get('reason') ?? '').trim().slice(0, 200);
+  if (reason.length < 3) return { ok: false, message: 'Informe o motivo (ex.: pagamento do gelo, depósito no banco).' };
+  const what = type === 'withdrawal' ? 'Sangria' : 'Suprimento';
+  return send('cash.movement', { type, amountCents: value, reason, label: `${what} de R$ ${(value / 100).toFixed(2).replace('.', ',')} — ${reason}` }, '/caixas');
+}
+
 // --------------------------------------------------------- estoque e preços
 
 /** Quantidade em milésimos (calculada na tela a partir de fardos, latas, kg…). */

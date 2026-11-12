@@ -811,6 +811,12 @@ export const remoteItemCancelSchema = z.object({
 });
 export const remoteCashOpenSchema = z.object({ openingBalanceCents: zCents.min(0) });
 export const remoteCashCloseSchema = z.object({ countedCashCents: zCents.min(0), notes: optionalText(400) });
+/** Sangria (tirar dinheiro) ou suprimento (pôr troco) pelo painel, no caixa aberto. */
+export const remoteCashMovementSchema = z.object({
+  type: z.enum(['withdrawal', 'supply']),
+  amountCents: zPositiveCents,
+  reason: trimmed(200).min(3, 'Informe o motivo'),
+});
 export const remoteUserRemoveSchema = z.object({ userId: zUuid });
 export const remoteProductActiveSchema = z.object({ productId: zUuid, active: z.boolean() });
 /** Desconto dado pelo proprietário no painel (0 tira o desconto). */

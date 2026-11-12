@@ -8,7 +8,7 @@ import { ScrollHere } from '@/components/ScrollHere';
 import { Badge, Card, Empty, PageHeader, PeriodForm, Stat, stagger } from '@/components/ui';
 import { currentEstablishment, periodFrom } from '@/lib/data';
 import { fmtShort } from '@/lib/format';
-import { closeCash, openCash } from '../acoes';
+import { cashMovement, closeCash, openCash } from '../acoes';
 
 export const metadata = { title: 'Caixas e sangrias' };
 
@@ -56,7 +56,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="stack-l">
-      <PageHeader title="Caixas e sangrias" eyebrow="Financeiro" icon={Wallet} subtitle="Abra e feche o caixa daqui; aberturas, fechamentos e movimentações de dinheiro." />
+      <PageHeader title="Caixas e sangrias" eyebrow="Financeiro" icon={Wallet} subtitle="Abra e feche o caixa, faça sangrias e suprimentos daqui — como no PC do bar." />
 
       <div className="split-form">
         {openSession && now ? (
@@ -92,8 +92,30 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
             </ActionForm>
           </Card>
         )}
-        <CommandFeed types={['cash.open', 'cash.close']} path="/caixas" />
+        <CommandFeed types={['cash.open', 'cash.close', 'cash.movement']} path="/caixas" />
       </div>
+
+      {openSession && now && (
+        <Card title="Sangria ou suprimento" subtitle="Tirar dinheiro da gaveta ou pôr troco, no caixa aberto" icon={Banknote} tone="amber">
+          <ActionForm action={cashMovement} submit="Registrar" icon={<Banknote size={17} aria-hidden="true" />} block>
+            <div className="field">
+              <label htmlFor="mvType">Tipo</label>
+              <select id="mvType" name="type" className="input" defaultValue="withdrawal">
+                <option value="withdrawal">Sangria — tirar dinheiro da gaveta</option>
+                <option value="supply">Suprimento — colocar troco na gaveta</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="mvAmount">Valor (R$)</label>
+              <input id="mvAmount" name="amount" className="input" inputMode="decimal" placeholder={`Na gaveta agora: ${formatBRL(now.expectedCash)}`} required />
+            </div>
+            <div className="field">
+              <label htmlFor="mvReason">Motivo</label>
+              <input id="mvReason" name="reason" className="input" minLength={3} maxLength={200} placeholder="Ex.: pagamento do gelo, depósito no banco" required />
+            </div>
+          </ActionForm>
+        </Card>
+      )}
 
       <div className="page-header section-head">
         <div className="page-heading">

@@ -65,6 +65,7 @@ export interface PushResponse {
 export const REMOTE_COMMAND_TYPES = [
   'loss.register', 'comanda.open', 'order.create', 'comanda_item.cancel', 'cash.open', 'cash.close', 'user.remove', 'product.set_active',
   'comanda.discount', 'discount.approve', 'discount.reject', 'comanda.close', 'stock.entry', 'stock.adjust', 'product.update',
+  'cash.movement',
 ] as const;
 export type RemoteCommandType = (typeof REMOTE_COMMAND_TYPES)[number];
 
@@ -84,6 +85,7 @@ export const REMOTE_COMMAND_LABELS: Record<RemoteCommandType, string> = {
   'stock.entry': 'Entrada de estoque',
   'stock.adjust': 'Corrigir saldo',
   'product.update': 'Alterar produto',
+  'cash.movement': 'Sangria / suprimento',
 };
 
 export interface RemoteCommand {

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { formatBRL, formatQty, PAYMENT_METHODS } from '@rupbar/core';
 import {
-  remoteCashCloseSchema, remoteCashOpenSchema, remoteComandaCloseSchema, remoteComandaOpenSchema, remoteDiscountDecisionSchema, remoteDiscountSchema, remoteItemCancelSchema,
+  remoteCashCloseSchema, remoteCashMovementSchema, remoteCashOpenSchema, remoteComandaCloseSchema, remoteComandaOpenSchema, remoteDiscountDecisionSchema, remoteDiscountSchema, remoteItemCancelSchema,
   remoteOrderSchema, remoteProductActiveSchema, remoteStockEntrySchema, remoteUserRemoveSchema,
 } from '@rupbar/core/schemas';
 import { Db } from '../db/db';
@@ -165,6 +165,13 @@ export function createServices(opts: CreateOptions) {
     const input = remoteCashCloseSchema.parse(payload);
     cash.close(remote(payload), input);
     return { status: 'applied', message: 'Caixa fechado.' };
+  });
+  sync.register('cash.movement', (commandId, payload) => {
+    const input = remoteCashMovementSchema.parse(payload);
+    // O id do comando serve de chave: se o PC receber duas vezes, lança uma só.
+    const r = cash.movement(remote(payload), { ...input, clientRequestId: commandId });
+    const [what, a] = input.type === 'withdrawal' ? ['Sangria', 'a'] : ['Suprimento', 'o'];
+    return { status: 'applied', message: r.duplicate ? `${what} já estava registrad${a}.` : `${what} de ${formatBRL(input.amountCents)} registrad${a} (${input.reason}).` };
   });
   sync.register('user.remove', (_commandId, payload) => {
     const input = remoteUserRemoveSchema.parse(payload);

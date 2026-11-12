@@ -1,6 +1,6 @@
 {
   "name": "@rupbar/owner-panel",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "Painel online do proprietário (Next.js + Supabase), hospedado no Cloudflare Workers (OpenNext).",
   "scripts": {
